@@ -38,6 +38,7 @@ const { getPlanets } = await loadModule("planet")
 const { getItemGroups } = await loadModule("group")
 const factory = await loadModule("factory")
 const { itemMatchesSearch } = await loadModule("search")
+const { formatLocationList, getUnavailableLocationInfo } = await loadModule("location")
 
 const searchCases = [
   [{ key: "underground-belt", name: "Underground belt" }, "underground belt"],
@@ -105,6 +106,36 @@ try {
     const groups = getItemGroups(items, data)
 
     factory.spec.setData(items, recipes, planets, modules, buildings, belts, fuels, groups)
+
+    if (filename === "space-age-2.1.12.json") {
+      const nauvis = planets.get("nauvis")
+      factory.spec.selectedPlanets = new Set([nauvis])
+      factory.spec.planetaryBaseline = new Set(nauvis.disable)
+      factory.spec.disable = new Set(nauvis.disable)
+
+      const item = items.get("cryogenic-science-pack")
+      const locationInfo = getUnavailableLocationInfo(factory.spec, item)
+      if (locationInfo === null) {
+        throw new Error("Cryogenic science pack did not report its unavailable production location")
+      }
+      const selected = formatLocationList(locationInfo.selectedLocations, "and")
+      const compatible = formatLocationList(locationInfo.compatibleLocations, "or", true)
+      if (selected !== "Nauvis") {
+        throw new Error(`Unexpected selected production locations: ${selected}`)
+      }
+      if (compatible !== "Aquilo") {
+        throw new Error(`Unexpected compatible production locations: ${compatible}`)
+      }
+
+      const aquilo = planets.get("aquilo")
+      const combinedDisable = new Set([...nauvis.disable].filter((recipe) => aquilo.disable.has(recipe)))
+      factory.spec.selectedPlanets.add(aquilo)
+      factory.spec.planetaryBaseline = combinedDisable
+      factory.spec.disable = new Set(combinedDisable)
+      if (getUnavailableLocationInfo(factory.spec, item) !== null) {
+        throw new Error("Location warning remained after enabling a compatible production location")
+      }
+    }
 
     for (const recipe of recipes.values()) {
       if (recipe.categories?.size > 0 && !factory.spec.getBuilding(recipe)) {

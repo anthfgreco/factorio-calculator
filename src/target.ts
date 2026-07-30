@@ -1,5 +1,6 @@
 import { makeDropdown, addInputs } from "./dropdown.js"
 import { spec } from "./factory.js"
+import { formatLocationList, getUnavailableLocationInfo } from "./location.js"
 import { Rational, zero, one } from "./rational.js"
 import { itemMatchesSearch } from "./search.js"
 
@@ -185,10 +186,58 @@ export class BuildTarget {
       .attr("size", 5)
       .attr("title", "Enter a value to specify the rate. The number of buildings will be determined based on the rate.")
       .node()
+
+    this.locationWarning = element
+      .append("div")
+      .classed("location-warning", true)
+      .attr("aria-live", "polite")
+      .style("display", "none")
+    this.locationWarning.append("div").classed("location-warning-title", true)
+    this.locationWarning.append("div").classed("location-warning-message", true)
+    this.locationWarning
+      .append("button")
+      .classed("ui", true)
+      .attr("type", "button")
+      .text("Enable compatible locations")
+      .on("click", () => this.enableCompatibleLocations())
+
+    this.compatibleLocations = []
     this.displayRecipes()
   }
   setRateLabel() {
     this.rateLabel.textContent = " Items/" + spec.format.longRate + ": "
+  }
+  displayLocationWarning() {
+    let info = getUnavailableLocationInfo(spec, this.item)
+    if (info === null) {
+      this.compatibleLocations = []
+      this.locationWarning.style("display", "none")
+      return
+    }
+
+    this.compatibleLocations = info.compatibleLocations
+    let selectedLabel = info.selectedLocations.length === 1 ? "location" : "locations"
+    this.locationWarning
+      .select(".location-warning-title")
+      .text(`Unavailable on selected ${selectedLabel}: ${formatLocationList(info.selectedLocations, "and")}`)
+    this.locationWarning
+      .select(".location-warning-message")
+      .text(
+        `This item can be produced on ${formatLocationList(info.compatibleLocations, "or", true)}. ` +
+          "Update locations in Settings.",
+      )
+    this.locationWarning.style("display", null)
+  }
+  enableCompatibleLocations() {
+    let locations = [...this.compatibleLocations]
+    for (let location of locations) {
+      if (!spec.selectedPlanets.has(location)) {
+        spec.selectPlanet(location)
+      }
+    }
+    d3.selectAll("#planet_selector .toggle").classed("selected", (location) => spec.selectedPlanets.has(location))
+    d3.selectAll("#recipe_toggles .toggle").classed("selected", (recipe) => !spec.disable.has(recipe))
+    spec.updateSolution()
   }
   displayRecipes() {
     this.recipeSelector.selectAll("*").remove()
@@ -208,6 +257,7 @@ export class BuildTarget {
     if (!found) {
       this.recipe = null
     }
+    this.displayLocationWarning()
     if (recipes.length > 0) {
       this.defaultRecipe = recipes[0]
     }
