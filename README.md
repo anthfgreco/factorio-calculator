@@ -1,38 +1,62 @@
 # Factorio Calculator
 
-This is the repostory for the [Factorio Calculator](https://kirkmcdonald.github.io/calc.html), a tool for calculating resource requirements and production ratios in the game [Factorio](https://factorio.com/).
+A browser-based calculator for Factorio production ratios and resource requirements. This repository is a maintained fork of Kirk McDonald's original calculator and currently includes experimental **Factorio Space Age 2.1.12** data.
+
+## Live site
+
+The calculator is hosted on GitHub Pages:
+
+https://anthfgreco.github.io/factorio-calculator/
+
 
 ## Running locally
 
-The calculator consists entirely of static files (HTML, JS, CSS), and may be run locally using any HTTP server. If you have Python 3 installed, you can start a simple development server on port 8000 with:
+The application consists entirely of static HTML, JavaScript, CSS, JSON, and image files. 
+Run any local HTTP server from the repository root.
 
-```text
-$ python3 -m http.server 8000
+```bash
+python -m http.server 8000
 ```
 
-An experimental standalone version of the calculator named `factoriocalc`, which will automatically obtain the game data from your locally installed mods, is also available from the [factorio-tools](https://github.com/KirkMcDonald/factorio-tools) repository. A Windows build is available from [the project's releases page](https://github.com/KirkMcDonald/factorio-tools/releases).
+Then open `http://localhost:8000/`.
 
-## Dumping new datasets
+## Updating the Factorio dataset
 
-The utility for dumping datasets from the game, as well as assembling the sprite sheets, is called `factoriodump`, and may be found in the [factorio-tools](https://github.com/KirkMcDonald/factorio-tools) repository.
+`build_factorio_dataset.py` generates the Space Age calculator dataset and sprite sheet from Factorio's official exports.
 
-The repository also includes a reproducible builder for the experimental
-Factorio 2.1.12 Space Age dataset. It consumes the files created by Factorio's
-built-in `--dump-data`, `--dump-prototype-locale`, and `--dump-icon-sprites`
-commands:
+Create an isolated Factorio export with only these official mods enabled:
 
-Install the one Python dependency, then run the builder:
+- Base
+- Elevated Rails
+- Quality
+- Recycler
+- Space Age
+
+Run Factorio's built-in exporters:
 
 ```text
-$ python3 -m pip install Pillow
-$ python3 build_factorio_dataset.py /path/to/extracted/factorio-export
+--dump-data
+--dump-prototype-locale
+--dump-icon-sprites
 ```
 
-The export must contain only Base, Elevated Rails, Quality, Recycler, and Space
-Age. The builder validates the loaded game version, enabled mods, recipe
-references, and machine categories, then writes `data/space-age-2.1.12.json`,
-its sprite sheet, and a build report.
+Install Pillow and run the builder against the extracted export directory:
 
-## Support the calculator
+```bash
+python -m pip install Pillow
+python build_factorio_dataset.py /path/to/factorio-export
+```
 
-Please consider donating to [my Patreon campaign](https://www.patreon.com/kirkmcdonald). Any amount helps. And thank you!
+The builder validates the game version, enabled mods, recipe references, crafting categories, and generated outputs. It writes:
+
+- `data/space-age-2.1.12.json`
+- `data/space-age-2.1.12-build-report.json`
+- `images/sprite-sheet-<hash>.png`
+
+## Repository layout
+
+- `calc.html` — calculator application
+- `data/` — browser-ready Factorio datasets
+- `images/` — sprite sheets and interface images
+- `build_factorio_dataset.py` — reproducible 2.1.12 dataset builder
+- `docs/` and `posts/` — calculator documentation and technical background

@@ -1,16 +1,3 @@
-/*Copyright 2021 Kirk McDonald
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.*/
 
 import { getCycleRecipes } from "./cycle.js"
 import { Matrix } from "./matrix.js"
@@ -165,8 +152,6 @@ export function solve(spec, fullOutputs) {
     }
 
     let products = new Set()
-    //let ingredients = new Set()
-
     let items = []
     let itemColumns = new Map()
     let recipeArray = []
@@ -329,7 +314,6 @@ export function solve(spec, fullOutputs) {
         "items": items,
         "recipes": recipeArray,
         "targets": partialSolution.targets,
-        //"disabledItems": disabledItems,
     }
 
     // Solve.
@@ -338,7 +322,6 @@ export function solve(spec, fullOutputs) {
     spec.lastSolution = A
 
     // Convert result to map of recipe to recipe-rate.
-    //let solution = new Map()
     for (let i = 0; i < recipeArray.length; i++) {
         let col = tax + i + 1
         let rate = A.index(A.rows - 1, col)
@@ -350,7 +333,7 @@ export function solve(spec, fullOutputs) {
     solution.set(new OutputRecipe(outputs), one)
     // And to map of surplus item to rate.
     let surplus = new Map()
-    for (let i = 0; i < items.length /*- disabledItems.length*/; i++) {
+    for (let i = 0; i < items.length; i++) {
         let rate = A.index(A.rows - 1, i)
         if (zero.less(rate)) {
             surplus.set(items[i], rate)
@@ -360,5 +343,4 @@ export function solve(spec, fullOutputs) {
         solution.set(new SurplusRecipe(surplus), one)
     }
     return new Totals(spec, outputs, solution, surplus, maxPriorityRecipes)
-    //return {"solution": solution, "surplus": surplus}
 }

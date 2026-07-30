@@ -1,0 +1,10 @@
+Factorio Calculator
+
+This repository is a modified fork of the Factorio Calculator originally created by Kirk McDonald:
+https://github.com/KirkMcDonald/kirkmcdonald.github.io
+
+Copyright 2015-2024 Kirk McDonald
+
+The fork adds and maintains newer Factorio datasets, including experimental Space Age 2.1.12 support, updated prototype handling, and GitHub Pages deployment.
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
