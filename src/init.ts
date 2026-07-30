@@ -12,7 +12,7 @@ import { getModules } from "./module.js"
 import { getPlanets } from "./planet.js"
 import { getRecipes } from "./recipe.js"
 import { currentMod, MODIFICATIONS, renderDataSetOptions, renderSettings } from "./settings.js"
-import { clearUrlHash, initializeUrlState } from "./url-state.js"
+import { clearUrlHash, finishUrlInitialization, initializeUrlState } from "./url-state.js"
 
 function reset() {
   clearUrlHash()
@@ -93,6 +93,7 @@ function loadData(modName, settings) {
     renderSettings(settings)
 
     spec.updateSolution()
+    finishUrlInitialization()
   })
 }
 

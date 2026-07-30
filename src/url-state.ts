@@ -1,14 +1,18 @@
-let suppressInitialHashWrite = false
+let suppressInitialHashWrites = false
 
 /**
- * Preserve a clean URL for a fresh calculator visit.
+ * Preserve a clean URL throughout a fresh calculator startup.
  *
- * Shared links already containing a fragment are never suppressed. The first
- * render of a hashless visit is the only write skipped; later user changes are
- * still serialized into a shareable URL.
+ * Shared links already containing a fragment are never suppressed. A hashless
+ * visit suppresses every URL write caused by initial rendering; later user
+ * changes are still serialized into a shareable URL.
  */
 export function initializeUrlState() {
-  suppressInitialHashWrite = window.location.hash === ""
+  suppressInitialHashWrites = window.location.hash === ""
+}
+
+export function finishUrlInitialization() {
+  suppressInitialHashWrites = false
 }
 
 export function clearUrlHash() {
@@ -17,8 +21,7 @@ export function clearUrlHash() {
 }
 
 export function syncUrlHash(settings: string) {
-  if (suppressInitialHashWrite) {
-    suppressInitialHashWrite = false
+  if (suppressInitialHashWrites) {
     return
   }
 
