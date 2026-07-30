@@ -1,6 +1,8 @@
 # Factorio Calculator
 
-A browser-based calculator for Factorio production ratios and resource requirements. This maintained fork includes experimental **Factorio Space Age 2.1.12** data generated from the official game prototypes.
+A browser calculator for Factorio.
+
+This fork includes experimental **Factorio Space Age 2.1.12** data.
 
 ## Live site
 
@@ -23,10 +25,6 @@ pnpm install
 pnpm dev
 ```
 
-The first install creates `pnpm-lock.yaml`. Commit that lockfile after verifying the install so later local and GitHub Pages builds use the same dependency graph.
-
-Vite opens the calculator at `http://localhost:5173/calc.html` and reloads it when TypeScript, HTML, or CSS changes.
-
 ## Commands
 
 ```bash
@@ -39,13 +37,13 @@ pnpm preview       # Preview the generated dist/ site
 pnpm verify        # Run the complete build verification
 ```
 
-The browser application is written in TypeScript under `src/`. The locally maintained D3 Sankey implementation remains vendored JavaScript under `src/vendor/` and is excluded from JavaScript type checking.
+The browser application is written in TypeScript under `src/`. 
 
 ## GitHub Pages
 
 `.github/workflows/pages.yml` installs pnpm, builds the Vite site, validates the generated files, and deploys `dist/` whenever `master` is updated.
 
-In the repository settings, select **Settings → Pages → Build and deployment → Source → GitHub Actions** once. No separate `gh-pages` branch is required.
+In the repository settings, select **Settings → Pages → Build and deployment → Source → GitHub Actions** once.
 
 Vite uses relative production paths, so the build works both at the GitHub project URL and when previewed locally.
 
