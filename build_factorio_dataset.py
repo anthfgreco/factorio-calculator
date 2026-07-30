@@ -772,7 +772,7 @@ class DatasetBuilder:
         recipes = self.build_recipes()
 
         beacon = self.raw["beacon"]["beacon"]
-        dataset = clean_none({
+        dataset = {
             "game_version": version,
             "game_build": build_number,
             "experimental": True,
@@ -802,9 +802,13 @@ class DatasetBuilder:
                 "energy_usage": convert_power(beacon.get("energy_usage")),
                 "profile": beacon.get("profile"),
             },
-        })
+        }
+        # SpriteBuilder mutates the registered dataset objects with icon
+        # coordinates. Clean the dataset only after those mutations have been
+        # applied; cleaning earlier creates detached copies and drops every
+        # icon_col/icon_row field.
         dataset["sprites"] = self.sprite.build(images_dir)
-        return dataset
+        return clean_none(dataset)
 
 
 def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
@@ -859,6 +863,27 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
     }
     excluded_raw = sorted(raw_non_parameter - set(recipe_map))
     require(excluded_raw == ["item-unknown-recycling", "recipe-unknown"], f"Unexpected excluded raw recipes: {excluded_raw}")
+
+    icon_sections = (
+        "items",
+        "belts",
+        "crafting_machines",
+        "mining_drills",
+        "resources",
+        "rocket_silo",
+        "boilers",
+        "offshore_pumps",
+        "agricultural_tower",
+        "plants",
+        "planets",
+        "recipes",
+    )
+    for section in icon_sections:
+        for entry in dataset[section]:
+            require(
+                isinstance(entry.get("icon_col"), int) and isinstance(entry.get("icon_row"), int),
+                f"{section}/{entry.get('key')} is missing sprite coordinates",
+            )
 
     if errors:
         raise ExportError("Dataset validation failed:\n- " + "\n- ".join(errors[:100]))

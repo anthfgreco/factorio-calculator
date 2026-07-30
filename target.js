@@ -2,6 +2,20 @@ import { makeDropdown, addInputs } from "./dropdown.js"
 import { spec } from "./factory.js"
 import { Rational, zero, one } from "./rational.js"
 
+function hasRecipeCategories(recipe) {
+    if (recipe === null || recipe === undefined) {
+        return false
+    }
+    let categories = recipe.categories
+    if (categories !== undefined && categories !== null) {
+        if (typeof categories.size === "number") {
+            return categories.size > 0
+        }
+        return categories.length > 0
+    }
+    return recipe.category !== undefined && recipe.category !== null
+}
+
 const SELECTED_INPUT = "selected"
 
 // events
@@ -238,7 +252,7 @@ export class BuildTarget {
         this.setRateLabel()
         let rate = zero
         let recipe = this.recipe
-        if ((recipe === null || recipe.categories.size === 0) && this.changedBuilding) {
+        if (!hasRecipeCategories(recipe) && this.changedBuilding) {
             this.rateChanged()
         }
         let baseRate = null

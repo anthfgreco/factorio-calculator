@@ -14,6 +14,41 @@ import { renderTotals } from "./visualize.js"
 
 const DEFAULT_ITEM_KEY = "advanced-circuit"
 
+// Support recipe/building objects created by an older cached module during a
+// GitHub Pages deployment. Factorio 2.0 objects expose a singular `category`;
+// Factorio 2.1 objects expose iterable `categories`.
+function getCategories(value) {
+    let categories = value.categories
+    if (categories === undefined || categories === null) {
+        categories = value.category
+    }
+    if (categories === undefined || categories === null) {
+        return []
+    }
+    if (typeof categories === "string") {
+        return [categories]
+    }
+    return categories
+}
+
+function buildingCanCraft(building, recipe) {
+    let buildingCategories = getCategories(building)
+    for (let category of getCategories(recipe)) {
+        if (typeof buildingCategories.has === "function") {
+            if (buildingCategories.has(category)) {
+                return true
+            }
+        } else {
+            for (let buildingCategory of buildingCategories) {
+                if (buildingCategory === category) {
+                    return true
+                }
+            }
+        }
+    }
+    return false
+}
+
 export let DEFAULT_PLANET = "nauvis"
 export let DEFAULT_BELT = "transport-belt"
 export let DEFAULT_FUEL = "coal"
@@ -80,7 +115,7 @@ class BuildingGroup {
     getBuilding(recipe) {
         let b = null
         for (let building of this.buildings) {
-            if (building.canCraft(recipe)) {
+            if (buildingCanCraft(building, recipe)) {
                 b = building
                 if (building === this.building || this.building.less(building)) {
                     return building
@@ -111,11 +146,12 @@ function getBuildingGroups(buildings, recipes) {
     // categories as links between building groups, preserving the old UI's
     // single minimum-building selector for equivalent crafting paths.
     for (let recipe of recipes) {
-        if (recipe.categories.size < 2) {
+        let categories = Array.from(getCategories(recipe))
+        if (categories.length < 2) {
             continue
         }
         let set = new BuildingSet()
-        for (let category of recipe.categories) {
+        for (let category of categories) {
             set.categories.add(category)
         }
         mergeBuildingSet(sets, set)
@@ -499,7 +535,7 @@ class FactorySpecification {
         return false
     }
     getBuilding(recipe) {
-        for (let category of recipe.categories) {
+        for (let category of getCategories(recipe)) {
             let group = this.buildings.get(category)
             if (group !== undefined) {
                 return group.getBuilding(recipe)
@@ -516,7 +552,7 @@ class FactorySpecification {
         group.building = building
         for (let [recipe, moduleSpec] of this.spec) {
             let g = null
-            for (let category of recipe.categories) {
+            for (let category of getCategories(recipe)) {
                 g = this.buildings.get(category)
                 if (g !== undefined) {
                     break
