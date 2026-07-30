@@ -3,6 +3,7 @@ import { renderDebug } from "./debug.js"
 import { displayItems } from "./display.js"
 import { currentTab } from "./events.js"
 import { formatSettings } from "./fragment.js"
+import { syncUrlHash } from "./url-state.js"
 import { ModuleSpec } from "./module.js"
 import { PriorityList } from "./priority.js"
 import { Rational, zero, half, one } from "./rational.js"
@@ -779,7 +780,7 @@ class FactorySpecification {
     return totals
   }
   setHash() {
-    window.location.hash = "#" + formatSettings()
+    syncUrlHash(formatSettings())
   }
   // The top-level calculation function. Called whenever the solution
   // requires recalculation.

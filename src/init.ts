@@ -12,9 +12,10 @@ import { getModules } from "./module.js"
 import { getPlanets } from "./planet.js"
 import { getRecipes } from "./recipe.js"
 import { currentMod, MODIFICATIONS, renderDataSetOptions, renderSettings } from "./settings.js"
+import { clearUrlHash, initializeUrlState } from "./url-state.js"
 
 function reset() {
-  window.location.hash = ""
+  clearUrlHash()
   resetDisplay()
   resetSpec()
 }
@@ -96,6 +97,7 @@ function loadData(modName, settings) {
 }
 
 export function init() {
+  initializeUrlState()
   let settings = loadSettings(window.location.hash)
   renderDataSetOptions(settings)
   loadData(currentMod(), settings)
