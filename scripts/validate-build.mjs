@@ -16,6 +16,7 @@ await Promise.all([
   requireFile("third_party/d3.min.js"),
   requireFile("data/space-age-2.1.12.json"),
   requireFile("docs/changelog.html"),
+  requireFile("posts/bower_components/function-plot/dist/function-plot.js"),
 ])
 
 const calculatorHtml = await readFile(new URL("calc.html", dist), "utf8")
