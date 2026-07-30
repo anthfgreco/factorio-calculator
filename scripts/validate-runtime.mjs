@@ -37,6 +37,44 @@ const { getFuel } = await loadModule("fuel")
 const { getPlanets } = await loadModule("planet")
 const { getItemGroups } = await loadModule("group")
 const factory = await loadModule("factory")
+const { itemMatchesSearch } = await loadModule("search")
+
+const searchCases = [
+  [{ key: "underground-belt", name: "Underground belt" }, "underground belt"],
+  [{ key: "fast-underground-belt", name: "Fast underground belt" }, "underground belt"],
+  [{ key: "fast-underground-belt", name: "Fast underground belt" }, "fast belt"],
+  [{ key: "automation-science-pack", name: "Automation science pack" }, "red"],
+  [{ key: "automation-science-pack", name: "Automation science pack" }, "red science"],
+  [{ key: "logistic-science-pack", name: "Logistic science pack" }, "green"],
+  [{ key: "military-science-pack", name: "Military science pack" }, "grey"],
+  [{ key: "military-science-pack", name: "Military science pack" }, "gray"],
+  [{ key: "military-science-pack", name: "Military science pack" }, "black"],
+  [{ key: "chemical-science-pack", name: "Chemical science pack" }, "blue"],
+  [{ key: "production-science-pack", name: "Production science pack" }, "purple"],
+  [{ key: "utility-science-pack", name: "Utility science pack" }, "yellow"],
+  [{ key: "space-science-pack", name: "Space science pack" }, "white"],
+  [{ key: "metallurgic-science-pack", name: "Metallurgic science pack" }, "orange"],
+  [{ key: "electromagnetic-science-pack", name: "Electromagnetic science pack" }, "pink"],
+  [{ key: "electromagnetic-science-pack", name: "Electromagnetic science pack" }, "magenta"],
+  [{ key: "agricultural-science-pack", name: "Agricultural science pack" }, "lime"],
+  [{ key: "agricultural-science-pack", name: "Agricultural science pack" }, "light green"],
+  [{ key: "cryogenic-science-pack", name: "Cryogenic science pack" }, "cyan"],
+  [{ key: "cryogenic-science-pack", name: "Cryogenic science pack" }, "light blue"],
+  [{ key: "cryogenic-science-pack", name: "Cryogenic science pack" }, "blue"],
+  [{ key: "promethium-science-pack", name: "Promethium science pack" }, "black"],
+  [{ key: "promethium-science-pack", name: "Promethium science pack" }, "dark blue"],
+  [{ key: "promethium-science-pack", name: "Promethium science pack" }, "dark purple"],
+]
+
+for (const [item, query] of searchCases) {
+  if (!itemMatchesSearch(item, query)) {
+    throw new Error(`Search query ${JSON.stringify(query)} did not match ${item.name}`)
+  }
+}
+
+if (itemMatchesSearch({ key: "automation-science-pack", name: "Automation science pack" }, "cyan")) {
+  throw new Error("Unrelated search alias matched the wrong science pack")
+}
 
 const datasets = [
   "vanilla-1.1.110.json",
@@ -81,7 +119,7 @@ try {
   await rm(resolve(root, ".tmp"), { recursive: true, force: true })
 }
 
-console.log(`Validated ${datasets.length} datasets through the emitted TypeScript runtime.`)
+console.log(`Validated ${datasets.length} datasets and ${searchCases.length} search cases through the emitted TypeScript runtime.`)
 for (const summary of summaries) {
   console.log(`- ${summary}`)
 }

@@ -1,6 +1,7 @@
 import { makeDropdown, addInputs } from "./dropdown.js"
 import { spec } from "./factory.js"
 import { Rational, zero, one } from "./rational.js"
+import { itemMatchesSearch } from "./search.js"
 
 function hasRecipeCategories(recipe) {
   if (recipe === null || recipe === undefined) {
@@ -62,10 +63,10 @@ function resetSearch(dropdown) {
 
 function searchTargets(event) {
   let search = this
-  let search_text = search.value.toLowerCase().replace(/[^a-z0-9]+/g, "")
+  let searchText = search.value
   let dropdown = d3.select(search.parentNode)
 
-  if (!search_text) {
+  if (!searchText.trim()) {
     resetSearch(search.parentNode)
     return
   }
@@ -97,8 +98,7 @@ function searchTargets(event) {
       }
       currentHrHasContent = false
     } else {
-      let title = item.name.toLowerCase().replace(/-/g, "")
-      if (title.indexOf(search_text) === -1) {
+      if (!itemMatchesSearch(item, searchText)) {
         this.style.display = "none"
       } else {
         this.style.display = ""
