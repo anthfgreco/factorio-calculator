@@ -1,0 +1,29 @@
+{
+  // Enable TypeScript 7 native language server from the VS Code extension.
+  "js/ts.experimental.useTsgo": true,
+  // Use the local stable TypeScript 7 package.
+  "js/ts.tsdk.path": "./node_modules/typescript",
+  "js/ts.tsdk.promptToUseWorkspaceVersion": true,
+
+  "eslint.enable": false,
+  "prettier.enable": false,
+
+  // Oxc extension provides both Oxlint and Oxfmt.
+  "oxc.enable": true,
+  "oxc.enable.oxlint": true,
+  "oxc.enable.oxfmt": true,
+
+  // Only apply behavior preserving Oxlint fixes automatically.
+  "oxc.fixKind": "safe_fix",
+
+  // Use Oxfmt as the default formatter.
+  "editor.defaultFormatter": "oxc.oxc-vscode",
+  // Formatting is handled by below code actions on save.
+  "editor.formatOnSave": false,
+
+  // On save, run Oxfmt first, then apply safe Oxlint fixes.
+  "editor.codeActionsOnSave": {
+    "source.format.oxc": "always",
+    "source.fixAll.oxc": "always"
+  }
+}

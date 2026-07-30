@@ -20,6 +20,9 @@ importers:
       vite:
         specifier: 8.1.5
         version: 8.1.5(@types/node@26.1.1)
+      zx:
+        specifier: ^8.8.5
+        version: 8.8.5
 
 packages:
 
@@ -580,6 +583,11 @@ packages:
       yaml:
         optional: true
 
+  zx@8.8.5:
+    resolution: {integrity: sha512-SNgDF5L0gfN7FwVOdEFguY3orU5AkfFZm9B5YSHog/UDHv+lvmd82ZAsOenOkQixigwH2+yyH198AwNdKhj+RA==}
+    engines: {node: '>= 12.17.0'}
+    hasBin: true
+
 snapshots:
 
   '@emnapi/core@1.11.1':
@@ -946,3 +954,5 @@ snapshots:
     optionalDependencies:
       '@types/node': 26.1.1
       fsevents: 2.3.3
+
+  zx@8.8.5: {}
