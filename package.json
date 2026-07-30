@@ -1,0 +1,29 @@
+{
+  "name": "factorio-calculator",
+  "version": "2.1.12",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open /calc.html",
+    "build": "pnpm typecheck && pnpm validate:runtime && pnpm build:site && pnpm validate:build",
+    "build:site": "vite build",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "preview": "vite preview --open /calc.html",
+    "typecheck": "tsc --noEmit",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "validate:runtime": "node scripts/validate-runtime.mjs",
+    "validate:build": "node scripts/validate-build.mjs",
+    "verify": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "oxfmt": "0.61.0",
+    "typescript": "7.0.2",
+    "vite": "8.1.5"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "packageManager": "pnpm@11.15.1"
+}

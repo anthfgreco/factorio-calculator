@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 120,
+  "semi": false,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "ignorePatterns": [
+    "dist/**",
+    "public/data/**",
+    "public/images/**",
+    "public/third_party/**",
+    "public/posts/**",
+    "LICENSE",
+    "src/vendor/**",
+    "build-reports/**"
+  ]
+}

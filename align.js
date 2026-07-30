@@ -10,66 +10,66 @@ let minutes = Rational.from_float(60)
 let hours = Rational.from_float(3600)
 
 let displayRates = new Map([
-    ["s", seconds],
-    ["m", minutes],
-    ["h", hours],
+  ["s", seconds],
+  ["m", minutes],
+  ["h", hours],
 ])
 
 export let longRateNames = new Map([
-    ["s", "second"],
-    ["m", "minute"],
-    ["h", "hour"],
+  ["s", "second"],
+  ["m", "minute"],
+  ["h", "hour"],
 ])
 
 export class Formatter {
-    constructor() {
-        this.setDisplayRate(DEFAULT_RATE)
-        this.displayFormat = "decimal"
-        this.ratePrecision = DEFAULT_RATE_PRECISION
-        this.countPrecision = DEFAULT_COUNT_PRECISION
+  constructor() {
+    this.setDisplayRate(DEFAULT_RATE)
+    this.displayFormat = "decimal"
+    this.ratePrecision = DEFAULT_RATE_PRECISION
+    this.countPrecision = DEFAULT_COUNT_PRECISION
+  }
+  setDisplayRate(rate) {
+    this.rateName = rate
+    this.longRate = longRateNames.get(rate)
+    this.rateFactor = displayRates.get(rate)
+  }
+  align(s, prec) {
+    if (this.displayFormat === "rational") {
+      return s
     }
-    setDisplayRate(rate) {
-        this.rateName = rate
-        this.longRate = longRateNames.get(rate)
-        this.rateFactor = displayRates.get(rate)
+    let idx = s.indexOf(".")
+    if (idx === -1) {
+      idx = s.length
     }
-    align(s, prec) {
-        if (this.displayFormat === "rational") {
-            return s
-        }
-        let idx = s.indexOf(".")
-        if (idx === -1) {
-            idx = s.length
-        }
-        let toAdd = prec - s.length + idx
-        if (prec > 0) {
-            toAdd += 1
-        }
-        while (toAdd > 0) {
-            s += "\u00A0"
-            toAdd--
-        }
-        return s
+    let toAdd = prec - s.length + idx
+    if (prec > 0) {
+      toAdd += 1
     }
-    rate(rate) {
-        rate = rate.mul(this.rateFactor)
-        if (this.displayFormat === "rational") {
-            return rate.toMixed()
-        } else {
-            return rate.toDecimal(this.ratePrecision)
-        }
+    while (toAdd > 0) {
+      s += "\u00A0"
+      toAdd--
     }
-    alignRate(rate) {
-        return this.align(this.rate(rate), this.ratePrecision)
+    return s
+  }
+  rate(rate) {
+    rate = rate.mul(this.rateFactor)
+    if (this.displayFormat === "rational") {
+      return rate.toMixed()
+    } else {
+      return rate.toDecimal(this.ratePrecision)
     }
-    count(count) {
-        if (this.displayFormat === "rational") {
-            return count.toMixed()
-        } else {
-            return count.toUpDecimal(this.countPrecision)
-        }
+  }
+  alignRate(rate) {
+    return this.align(this.rate(rate), this.ratePrecision)
+  }
+  count(count) {
+    if (this.displayFormat === "rational") {
+      return count.toMixed()
+    } else {
+      return count.toUpDecimal(this.countPrecision)
     }
-    alignCount(count) {
-        return this.align(this.count(count), this.countPrecision)
-    }
+  }
+  alignCount(count) {
+    return this.align(this.count(count), this.countPrecision)
+  }
 }

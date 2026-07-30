@@ -2,27 +2,43 @@
   "name": "function-plot",
   "version": "1.17.3",
   "description": "A simple 2d function plotter powered by d3",
+  "keywords": [
+    "2d",
+    "derivative",
+    "function",
+    "function-plot",
+    "plotter",
+    "visualization"
+  ],
+  "homepage": "http://maurizzzio.github.io/function-plot/",
   "bugs": "https://github.com/maurizzzio/function-plot/issues",
   "license": "MIT",
-  "main": "lib/index.js",
-  "homepage": "http://maurizzzio.github.io/function-plot/",
   "author": "Mauricio Poppe <mauricio.poppe@gmail.com>",
-  "files": [
-    "/*",
-    "!/site/"
-  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/maurizzzio/function-plot"
   },
-  "keywords": [
-    "function-plot",
-    "function",
-    "plotter",
-    "visualization",
-    "derivative",
-    "2d"
+  "files": [
+    "/*",
+    "!/site/"
   ],
+  "main": "lib/index.js",
+  "scripts": {
+    "istanbul": "istanbul cover _mocha --report lcovonly 2> /dev/null -- -R spec test/",
+    "lint": "standard",
+    "test": "echo 'no tests!'",
+    "test:watch": "nodemon --watch lib --watch test --watch index.js --exec 'npm test'",
+    "start": "budo index.js:site/js/function-plot.js -- --standalone functionPlot",
+    "fetch": "curl -o site/partials/brcdn-module.html -L https://www.brcdn.org/?module=function-plot&version=latest",
+    "html": "node site.js",
+    "pre_publish": "npm run lint",
+    "browserify": "browserify index.js -o dist/function-plot.js --standalone functionPlot",
+    "minify": "cat dist/function-plot.js | uglifyjs -o dist/function-plot.js",
+    "build": "npm run browserify && npm run minify",
+    "dist": "npm run lint && npm run build",
+    "dist:cp": "cp dist/function-plot.js site/js/function-plot.js",
+    "deploy": "gh-pages-deploy"
+  },
   "dependencies": {
     "built-in-math-eval": "^0.3.0",
     "clamp": "^1.0.1",
@@ -51,21 +67,12 @@
     "standard": "^4.5.4",
     "uglify-js": "~2.4.12"
   },
-  "scripts": {
-    "istanbul": "istanbul cover _mocha --report lcovonly 2> /dev/null -- -R spec test/",
-    "lint": "standard",
-    "test": "echo 'no tests!'",
-    "test:watch": "nodemon --watch lib --watch test --watch index.js --exec 'npm test'",
-    "start": "budo index.js:site/js/function-plot.js -- --standalone functionPlot",
-    "fetch": "curl -o site/partials/brcdn-module.html -L https://www.brcdn.org/?module=function-plot&version=latest",
-    "html": "node site.js",
-    "pre_publish": "npm run lint",
-    "browserify": "browserify index.js -o dist/function-plot.js --standalone functionPlot",
-    "minify": "cat dist/function-plot.js | uglifyjs -o dist/function-plot.js",
-    "build": "npm run browserify && npm run minify",
-    "dist": "npm run lint && npm run build",
-    "dist:cp": "cp dist/function-plot.js site/js/function-plot.js",
-    "deploy": "gh-pages-deploy"
+  "standard": {
+    "ignore": [
+      "sandbox/",
+      "site/",
+      "dist/"
+    ]
   },
   "gh-pages-deploy": {
     "prep": [
@@ -73,12 +80,5 @@
       "html"
     ],
     "staticpath": "site"
-  },
-  "standard": {
-    "ignore": [
-      "sandbox/",
-      "site/",
-      "dist/"
-    ]
   }
 }

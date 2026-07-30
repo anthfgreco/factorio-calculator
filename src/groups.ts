@@ -1,0 +1,86 @@
+function neighbors(groupMap, group) {
+  let result = new Set()
+  for (let recipe of group) {
+    let ingredients: any[] = Array.from(recipe.getIngredients())
+    // Reverse the list of ingredients here, so that it appears in the
+    // "correct" order when the overall topoSort is reversed.
+    ingredients.reverse()
+    for (let ing of ingredients) {
+      for (let subRecipe of ing.item.allRecipes()) {
+        if (groupMap.has(subRecipe)) {
+          result.add(groupMap.get(subRecipe))
+        }
+      }
+    }
+  }
+  result.delete(group)
+  return result
+}
+
+function visit(groupMap, group, result, seen) {
+  if (result.has(group) || seen.has(group)) {
+    return
+  }
+  seen.add(group)
+  for (let g of neighbors(groupMap, group)) {
+    visit(groupMap, g, result, seen)
+  }
+  seen.delete(group)
+  result.add(group)
+}
+
+export function topoSort(groups) {
+  let groupMap = new Map()
+  for (let group of groups) {
+    for (let recipe of group) {
+      groupMap.set(recipe, group)
+    }
+  }
+  let result = new Set()
+  let seen = new Set()
+  for (let group of groups) {
+    if (!result.has(group) && !seen.has(group)) {
+      visit(groupMap, group, result, seen)
+    }
+  }
+  let ordered = Array.from(result)
+  ordered.reverse()
+  return ordered
+}
+
+export function getRecipeGroups(recipes) {
+  let groups = new Map()
+  let items = new Set<any>()
+  for (let recipe of recipes) {
+    if (recipe.products.length > 0) {
+      groups.set(recipe, new Set([recipe]))
+      for (let ing of recipe.products) {
+        items.add(ing.item)
+      }
+    }
+  }
+  for (let item of items) {
+    let itemRecipes = []
+    for (let recipe of item.allRecipes()) {
+      if (recipes.has(recipe)) {
+        itemRecipes.push(recipe)
+      }
+    }
+    if (itemRecipes.length > 1) {
+      let combined = new Set()
+      for (let recipe of itemRecipes) {
+        for (let r of groups.get(recipe)) {
+          combined.add(r)
+        }
+      }
+      for (let recipe of combined) {
+        groups.set(recipe, combined)
+      }
+    }
+  }
+  let groupObjects = new Set()
+  for (let [r, group] of groups) {
+    groupObjects.add(group)
+  }
+  return groupObjects
+}
