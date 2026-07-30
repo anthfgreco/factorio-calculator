@@ -20,10 +20,10 @@ import {
   setVisualizerDirection,
 } from "./events.js"
 import { spec, DEFAULT_PLANET, DEFAULT_BELT, DEFAULT_FUEL, buildingSort } from "./factory.js"
-import { getRecipeGroups } from "./groups.js"
 import { changeMod } from "./init.js"
 import { shortModules, moduleRows, moduleDropdown } from "./module.js"
 import { Rational, zero } from "./rational.js"
+import { refreshRecipeSettings, renderRecipeSettings } from "./recipe-settings.js"
 import { sorted } from "./sort.js"
 
 // data set
@@ -769,43 +769,13 @@ function renderRecipes(settings) {
           spec.selectOnePlanet(d)
           d3.selectAll("#planet_selector .toggle").classed("selected", (d) => spec.selectedPlanets.has(d))
         }
-        d3.selectAll("#recipe_toggles .toggle").classed("selected", (d) => !spec.disable.has(d))
+        refreshRecipeSettings(spec)
         spec.updateSolution()
       })
       .append((d) => d.icon.make(32))
   }
 
-  let allGroups: Set<any>[] = getRecipeGroups(new Set(spec.recipes.values())) as unknown as Set<any>[]
-  let groups = []
-  for (let group of allGroups) {
-    if (group.size > 1) {
-      groups.push(sorted(group, (d) => d.order))
-    }
-  }
-
-  let div = d3.select("#recipe_toggles").classed("toggle-list", true)
-  div.selectAll("*").remove()
-  let recipe = div
-    .selectAll("div")
-    .data(groups)
-    .join("div")
-    .classed("toggle-row", true)
-    .selectAll("div")
-    .data((d) => d)
-    .join("div")
-    .classed("toggle recipe", true)
-    .classed("selected", (d) => !spec.disable.has(d))
-    .on("click", function (event, d) {
-      let disabled = spec.disable.has(d)
-      d3.select(this).classed("selected", disabled)
-      if (disabled) {
-        spec.setEnable(d)
-      } else {
-        spec.setDisable(d)
-      }
-      spec.updateSolution()
-    })
-  recipe.append((d) => d.icon.make(32))
+  renderRecipeSettings(spec)
 }
 
 // resource priority

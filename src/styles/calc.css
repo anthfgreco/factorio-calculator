@@ -555,3 +555,107 @@ details.recipe-selector[open] > summary {
   padding-top: 2px;
   background-color: var(--medium);
 }
+
+/* recipe settings browser */
+.setting-help {
+  margin-top: 0.25em;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+.recipe-settings-browser {
+  min-width: min(72em, 80vw);
+}
+.recipe-settings-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  margin-bottom: 0.35em;
+}
+.recipe-settings-toolbar input[type="search"] {
+  box-sizing: border-box;
+  width: min(32em, 100%);
+}
+.recipe-settings-unavailable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.recipe-settings-help {
+  margin-top: 0.35em;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+.recipe-settings-summary {
+  min-height: 1.2em;
+  margin-top: 0.15em;
+  margin-bottom: 0.5em;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+.recipe-settings-section {
+  margin: 0.5em 0;
+}
+.recipe-settings-section > h4,
+.recipe-settings-section > summary {
+  margin: 0.35em 0;
+  color: var(--bright);
+  font-weight: bold;
+}
+.recipe-settings-section > summary {
+  cursor: pointer;
+  user-select: none;
+}
+.recipe-settings-category {
+  margin: 0.45em 0 0.7em;
+}
+.recipe-settings-category h5 {
+  margin: 0 0 0.2em;
+  color: var(--foreground);
+  font-size: 0.9em;
+  font-weight: normal;
+  opacity: 0.85;
+}
+.recipe-settings-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+button.recipe-setting-toggle {
+  line-height: 0;
+}
+button.recipe-setting-toggle.disabled-recipe {
+  opacity: 0.45;
+}
+button.recipe-setting-toggle.unavailable {
+  cursor: not-allowed;
+  border-color: var(--light);
+  background-color: var(--dark);
+  filter: grayscale(1);
+  opacity: 0.3;
+}
+button.recipe-setting-toggle.unavailable:hover {
+  border-color: var(--light);
+}
+.recycling-recipes-body {
+  margin: 0.35em 0 0.75em 1em;
+}
+.disable-recycling-recipes {
+  margin-bottom: 0.35em;
+}
+.recipe-settings-empty {
+  margin: 0.5em 0;
+  font-style: italic;
+  opacity: 0.8;
+}
+.disable-recycling-recipes:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* Extra separation before the large recipe browser. */
+tr.recipe-setting-section td {
+  padding-top: 2.25em;
+}

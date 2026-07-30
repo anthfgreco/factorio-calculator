@@ -8,6 +8,7 @@ import { useLegacyCalculation } from "./init.js"
 import { moduleRows, moduleDropdown } from "./module.js"
 import { Rational, zero, one } from "./rational.js"
 import { getItemProductionRecipes, setRecipeEnabled } from "./recipe-selection.js"
+import { refreshRecipeSettings } from "./recipe-settings.js"
 
 let powerSuffixes = ["\u00A0W", "kW", "MW", "GW", "TW", "PW"]
 
@@ -241,10 +242,6 @@ class BeaconCell {
   }
 }
 
-function syncRecipeToggleSettings() {
-  d3.selectAll("#recipe_toggles .toggle").classed("selected", (recipe) => !spec.disable.has(recipe))
-}
-
 let openRecipeSelectorItemKey: string | null = null
 let recipeSelectorDismissHandlerInstalled = false
 
@@ -321,7 +318,7 @@ function makeRecipeSelector(row) {
       event.stopPropagation()
       openRecipeSelectorItemKey = row.item.key
       setRecipeEnabled(spec, recipe, event.target.checked)
-      syncRecipeToggleSettings()
+      refreshRecipeSettings(spec)
       spec.updateSolution()
     })
   option.append((recipe) => recipe.icon.make(32))
@@ -737,6 +734,8 @@ export function displayItems(spec, totals) {
     totalPower = totalPower.add(power)
     return alignPower(power)
   })
+  refreshRecipeSettings(spec)
+
   itemRow.selectAll("td.popout a").attr("href", (d) => {
     let rate = totals.items.get(d.item)
     let rates = [[d.item, rate]]

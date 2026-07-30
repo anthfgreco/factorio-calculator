@@ -27,7 +27,8 @@
         <td class="changecell">
           <div class="changebox">
             Recent changes:<br />
-            2026-07-30 - Added Factorio 2.1.12 support, improved item search, and in-place recipe selection.<br />
+            2026-07-30 - Added Factorio 2.1.12 support, improved item and recipe search, and in-place recipe
+            selection.<br />
             <a href="docs/changelog.html" target="_blank">Changelog</a>.
           </div>
         </td>
@@ -301,7 +302,7 @@
           </td>
         </tr>
 
-        <tr class="setting-section">
+        <tr class="setting-section recipe-setting-section">
           <td colspan="2">
             <span>Recipes</span>
             <hr />
@@ -311,18 +312,17 @@
         <tr id="planet_setting_row" class="setting-row">
           <td class="setting-label top">Planets:</td>
           <td>
-            <div>
-              (Click to select one planet; shift-click to select multiple. Selected planets share materials without
-              transport costs.)
-            </div>
             <div id="planet_selector"></div>
+            <div class="setting-help">
+              Select one planet, or Shift-click for multiple. Multiple planets share materials without transport costs.
+            </div>
           </td>
         </tr>
 
+        <tr style="height: 24px"></tr>
+
         <tr class="setting-row">
-          <td class="setting-label top-icon">
-            <div><span>Toggle recipes:</span></div>
-          </td>
+          <td class="setting-label top">Recipes:</td>
           <td><div id="recipe_toggles"></div></td>
         </tr>
       </table>

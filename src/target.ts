@@ -2,6 +2,7 @@ import { makeDropdown, addInputs } from "./dropdown.js"
 import { spec } from "./factory.js"
 import { formatLocationList, getUnavailableLocationInfo } from "./location.js"
 import { Rational, zero, one } from "./rational.js"
+import { refreshRecipeSettings } from "./recipe-settings.js"
 import { itemMatchesSearch } from "./search.js"
 
 function hasRecipeCategories(recipe) {
@@ -220,12 +221,7 @@ export class BuildTarget {
     this.locationWarning
       .select(".location-warning-title")
       .text(`Unavailable on selected ${selectedLabel}: ${formatLocationList(info.selectedLocations, "and")}`)
-    this.locationWarning
-      .select(".location-warning-message")
-      .text(
-        `This item can be produced on ${formatLocationList(info.compatibleLocations, "or", true)}. ` +
-          "Update locations in Settings.",
-      )
+    this.locationWarning.select(".location-warning-message").text("Update locations in Settings.")
     this.locationWarning.style("display", null)
   }
   enableCompatibleLocations() {
@@ -236,7 +232,7 @@ export class BuildTarget {
       }
     }
     d3.selectAll("#planet_selector .toggle").classed("selected", (location) => spec.selectedPlanets.has(location))
-    d3.selectAll("#recipe_toggles .toggle").classed("selected", (recipe) => !spec.disable.has(recipe))
+    refreshRecipeSettings(spec)
     spec.updateSolution()
   }
   displayRecipes() {

@@ -40,6 +40,12 @@ const factory = await loadModule("factory")
 const { itemMatchesSearch } = await loadModule("search")
 const { formatLocationList, getUnavailableLocationInfo } = await loadModule("location")
 const { getItemProductionRecipes, setRecipeEnabled } = await loadModule("recipe-selection")
+const {
+  getRecipeSettingsCategory,
+  isRecyclingRecipe,
+  recipeMatchesSettingsSearch,
+  recipeVisibleInSettings,
+} = await loadModule("recipe-settings")
 const { one } = await loadModule("rational")
 const { solve } = await loadModule("solve")
 
@@ -215,6 +221,27 @@ try {
         throw new Error("Space science used a surface-restricted captive-spawner recipe")
       }
 
+      const recyclingRecipe = recipes.get("accumulator-recycling")
+      if (!isRecyclingRecipe(recyclingRecipe)) {
+        throw new Error("Recipe settings did not classify recycling separately")
+      }
+      if (getRecipeSettingsCategory(recipes.get("metallic-asteroid-crushing")) !== "crushing") {
+        throw new Error("Recipe settings did not preserve crafting-category grouping")
+      }
+      if (!recipeMatchesSettingsSearch(factory.spec, recipes.get("cryogenic-science-pack"), "cryogenic plant")) {
+        throw new Error("Recipe search did not match a compatible machine")
+      }
+      if (
+        !recipeMatchesSettingsSearch(factory.spec, recipes.get("metallic-asteroid-crushing"), "metallic asteroid chunk")
+      ) {
+        throw new Error("Recipe search did not match an ingredient")
+      }
+      if (!recipeVisibleInSettings(factory.spec, recipes.get("space-science-pack"), {
+        searchText: "",
+        showUnavailable: false,
+      })) {
+        throw new Error("Recipe settings hid an available recipe")
+      }
       const solidFuel = items.get("solid-fuel")
       const solidFuelRecipes = getItemProductionRecipes(solidFuel)
       if (solidFuelRecipes.length < 2) {
@@ -247,6 +274,19 @@ try {
       }
       if (compatible !== "Aquilo") {
         throw new Error(`Unexpected compatible production locations: ${compatible}`)
+      }
+      const cryogenicRecipe = recipes.get("cryogenic-science-pack")
+      if (recipeVisibleInSettings(factory.spec, cryogenicRecipe, {
+        searchText: "",
+        showUnavailable: false,
+      })) {
+        throw new Error("Recipe settings showed an unavailable recipe by default")
+      }
+      if (!recipeVisibleInSettings(factory.spec, cryogenicRecipe, {
+        searchText: "",
+        showUnavailable: true,
+      })) {
+        throw new Error("Recipe settings could not reveal unavailable recipes")
       }
 
       const aquilo = planets.get("aquilo")
