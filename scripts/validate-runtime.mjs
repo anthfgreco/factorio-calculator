@@ -41,6 +41,7 @@ const { itemMatchesSearch } = await loadModule("search")
 const { formatLocationList, getUnavailableLocationInfo } = await loadModule("location")
 const { getItemProductionRecipes, setRecipeEnabled } = await loadModule("recipe-selection")
 const {
+  getRecipeSelectorGroups,
   getRecipeSettingsCategory,
   isRecyclingRecipe,
   recipeMatchesSettingsSearch,
@@ -224,6 +225,19 @@ try {
       const recyclingRecipe = recipes.get("accumulator-recycling")
       if (!isRecyclingRecipe(recyclingRecipe)) {
         throw new Error("Recipe settings did not classify recycling separately")
+      }
+      const ironPlate = items.get("iron-plate")
+      const ironPlateRecipes = getItemProductionRecipes(ironPlate)
+      const activeIronPlateRecipe = ironPlateRecipes.find((recipe) => !isRecyclingRecipe(recipe))
+      const selectorGroups = getRecipeSelectorGroups(ironPlateRecipes, activeIronPlateRecipe)
+      if (selectorGroups.at(-1)?.key !== "recycling") {
+        throw new Error("Recipe selector did not place recycling recipes last")
+      }
+      if (selectorGroups[0]?.recipes[0] !== activeIronPlateRecipe) {
+        throw new Error("Recipe selector did not place the active production recipe first")
+      }
+      if (selectorGroups.at(-1)?.recipes.some((recipe) => !isRecyclingRecipe(recipe))) {
+        throw new Error("Recipe selector mixed production recipes into the recycling group")
       }
       if (getRecipeSettingsCategory(recipes.get("metallic-asteroid-crushing")) !== "crushing") {
         throw new Error("Recipe settings did not preserve crafting-category grouping")

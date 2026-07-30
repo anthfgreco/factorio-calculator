@@ -40,6 +40,36 @@ export function isRecyclingRecipe(recipe) {
   return recipe.categories?.has("recycling") || recipe.category === "recycling" || recipe.key.endsWith("-recycling")
 }
 
+export function getRecipeSelectorGroups(recipes, activeRecipe) {
+  function orderGroup(groupRecipes) {
+    return [...groupRecipes].sort((recipeA, recipeB) => {
+      if (recipeA === activeRecipe) {
+        return -1
+      }
+      if (recipeB === activeRecipe) {
+        return 1
+      }
+      let nameOrder = recipeA.name.localeCompare(recipeB.name)
+      return nameOrder === 0 ? recipeA.key.localeCompare(recipeB.key) : nameOrder
+    })
+  }
+
+  let productionRecipes = []
+  let recyclingRecipes = []
+  for (let recipe of recipes) {
+    if (isRecyclingRecipe(recipe)) {
+      recyclingRecipes.push(recipe)
+    } else {
+      productionRecipes.push(recipe)
+    }
+  }
+
+  return [
+    { key: "production", name: "Production", recipes: orderGroup(productionRecipes) },
+    { key: "recycling", name: "Recycling", recipes: orderGroup(recyclingRecipes) },
+  ].filter((group) => group.recipes.length > 0)
+}
+
 export function getRecipeSettingsCategory(recipe) {
   if (recipe.isResource?.()) {
     return "resources"

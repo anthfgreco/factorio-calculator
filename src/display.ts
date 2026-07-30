@@ -8,7 +8,7 @@ import { useLegacyCalculation } from "./init.js"
 import { moduleRows, moduleDropdown } from "./module.js"
 import { Rational, zero, one } from "./rational.js"
 import { getItemProductionRecipes, setRecipeEnabled } from "./recipe-selection.js"
-import { refreshRecipeSettings } from "./recipe-settings.js"
+import { getRecipeSelectorGroups, refreshRecipeSettings } from "./recipe-settings.js"
 
 let powerSuffixes = ["\u00A0W", "kW", "MW", "GW", "TW", "PW"]
 
@@ -303,9 +303,18 @@ function makeRecipeSelector(row) {
 
   let menu = details.append("div").classed("recipe-selector-menu", true)
   menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
-  let option = menu
+
+  let groups = getRecipeSelectorGroups(recipes, row.recipe)
+  let group = menu
+    .selectAll("section.recipe-selector-group")
+    .data(groups, (entry) => entry.key)
+    .join("section")
+    .classed("recipe-selector-group", true)
+
+  group.append("div").classed("recipe-selector-group-title", true).text((entry) => entry.name)
+  let option = group
     .selectAll("label")
-    .data(recipes)
+    .data((entry) => entry.recipes)
     .join("label")
     .classed("recipe-selector-option", true)
     .classed("active", (recipe) => recipe === row.recipe)

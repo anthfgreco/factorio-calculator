@@ -470,6 +470,17 @@ details.recipe-selector[open] > summary {
   color: var(--bright);
   font-weight: bold;
 }
+.recipe-selector-group + .recipe-selector-group {
+  margin-top: 0.5em;
+  padding-top: 0.5em;
+  border-top: 1px solid var(--light);
+}
+.recipe-selector-group-title {
+  margin: 0.1em 0 0.25em 0.3em;
+  color: var(--accent);
+  font-size: 0.85em;
+  font-weight: bold;
+}
 .recipe-selector-option {
   display: flex;
   align-items: center;
