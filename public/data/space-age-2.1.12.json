@@ -5618,6 +5618,12 @@
             "resource_categories": [
                 "basic-solid"
             ],
+            "surface_conditions": [
+                {
+                    "min": 10,
+                    "property": "pressure"
+                }
+            ],
             "takes_fluid": false
         },
         {
@@ -5933,7 +5939,12 @@
             "resources": {
                 "offshore": [],
                 "plants": [],
-                "resource": []
+                "resource": [
+                    "carbonic-asteroid-chunk",
+                    "metallic-asteroid-chunk",
+                    "oxide-asteroid-chunk",
+                    "promethium-asteroid-chunk"
+                ]
             },
             "surface_properties": {
                 "day-night-cycle": 0,
@@ -27934,7 +27945,13 @@
             "localized_name": {
                 "en": "Rocket silo"
             },
-            "module_slots": 4
+            "module_slots": 4,
+            "surface_conditions": [
+                {
+                    "min": 1,
+                    "property": "pressure"
+                }
+            ]
         }
     ],
     "source": "Factorio built-in prototype, locale, and icon exports",

@@ -6,7 +6,7 @@ let thirty = Rational.from_float(30)
 
 class Building {
   [key: string]: any
-  constructor(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel) {
+  constructor(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel, conditions = []) {
     this.key = key
     this.name = name
     this.categories = new Set(categories)
@@ -15,6 +15,7 @@ class Building {
     this.moduleSlots = moduleSlots
     this.power = power
     this.fuel = fuel
+    this.conditions = conditions ?? []
 
     this.icon_col = col
     this.icon_row = row
@@ -33,6 +34,9 @@ class Building {
       }
     }
     return false
+  }
+  allowedOn(location) {
+    return location.allowsConditions(this.conditions)
   }
   getCount(spec, recipe, rate) {
     return rate.div(this.getRecipeRate(spec, recipe))
@@ -78,8 +82,8 @@ class Building {
 
 class Miner extends Building {
   [key: string]: any
-  constructor(key, name, col, row, categories, miningSpeed, moduleSlots, power, fuel) {
-    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel)
+  constructor(key, name, col, row, categories, miningSpeed, moduleSlots, power, fuel, conditions = []) {
+    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions)
     this.miningSpeed = miningSpeed
   }
   less(other) {
@@ -123,8 +127,8 @@ class Miner extends Building {
 
 class OffshorePump extends Building {
   [key: string]: any
-  constructor(key, name, col, row, pumpingSpeed) {
-    super(key, name, col, row, ["offshore-pumping"], zero, zero, 0, zero, null)
+  constructor(key, name, col, row, pumpingSpeed, conditions = []) {
+    super(key, name, col, row, ["offshore-pumping"], zero, zero, 0, zero, null, conditions)
     this.pumpingSpeed = pumpingSpeed
   }
   less(other) {
@@ -264,6 +268,7 @@ export function getBuildings(data, items) {
         d.module_slots,
         Rational.from_float_approximate(d.energy_usage),
         fuel,
+        d.surface_conditions ?? [],
       ),
     )
   }
@@ -280,13 +285,14 @@ export function getBuildings(data, items) {
         d.module_slots,
         Rational.from_float_approximate(d.energy_usage),
         null,
+        d.surface_conditions ?? [],
       ),
     )
   }
   for (let d of data.offshore_pumps) {
     // Pumping speed is given in units/tick.
     let speed = Rational.from_float_approximate(d.pumping_speed).mul(Rational.from_float(60))
-    buildings.push(new OffshorePump(d.key, d.localized_name.en, d.icon_col, d.icon_row, speed))
+    buildings.push(new OffshorePump(d.key, d.localized_name.en, d.icon_col, d.icon_row, speed, d.surface_conditions ?? []))
   }
   for (let d of data.mining_drills) {
     if (d.key == "pumpjack") {
@@ -307,6 +313,7 @@ export function getBuildings(data, items) {
         d.module_slots,
         Rational.from_float_approximate(d.energy_usage),
         fuel,
+        d.surface_conditions ?? [],
       ),
     )
   }

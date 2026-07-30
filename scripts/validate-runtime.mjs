@@ -39,6 +39,9 @@ const { getItemGroups } = await loadModule("group")
 const factory = await loadModule("factory")
 const { itemMatchesSearch } = await loadModule("search")
 const { formatLocationList, getUnavailableLocationInfo } = await loadModule("location")
+const { getItemProductionRecipes, setRecipeEnabled } = await loadModule("recipe-selection")
+const { one } = await loadModule("rational")
+const { solve } = await loadModule("solve")
 
 const searchCases = [
   [{ key: "underground-belt", name: "Underground belt" }, "underground belt"],
@@ -85,6 +88,59 @@ const datasets = [
   "space-age-2.1.12.json",
 ]
 
+function makeTestPriority(defaultPriority) {
+  const levels = defaultPriority.map((level) =>
+    [...level].map(([recipe, weight]) => ({ recipe, weight })),
+  )
+
+  return {
+    [Symbol.iterator]: function* () {
+      yield* levels
+    },
+    getResource(recipe) {
+      for (const level of levels) {
+        const resource = level.find((candidate) => candidate.recipe === recipe)
+        if (resource !== undefined) {
+          return resource
+        }
+      }
+      return null
+    },
+    getFirstLevel() {
+      return levels[0] ?? null
+    },
+    getLastLevel() {
+      return levels[levels.length - 1] ?? null
+    },
+    addPriorityBefore(level) {
+      const newLevel = []
+      if (level === null) {
+        levels.push(newLevel)
+      } else {
+        levels.splice(levels.indexOf(level), 0, newLevel)
+      }
+      return newLevel
+    },
+    addRecipe(recipe, weight, level) {
+      const resource = { recipe, weight }
+      level.push(resource)
+      return resource
+    },
+    removeRecipe(recipe) {
+      for (let i = levels.length - 1; i >= 0; i--) {
+        const index = levels[i].findIndex((resource) => resource.recipe === recipe)
+        if (index !== -1) {
+          levels[i].splice(index, 1)
+          if (levels[i].length === 0) {
+            levels.splice(i, 1)
+          }
+          return
+        }
+      }
+    },
+  }
+}
+
 const originalLog = console.log
 const summaries = []
 
@@ -102,12 +158,78 @@ try {
     const modules = getModules(data, items)
     const belts = getBelts(data)
     const fuels = getFuel(data, items)
-    const planets = getPlanets(data, recipes)
+    const planets = getPlanets(data, recipes, buildings)
     const groups = getItemGroups(items, data)
 
     factory.spec.setData(items, recipes, planets, modules, buildings, belts, fuels, groups)
 
     if (filename === "space-age-2.1.12.json") {
+      const spacePlatform = planets.get("space-platform")
+      const asteroidChunkKeys = [
+        "carbonic-asteroid-chunk",
+        "metallic-asteroid-chunk",
+        "oxide-asteroid-chunk",
+        "promethium-asteroid-chunk",
+      ]
+      for (const key of asteroidChunkKeys) {
+        const recipe = recipes.get(key)
+        if (recipe.defaultPriority !== 1) {
+          throw new Error(`${key} was not assigned normal raw-resource priority`)
+        }
+        if (spacePlatform.disable.has(recipe)) {
+          throw new Error(`${key} was disabled on the Space platform`)
+        }
+      }
+
+      const biterEgg = recipes.get("biter-egg")
+      if (!spacePlatform.disable.has(biterEgg)) {
+        throw new Error("Space platform allowed a recipe whose only machine is surface-restricted")
+      }
+
+      factory.spec.priority = makeTestPriority(factory.spec.defaultPriority)
+      factory.spec.selectOnePlanet(spacePlatform)
+      const spaceScience = items.get("space-science-pack")
+      const spaceTotals = solve(factory.spec, [{ item: spaceScience, rate: one, recipe: null }])
+      const usedRecipes = [...spaceTotals.rates.keys()]
+      const usedRecipeKeys = new Set(usedRecipes.filter((recipe) => recipe.isReal()).map((recipe) => recipe.key))
+      const unavailableSources = usedRecipes.filter((recipe) => recipe.isDisable?.())
+      if (unavailableSources.length > 0) {
+        throw new Error(
+          `Space science used unavailable source recipes: ${unavailableSources.map((recipe) => recipe.key).join(", ")}`,
+        )
+      }
+      const unexpectedResources = usedRecipes.filter(
+        (recipe) => recipe.isResource?.() && !asteroidChunkKeys.includes(recipe.key),
+      )
+      if (unexpectedResources.length > 0) {
+        throw new Error(
+          `Space science used non-asteroid resources: ${unexpectedResources.map((recipe) => recipe.key).join(", ")}`,
+        )
+      }
+      for (const key of ["metallic-asteroid-chunk", "carbonic-asteroid-chunk", "oxide-asteroid-chunk"]) {
+        if (!usedRecipeKeys.has(key)) {
+          throw new Error(`Space science did not use ${key} as a Space-platform resource`)
+        }
+      }
+      if (usedRecipeKeys.has("biter-egg")) {
+        throw new Error("Space science used a surface-restricted captive-spawner recipe")
+      }
+
+      const solidFuel = items.get("solid-fuel")
+      const solidFuelRecipes = getItemProductionRecipes(solidFuel)
+      if (solidFuelRecipes.length < 2) {
+        throw new Error("Row-level recipe selection did not find Solid fuel production alternatives")
+      }
+      const toggledRecipe = solidFuelRecipes[0]
+      setRecipeEnabled(factory.spec, toggledRecipe, false)
+      if (!factory.spec.disable.has(toggledRecipe)) {
+        throw new Error("Row-level recipe disabling did not disable its recipe")
+      }
+      setRecipeEnabled(factory.spec, toggledRecipe, true)
+      if (factory.spec.disable.has(toggledRecipe)) {
+        throw new Error("Row-level recipe enabling did not restore its recipe")
+      }
+
       const nauvis = planets.get("nauvis")
       factory.spec.selectedPlanets = new Set([nauvis])
       factory.spec.planetaryBaseline = new Set(nauvis.disable)
@@ -137,6 +259,7 @@ try {
       }
     }
 
+    factory.spec.selectedPlanets = new Set()
     for (const recipe of recipes.values()) {
       if (recipe.categories?.size > 0 && !factory.spec.getBuilding(recipe)) {
         throw new Error(`${filename}: no compatible building for ${recipe.key}`)

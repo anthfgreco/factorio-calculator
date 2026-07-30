@@ -169,6 +169,13 @@ class Recipe {
 
 export const DISABLED_RECIPE_PREFIX = "D-"
 
+const ASTEROID_CHUNK_RESOURCE_KEYS = new Set([
+  "carbonic-asteroid-chunk",
+  "metallic-asteroid-chunk",
+  "oxide-asteroid-chunk",
+  "promethium-asteroid-chunk",
+])
+
 // Pseudo-recipe representing the ex nihilo production of items with all
 // recipes disabled.
 export class DisabledRecipe {
@@ -615,6 +622,16 @@ export function getRecipes(data, items) {
       recipes.set(r.key, r)
     }
   }
+  // Asteroid chunks are gathered directly by platform collectors. They may
+  // also be returned by processing recipes, so they need explicit resource
+  // recipes even though they already have other producers.
+  for (let itemKey of ASTEROID_CHUNK_RESOURCE_KEYS) {
+    let item = items.get(itemKey)
+    if (item !== undefined && !recipes.has(itemKey)) {
+      recipes.set(itemKey, new ResourceRecipe(item, null, 1, hundred))
+    }
+  }
+
   // Reap items both produced by no recipes and consumed by no recipes.
   let reapItems = []
   for (let [itemKey, item] of items) {
@@ -622,7 +639,8 @@ export function getRecipes(data, items) {
       reapItems.push(itemKey)
     } else if (item.recipes.length === 0) {
       console.log("item with no recipes:", item)
-      recipes.set(itemKey, new ResourceRecipe(item, null, 2, hundred))
+      let priority = ASTEROID_CHUNK_RESOURCE_KEYS.has(itemKey) ? 1 : 2
+      recipes.set(itemKey, new ResourceRecipe(item, null, priority, hundred))
     }
   }
   for (let key of reapItems) {

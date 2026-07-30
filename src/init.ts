@@ -80,9 +80,9 @@ function loadData(modName, settings) {
   d3.json(filename, { cache: "reload" }).then(function (data: CalculatorData) {
     let items = getItems(data)
     let recipes = getRecipes(data, items)
-    let planets = getPlanets(data, recipes)
-    let modules = getModules(data, items)
     let buildings = getBuildings(data, items)
+    let planets = getPlanets(data, recipes, buildings)
+    let modules = getModules(data, items)
     let belts = getBelts(data)
     let fuel = getFuel(data, items)
     getSprites(data)

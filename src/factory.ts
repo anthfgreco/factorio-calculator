@@ -111,10 +111,10 @@ class BuildingGroup {
     }
     return this.buildings[this.buildings.length - 1]
   }
-  getBuilding(recipe) {
+  getBuilding(recipe, available = (_building) => true) {
     let b = null
     for (let building of this.buildings) {
-      if (buildingCanCraft(building, recipe)) {
+      if (buildingCanCraft(building, recipe) && available(building)) {
         b = building
         if (building === this.building || this.building.less(building)) {
           return building
@@ -534,11 +534,22 @@ class FactorySpecification {
     }
     return false
   }
+  isBuildingAvailable(building, recipe) {
+    if (!this.selectedPlanets || this.selectedPlanets.size === 0) {
+      return true
+    }
+    for (let location of this.selectedPlanets) {
+      if (location.allowsRecipe(recipe) && location.allowsBuilding(building)) {
+        return true
+      }
+    }
+    return false
+  }
   getBuilding(recipe) {
     for (let category of getCategories(recipe)) {
       let group = this.buildings.get(category)
       if (group !== undefined) {
-        return group.getBuilding(recipe)
+        return group.getBuilding(recipe, (building) => this.isBuildingAvailable(building, recipe))
       }
     }
     return null
@@ -579,10 +590,13 @@ class FactorySpecification {
     }
   }
   getModuleSpec(recipe) {
+    let building = this.getBuilding(recipe)
     let m = this.spec.get(recipe)
     if (m === undefined) {
-      let building = this.getBuilding(recipe)
       return this.initModuleSpec(recipe, building)
+    }
+    if (building !== null && m.building !== building) {
+      m.setBuilding(building, this)
     }
     return m
   }

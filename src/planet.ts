@@ -18,11 +18,8 @@ class Planet {
     this.icon_row = row
     this.icon = new Icon(this)
   }
-  allows(recipe) {
-    if (recipe.isResource()) {
-      return this.resources.has(recipe)
-    }
-    for (let condition of recipe.conditions) {
+  allowsConditions(conditions) {
+    for (let condition of conditions ?? []) {
       let value = this.properties.get(condition.property)
       if (value === undefined) {
         value = defaultProperties.get(condition.property)
@@ -40,6 +37,24 @@ class Planet {
       }
     }
     return true
+  }
+  allowsRecipe(recipe) {
+    if (recipe.isResource()) {
+      return this.resources.has(recipe)
+    }
+    return this.allowsConditions(recipe.conditions)
+  }
+  allowsBuilding(building) {
+    return building.allowedOn(this)
+  }
+  allows(recipe, buildings) {
+    if (!this.allowsRecipe(recipe)) {
+      return false
+    }
+    if (recipe.isResource() || recipe.categories.size === 0) {
+      return true
+    }
+    return buildings.some((building) => building.canCraft(recipe) && this.allowsBuilding(building))
   }
 }
 
@@ -60,7 +75,7 @@ function traverseRecycling(recipe, found) {
   }
 }
 
-export function getPlanets(data, recipes) {
+export function getPlanets(data, recipes, buildings) {
   if (!data.planets) {
     // For legacy 1.1 datasets.
     return null
@@ -88,7 +103,7 @@ export function getPlanets(data, recipes) {
     }
     let planet = new Planet(d.key, d.localized_name.en, d.order, d.icon_col, d.icon_row, resources, properties)
     for (let recipe of recipes.values()) {
-      if (!planet.allows(recipe) || recipe.key.endsWith("-recycling")) {
+      if (!planet.allows(recipe, buildings) || recipe.key.endsWith("-recycling")) {
         planet.disable.add(recipe)
       }
       if (roots.size > 0) {

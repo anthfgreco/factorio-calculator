@@ -7,6 +7,7 @@ import { Icon } from "./icon.js"
 import { useLegacyCalculation } from "./init.js"
 import { moduleRows, moduleDropdown } from "./module.js"
 import { Rational, zero, one } from "./rational.js"
+import { getItemProductionRecipes, setRecipeEnabled } from "./recipe-selection.js"
 
 let powerSuffixes = ["\u00A0W", "kW", "MW", "GW", "TW", "PW"]
 
@@ -238,6 +239,95 @@ class BeaconCell {
       }
     }
   }
+}
+
+function syncRecipeToggleSettings() {
+  d3.selectAll("#recipe_toggles .toggle").classed("selected", (recipe) => !spec.disable.has(recipe))
+}
+
+let openRecipeSelectorItemKey: string | null = null
+let recipeSelectorDismissHandlerInstalled = false
+
+function closeRecipeSelectors() {
+  openRecipeSelectorItemKey = null
+  document.querySelectorAll<HTMLDetailsElement>("details.recipe-selector[open]").forEach((details) => {
+    details.open = false
+  })
+}
+
+function installRecipeSelectorDismissHandler() {
+  if (recipeSelectorDismissHandlerInstalled) {
+    return
+  }
+  recipeSelectorDismissHandlerInstalled = true
+
+  document.addEventListener("click", (event) => {
+    let target = event.target
+    if (target instanceof Element && target.closest("details.recipe-selector")) {
+      return
+    }
+    closeRecipeSelectors()
+  })
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeRecipeSelectors()
+    }
+  })
+}
+
+function makeRecipeSelector(row) {
+  let recipes = getItemProductionRecipes(row.item)
+  if (recipes.length === 0 || row.recipe === null) {
+    return null
+  }
+
+  installRecipeSelectorDismissHandler()
+
+  let details = d3
+    .create("details")
+    .classed("recipe-selector", true)
+    .property("open", openRecipeSelectorItemKey === row.item.key)
+  let summary = details
+    .append("summary")
+    .attr("title", `Enable or disable recipes for ${row.item.name}.`)
+    .attr("aria-label", `Enable or disable recipes for ${row.item.name}.`)
+    .on("click", (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      let shouldOpen = !details.property("open")
+      closeRecipeSelectors()
+      if (shouldOpen) {
+        openRecipeSelectorItemKey = row.item.key
+        details.property("open", true)
+      }
+    })
+  summary.append(() => row.item.icon.make(32))
+
+  let menu = details.append("div").classed("recipe-selector-menu", true)
+  menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
+  let option = menu
+    .selectAll("label")
+    .data(recipes)
+    .join("label")
+    .classed("recipe-selector-option", true)
+    .classed("active", (recipe) => recipe === row.recipe)
+
+  option
+    .append("input")
+    .attr("type", "checkbox")
+    .property("checked", (recipe) => !spec.disable.has(recipe))
+    .on("change", function (event, recipe) {
+      event.stopPropagation()
+      openRecipeSelectorItemKey = row.item.key
+      setRecipeEnabled(spec, recipe, event.target.checked)
+      syncRecipeToggleSettings()
+      spec.updateSolution()
+    })
+  option.append((recipe) => recipe.icon.make(32))
+  option.append("span").text((recipe) => recipe.name)
+
+  return details.node()
 }
 
 class DisplayRow {
@@ -605,12 +695,14 @@ export function displayItems(spec, totals) {
   pipeIcon.append((d) => new PipeIcon().icon.make(32))
   pipeIcon.append("tt").text((d) => pipeText(totals.items.get(d.item)))
   pipeRow.selectAll("td.belt-count-cell").classed("hide", true).selectAll("tt.belt-count").text("")
+  let itemBuildingCell = itemRow.selectAll("td.building-icon")
+  itemBuildingCell.selectAll("*").remove()
+  itemBuildingCell
+    .filter((d) => getItemProductionRecipes(d.item).length > 0 && d.recipe !== null)
+    .append((d) => makeRecipeSelector(d))
+
   let buildingRow = row.filter((d) => d.building !== null)
   let buildingCell = buildingRow.selectAll("td.building-icon")
-  buildingCell.selectAll("*").remove()
-  let buildingExtra = buildingCell.filter((d) => !d.single)
-  buildingExtra.append((d) => d.recipe.icon.make(32))
-  buildingExtra.append("span").text(":")
   buildingCell.append((d) => d.building.icon.make(32))
   buildingCell.append("span").text(" \u00d7")
   buildingRow
