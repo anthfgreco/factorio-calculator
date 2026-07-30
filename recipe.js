@@ -16,9 +16,13 @@ import { Icon, sprites } from "./icon.js"
 import { Rational, zero, one } from "./rational.js"
 
 export class Ingredient {
-    constructor(item, amount) {
+    constructor(item, amount, productivityAmount = null) {
         this.item = item
         this.amount = amount
+        // For recipe products, this is the portion of the output that may be
+        // increased by productivity. Null preserves the legacy net-output
+        // behavior used by older calculator datasets.
+        this.productivityAmount = productivityAmount
     }
 }
 
@@ -31,12 +35,21 @@ class SurfaceCondition {
 }
 
 class Recipe {
-    constructor(key, name, order, col, row, allow_prod, category, time, ingredients, products, conditions) {
+    constructor(key, name, order, col, row, allow_prod, categories, time, ingredients, products, conditions) {
         this.key = key
         this.name = name
         this.order = order
         this.allow_productivity = allow_prod
-        this.category = category
+        if (categories === undefined || categories === null) {
+            categories = []
+        } else if (!Array.isArray(categories)) {
+            categories = [categories]
+        }
+        this.categories = new Set(categories)
+        // Retain the old property for third-party consumers. Internal code
+        // uses categories so Factorio 2.1 recipes can be made in any eligible
+        // machine category.
+        this.category = this.categories.values().next().value ?? null
         this.time = time
         this.ingredients = ingredients
         for (let ing of ingredients) {
@@ -80,13 +93,17 @@ class Recipe {
         for (let ing of this.products) {
             if (ing.item === item) {
                 if (!prodEffect.isZero()) {
-                    // The prod bonus is based on the *net* output from the
-                    // recipe, not the bare yield.
-                    let net = ing.amount.sub(this.uses(item))
-                    if (net.less(zero)) {
-                        return ing.amount
+                    let productiveAmount = ing.productivityAmount
+                    if (productiveAmount === null) {
+                        // Compatibility with older datasets that did not
+                        // export ignored_by_productivity. Their return products
+                        // were represented by subtracting same-item inputs.
+                        productiveAmount = ing.amount.sub(this.uses(item))
+                        if (productiveAmount.less(zero)) {
+                            return ing.amount
+                        }
                     }
-                    return ing.amount.add(net.mul(prodEffect))
+                    return ing.amount.add(productiveAmount.mul(prodEffect))
                 }
                 return ing.amount
             }
@@ -176,6 +193,7 @@ export class DisabledRecipe {
     constructor(item) {
         this.key = DISABLED_RECIPE_PREFIX + item.key
         this.name = item.name
+        this.categories = new Set()
         this.category = null
         this.ingredients = []
         this.products = [new Ingredient(item, one)]
@@ -206,16 +224,63 @@ export class DisabledRecipe {
     }
 }
 
+function getResultProbability(result) {
+    if (result.independent_probability !== undefined) {
+        return result.independent_probability
+    } else if (result.shared_probability !== undefined) {
+        let min = result.shared_probability.min ?? 0
+        let max = result.shared_probability.max ?? 1
+        return max - min
+    } else if (result.probability !== undefined) {
+        // Compatibility with Factorio 2.0 and older mod exports.
+        return result.probability
+    }
+    return null
+}
+
+function applyResultProbability(amount, result) {
+    let probability = getResultProbability(result)
+    if (probability !== null) {
+        amount = amount.mul(Rational.from_float_approximate(probability))
+    }
+    return amount
+}
+
+function getExpectedResultAmount(result) {
+    let amount
+    if (result.amount !== undefined) {
+        amount = Rational.from_float_approximate(result.amount)
+    } else if (result.amount_min !== undefined || result.amount_max !== undefined) {
+        let min = result.amount_min ?? result.amount_max
+        let max = result.amount_max ?? result.amount_min
+        amount = Rational.from_float_approximate((min + max) / 2)
+    } else {
+        amount = one
+    }
+
+    if (result.extra_count_fraction !== undefined) {
+        amount = amount.add(Rational.from_float_approximate(result.extra_count_fraction))
+    }
+
+    return applyResultProbability(amount, result)
+}
+
+function getProductivityAmount(result, totalAmount) {
+    if (result.ignored_by_productivity === undefined) {
+        return null
+    }
+    let ignored = Rational.from_float_approximate(result.ignored_by_productivity)
+    ignored = applyResultProbability(ignored, result)
+    return totalAmount.sub(ignored)
+}
+
 function makeRecipe(data, items, d) {
     let time = Rational.from_float_approximate(d.energy_required)
     let products = []
-    for (let {name, amount, probability} of d.results) {
-        let item = items.get(name)
-        let ratAmount = Rational.from_float_approximate(amount)
-        if (probability !== undefined) {
-            ratAmount = ratAmount.mul(Rational.from_float_approximate(probability))
-        }
-        products.push(new Ingredient(item, ratAmount))
+    for (let result of d.results) {
+        let item = items.get(result.name)
+        let amount = getExpectedResultAmount(result)
+        products.push(new Ingredient(item, amount, getProductivityAmount(result, amount)))
     }
     let ingredients = []
     for (let {name, amount} of d.ingredients) {
@@ -238,12 +303,28 @@ function makeRecipe(data, items, d) {
         d.icon_col,
         d.icon_row,
         d.allow_productivity,
-        d.category,
+        d.categories ?? d.category,
         time,
         ingredients,
         products,
         conditions,
     )
+}
+
+class RecipeMap extends Map {
+    constructor(aliases) {
+        super()
+        this.aliases = new Map(Object.entries(aliases ?? {}))
+    }
+    resolveKey(key) {
+        return this.aliases.get(key) ?? key
+    }
+    get(key) {
+        return super.get(this.resolveKey(key))
+    }
+    has(key) {
+        return super.has(this.resolveKey(key))
+    }
 }
 
 class ResourceRecipe extends Recipe {
@@ -403,7 +484,7 @@ function getSteam(data) {
 
 export function getRecipes(data, items) {
     let hundred = Rational.from_float(100)
-    let recipes = new Map()
+    let recipes = new RecipeMap(data.recipe_aliases)
     let reactor = items.get("nuclear-reactor")
     let used_cell_name = "used-up-uranium-fuel-cell"
     if (!items.has(used_cell_name)) {
@@ -490,13 +571,9 @@ export function getRecipes(data, items) {
             )]
         }
         let products = []
-        for (let {name, amount, probability} of d.results) {
-            let item = items.get(name)
-            let ratAmount = Rational.from_float_approximate(amount)
-            if (probability !== undefined) {
-                ratAmount = ratAmount.mul(Rational.from_float_approximate(probability))
-            }
-            products.push(new Ingredient(item, ratAmount))
+        for (let result of d.results) {
+            let item = items.get(result.name)
+            products.push(new Ingredient(item, getExpectedResultAmount(result)))
         }
         recipes.set(d.key, new MiningRecipe(
             d.key,
@@ -538,10 +615,10 @@ export function getRecipes(data, items) {
     if (data.plants) {
         for (let plant of data.plants) {
             let results = []
-            for (let {amount, name} of plant.results) {
+            for (let result of plant.results) {
                 results.push(new Ingredient(
-                    items.get(name),
-                    Rational.from_float_approximate(amount),
+                    items.get(result.name),
+                    getExpectedResultAmount(result),
                 ))
             }
             let conditions = []

@@ -37,9 +37,15 @@ let DEFAULT_BUILDINGS = new Set([
 ])
 
 class BuildingSet {
-    constructor(building) {
-        this.categories = new Set(building.categories)
-        this.buildings = new Set([building])
+    constructor(building = null) {
+        this.categories = new Set()
+        this.buildings = new Set()
+        if (building !== null) {
+            for (let category of building.categories) {
+                this.categories.add(category)
+            }
+            this.buildings.add(building)
+        }
     }
     merge(other) {
         for (let category of other.categories) {
@@ -87,7 +93,7 @@ class BuildingGroup {
     getBuilding(recipe) {
         let b = null
         for (let building of this.buildings) {
-            if (building.categories.has(recipe.category)) {
+            if (building.canCraft(recipe)) {
                 b = building
                 if (building === this.building || this.building.less(building)) {
                     return building
@@ -98,20 +104,40 @@ class BuildingGroup {
     }
 }
 
-function getBuildingGroups(buildings) {
+function mergeBuildingSet(sets, set) {
+    for (let other of Array.from(sets)) {
+        if (set.overlap(other)) {
+            set.merge(other)
+            sets.delete(other)
+        }
+    }
+    sets.add(set)
+}
+
+function getBuildingGroups(buildings, recipes) {
     let sets = new Set()
     for (let building of buildings) {
         let set = new BuildingSet(building)
-        for (let s of Array.from(sets)) {
-            if (set.overlap(s)) {
-                set.merge(s)
-                sets.delete(s)
-            }
+        mergeBuildingSet(sets, set)
+    }
+    // Factorio 2.1 recipes can belong to multiple categories. Treat those
+    // categories as links between building groups, preserving the old UI's
+    // single minimum-building selector for equivalent crafting paths.
+    for (let recipe of recipes) {
+        if (recipe.categories.size < 2) {
+            continue
         }
-        sets.add(set)
+        let set = new BuildingSet()
+        for (let category of recipe.categories) {
+            set.categories.add(category)
+        }
+        mergeBuildingSet(sets, set)
     }
     let groups = new Map()
     for (let {categories, buildings} of sets) {
+        if (buildings.size === 0) {
+            continue
+        }
         let group = new BuildingGroup(buildings)
         for (let cat of categories) {
             groups.set(cat, group)
@@ -173,7 +199,7 @@ class FactorySpecification {
         this.recipes = recipes
         this.planets = planets
         this.modules = modules
-        this.buildings = getBuildingGroups(buildings)
+        this.buildings = getBuildingGroups(buildings, recipes.values())
         this.buildingKeys = new Map()
         for (let building of buildings) {
             this.buildingKeys.set(building.key, building)
@@ -486,11 +512,13 @@ class FactorySpecification {
         return false
     }
     getBuilding(recipe) {
-        if (recipe.category === null || recipe.category === undefined) {
-            return null
-        } else {
-            return this.buildings.get(recipe.category).getBuilding(recipe)
+        for (let category of recipe.categories) {
+            let group = this.buildings.get(category)
+            if (group !== undefined) {
+                return group.getBuilding(recipe)
+            }
         }
+        return null
     }
     getBuildingGroup(building) {
         let cat = Array.from(building.categories)[0]
@@ -500,7 +528,13 @@ class FactorySpecification {
         let group = this.getBuildingGroup(building)
         group.building = building
         for (let [recipe, moduleSpec] of this.spec) {
-            let g = this.buildings.get(recipe.category)
+            let g = null
+            for (let category of recipe.categories) {
+                g = this.buildings.get(category)
+                if (g !== undefined) {
+                    break
+                }
+            }
             if (group === g) {
                 let b = this.getBuilding(recipe)
                 moduleSpec.setBuilding(b, this)

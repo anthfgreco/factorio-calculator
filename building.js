@@ -38,6 +38,14 @@ class Building {
         }
         return this.moduleSlots < other.moduleSlots
     }
+    canCraft(recipe) {
+        for (let category of recipe.categories) {
+            if (this.categories.has(category)) {
+                return true
+            }
+        }
+        return false
+    }
     getCount(spec, recipe, rate) {
         return rate.div(this.getRecipeRate(spec, recipe))
     }
