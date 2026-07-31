@@ -724,7 +724,7 @@ function renderFactorySummary(specification, totals) {
   let cards = [
     { label: "Active recipes", value: String(summary.recipeCount) },
     { label: "Machines to place", value: summary.placedMachines.toDecimal(0) },
-    { label: "Machine electric power", value: `${specification.format.count(power)} ${suffix}` },
+    { label: "Machine power", value: `${specification.format.count(power)} ${suffix}` },
   ]
   let card = root
     .selectAll("div.factory-summary-card")
@@ -755,11 +755,6 @@ function renderFactorySummary(specification, totals) {
   if (summary.qualityRecipeCount > 0) {
     warnings.push(
       "Quality module compatibility and electricity are modeled, but output quality tiers are not. Adding quality modules does not change requested output rates or calculate target-quality and upcycling yields.",
-    )
-  }
-  if (summary.beaconedRecipeCount > 0) {
-    warnings.push(
-      "Machine electric power excludes the beacon buildings themselves because shared beacon layouts do not have a single implied beacon count.",
     )
   }
   if (summary.importedItems.length > 0) {
