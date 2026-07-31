@@ -1,19 +1,13 @@
-import { execFileSync } from "node:child_process"
 import { readFile, rm } from "node:fs/promises"
 import { pathToFileURL } from "node:url"
 import { resolve } from "node:path"
 import vm from "node:vm"
+import { compileTypeScript } from "./lib/compile-typescript.mjs"
 
 const root = resolve(import.meta.dirname, "..")
 const outputDirectory = resolve(root, ".tmp/runtime")
-const tsc = resolve(root, "node_modules/typescript/bin/tsc")
-
 await rm(outputDirectory, { recursive: true, force: true })
-
-execFileSync(process.execPath, [tsc, "--noEmit", "false", "--outDir", outputDirectory, "--declaration", "false"], {
-  cwd: root,
-  stdio: "inherit",
-})
+await compileTypeScript({ root, outputDirectory })
 
 const bigIntegerSource = await readFile(resolve(root, "public/third_party/BigInteger.min.js"), "utf8")
 vm.runInThisContext(bigIntegerSource)
@@ -28,27 +22,29 @@ globalThis.d3 = {
 
 const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
 
-const { getItems } = await loadModule("item")
-const { getRecipes } = await loadModule("recipe")
-const { getBuildings } = await loadModule("building")
-const { getModules } = await loadModule("module")
-const { getBelts } = await loadModule("belt")
-const { getFuel } = await loadModule("fuel")
-const { getPlanets } = await loadModule("planet")
-const { getItemGroups } = await loadModule("group")
-const factory = await loadModule("factory")
-const { itemMatchesSearch } = await loadModule("search")
-const { formatLocationList, getUnavailableLocationInfo } = await loadModule("location")
-const { getItemProductionRecipes, setRecipeEnabled } = await loadModule("recipe-selection")
+const { getItems } = await loadModule("runtime/item")
+const { getRecipes } = await loadModule("runtime/recipe")
+const { getBuildings } = await loadModule("runtime/building")
+const { getModules } = await loadModule("runtime/module")
+const { getBelts } = await loadModule("runtime/belt")
+const { getFuel } = await loadModule("runtime/fuel")
+const { getPlanets } = await loadModule("runtime/planet")
+const { getItemGroups } = await loadModule("runtime/group")
+const factory = await loadModule("application/calculator/index")
+const { itemMatchesSearch } = await loadModule("application/search/search")
+const { formatLocationList, getUnavailableLocationInfo } = await loadModule("application/recipes/location")
+const { getItemProductionRecipes, setRecipeEnabled } = await loadModule("application/recipes/recipe-selection")
 const {
   getRecipeSelectorGroups,
   getRecipeSettingsCategory,
   isRecyclingRecipe,
   recipeMatchesSettingsSearch,
   recipeVisibleInSettings,
-} = await loadModule("recipe-settings")
-const { one } = await loadModule("rational")
-const { solve } = await loadModule("solve")
+} = await loadModule("application/recipes/recipe-settings")
+const { one } = await loadModule("core/math/rational")
+const { solve } = await loadModule("core/solver/solve")
+const { configureModelRuntime } = await loadModule("runtime/runtime-context")
+configureModelRuntime({ getSpecification: () => factory.spec, useLegacyCalculation: () => false })
 
 const searchCases = [
   [{ key: "underground-belt", name: "Underground belt" }, "underground belt"],
@@ -95,59 +91,6 @@ const datasets = [
   "space-age-2.1.12.json",
 ]
 
-function makeTestPriority(defaultPriority) {
-  const levels = defaultPriority.map((level) =>
-    [...level].map(([recipe, weight]) => ({ recipe, weight })),
-  )
-
-  return {
-    [Symbol.iterator]: function* () {
-      yield* levels
-    },
-    getResource(recipe) {
-      for (const level of levels) {
-        const resource = level.find((candidate) => candidate.recipe === recipe)
-        if (resource !== undefined) {
-          return resource
-        }
-      }
-      return null
-    },
-    getFirstLevel() {
-      return levels[0] ?? null
-    },
-    getLastLevel() {
-      return levels[levels.length - 1] ?? null
-    },
-    addPriorityBefore(level) {
-      const newLevel = []
-      if (level === null) {
-        levels.push(newLevel)
-      } else {
-        levels.splice(levels.indexOf(level), 0, newLevel)
-      }
-      return newLevel
-    },
-    addRecipe(recipe, weight, level) {
-      const resource = { recipe, weight }
-      level.push(resource)
-      return resource
-    },
-    removeRecipe(recipe) {
-      for (let i = levels.length - 1; i >= 0; i--) {
-        const index = levels[i].findIndex((resource) => resource.recipe === recipe)
-        if (index !== -1) {
-          levels[i].splice(index, 1)
-          if (levels[i].length === 0) {
-            levels.splice(i, 1)
-          }
-          return
-        }
-      }
-    },
-  }
-}
-
 const originalLog = console.log
 const summaries = []
 
@@ -169,6 +112,9 @@ try {
     const groups = getItemGroups(items, data)
 
     factory.spec.setData(items, recipes, planets, modules, buildings, belts, fuels, groups)
+    if (!(factory.spec.minerSettings instanceof Map)) {
+      throw new Error("Factory specification did not initialize miner settings")
+    }
 
     if (filename === "space-age-2.1.12.json") {
       const spacePlatform = planets.get("space-platform")
@@ -193,7 +139,7 @@ try {
         throw new Error("Space platform allowed a recipe whose only machine is surface-restricted")
       }
 
-      factory.spec.priority = makeTestPriority(factory.spec.defaultPriority)
+      factory.spec.setDefaultPriority()
       factory.spec.selectOnePlanet(spacePlatform)
       const spaceScience = items.get("space-science-pack")
       const spaceTotals = solve(factory.spec, [{ item: spaceScience, rate: one, recipe: null }])

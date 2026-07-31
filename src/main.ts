@@ -14,8 +14,8 @@ import {
   clickVisualize,
   plusHandler,
   toggleDebug,
-} from "./events.js"
-import { init } from "./init.js"
+} from "./ui/events.js"
+import { init } from "./application/bootstrap.js"
 
 window.handlers = {
   plusHandler,
