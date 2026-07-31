@@ -19,7 +19,16 @@ test("player-facing controls stay close to the evidence they affect", async () =
   assert.ok(html.includes("fluids use a 10:1 scale"))
 
   assert.ok(results.includes('classed("item-name", true)'))
+  assert.ok(results.includes('new Header("Item / " + spec.format.rateName, itemColumns)'))
   assert.ok(results.includes('new Header("Belts", 1'))
   assert.ok(results.includes('new Header("Power", 1)'))
   assert.ok(results.includes('classed("target-output"'))
+})
+
+
+test("progression presets keep Settings controls synchronized", async () => {
+  const state = await readFile(resolve(root, "src/state.ts"), "utf8")
+  assert.ok(state.includes("syncProgressionPresetControls()"))
+  assert.ok(state.includes("input.value === spec.belt?.key"))
+  assert.ok(state.includes('document.getElementById("default_beacon_count")'))
 })

@@ -644,3 +644,19 @@ svg.sankey g.edgePathHighlight path.highlighter {
 .dropdownWrapper.open .dropdown input[type="radio"]:checked + label {
   background: var(--main);
 }
+
+/* Regression fixes: preserve the grouped Factory columns and keep machine counts tight. */
+#totals tr.factory-header th:first-child {
+  text-align: left;
+}
+#totals td.building-icon {
+  padding-right: 0.15rem;
+  text-align: right;
+}
+#totals td.building-icon + td.building {
+  padding-left: 0;
+  text-align: left;
+}
+#totals td.building-icon span {
+  margin-left: 0.15rem;
+}

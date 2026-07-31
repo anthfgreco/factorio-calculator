@@ -78,6 +78,23 @@ function getByKey(collection: Map<any, any> | null, key: string | null) {
   return collection.get(key) ?? null
 }
 
+
+function syncProgressionPresetControls() {
+  document.querySelectorAll<HTMLInputElement>('#belt_selector input[type="radio"]').forEach((input) => {
+    input.checked = input.value === spec.belt?.key
+  })
+
+  document.querySelectorAll<HTMLInputElement>(
+    '#default_module input[type="radio"], #secondary_module input[type="radio"], #default_beacon input[type="radio"]',
+  ).forEach((input) => {
+    let datum = (input as HTMLInputElement & { __data__?: { checked?: () => boolean } }).__data__
+    input.checked = datum?.checked?.() ?? false
+  })
+
+  let beaconCount = document.getElementById("default_beacon_count") as HTMLInputElement | null
+  if (beaconCount !== null) beaconCount.value = spec.defaultBeaconCount.toDecimal()
+}
+
 export function applyProgressionPreset(event: Event) {
   let select = event.target
   if (!(select instanceof HTMLSelectElement) || !(select.value in PROGRESSION_PRESETS)) return
@@ -108,6 +125,7 @@ export function applyProgressionPreset(event: Event) {
   })
   let miningInput = document.getElementById("mprod") as HTMLInputElement | null
   if (miningInput !== null) miningInput.value = String(preset.miningProductivity)
+  syncProgressionPresetControls()
   spec.updateSolution()
 }
 
