@@ -22,13 +22,14 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 
 - `presentation.ts`: shared icon, tooltip, and dropdown primitives.
 - `settings.ts`: settings DOM and recipe browser.
-- `results.ts`: factory summary, diagnostics, totals table, production locations, recipe selector, and result grouping.
+- `results.ts`: factory summary, diagnostics, directly labeled totals table, production locations, recipe selector, and result grouping.
 - `ui.ts`: target rows and target-specific interaction.
 - `graph.ts`: Sankey implementation and shared graph primitives.
 - `visualization.ts`: graph viewport, box-line renderer, and visualization orchestration.
 - `url-state.ts`: browser history plus calculator fragment parsing/formatting.
 - `app.ts`: composition root, browser view adapter, and dataset bootstrap.
 - `main.ts`: CSS entry, global HTML handlers, and startup.
+- `styles/calc.css`, `styles/dropdown.css`, and `styles/player-ui.css`: legacy component rules, dropdown behavior, and the modern player-facing visual layer.
 
 ## Dependency direction
 

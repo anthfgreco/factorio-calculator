@@ -14,11 +14,17 @@
   </head>
 
   <body onload="handlers.init()">
-    <ul id="targets">
-      <li id="plusButton">
-        <button class="targetButton ui" title="Add new item." onclick="handlers.plusHandler()">+</button>
-      </li>
-    </ul>
+    <section class="targets-panel" aria-labelledby="targets_title">
+      <div class="targets-heading">
+        <span id="targets_title">Production targets</span>
+        <span class="targets-hint">Choose outputs, then set a machine count or rate.</span>
+      </div>
+      <ul id="targets">
+        <li id="plusButton">
+          <button class="add-target-button ui" title="Add another production target." onclick="handlers.plusHandler()">+ Add target</button>
+        </li>
+      </ul>
+    </section>
 
     <div class="planner-toolbar">
       <div id="location_toolbar" class="location-toolbar" hidden>
@@ -59,6 +65,27 @@
       <button class="tab_button" id="resources_button" onclick="handlers.clickTab('resources')">Resources</button>
       <button class="tab_button" id="settings_button" onclick="handlers.clickTab('settings')">Settings</button>
       <button class="tab_button" id="help_button" onclick="handlers.clickTab('help')">Help</button>
+      <div id="factory_tab_tools" class="tab-tools">
+        <div class="factory-density-control" role="group" aria-label="Factory row density">
+          <span class="factory-density-label">Rows</span>
+          <input
+            id="factory_density_comfortable"
+            type="radio"
+            name="factory_density"
+            value="comfortable"
+            onchange="handlers.changeFactoryDensity(event)"
+          />
+          <label for="factory_density_comfortable">Relaxed</label>
+          <input
+            id="factory_density_compact"
+            type="radio"
+            name="factory_density"
+            value="compact"
+            onchange="handlers.changeFactoryDensity(event)"
+          />
+          <label for="factory_density_compact">Compact</label>
+        </div>
+      </div>
     </div>
 
     <div id="graph_tab" class="tab graph">
@@ -90,7 +117,10 @@
             <label for="down_direction">Top to bottom</label>
           </form>
         </div>
-        <p class="visualization-key">Width shows material rate. Dashed connections show fuel. Hover a node or flow to isolate its path.</p>
+        <div class="visualization-meta">
+          <span id="visualization_summary" class="visualization-summary"></span>
+          <span class="visualization-key">Width = rate; fluids use a 10:1 scale. Dashed = fuel. Hover = isolate.</span>
+        </div>
       </div>
       <div id="graph_container">
         <svg id="graph"><g /></svg>
@@ -98,27 +128,6 @@
     </div>
 
     <div id="totals_tab" class="tab">
-      <div class="factory-view-toolbar">
-        <div class="factory-density-control" role="group" aria-label="Factory table density">
-          <span class="factory-density-label">Table density</span>
-          <input
-            id="factory_density_comfortable"
-            type="radio"
-            name="factory_density"
-            value="comfortable"
-            onchange="handlers.changeFactoryDensity(event)"
-          />
-          <label for="factory_density_comfortable">Comfortable</label>
-          <input
-            id="factory_density_compact"
-            type="radio"
-            name="factory_density"
-            value="compact"
-            onchange="handlers.changeFactoryDensity(event)"
-          />
-          <label for="factory_density_compact">Compact</label>
-        </div>
-      </div>
       <div id="calculation_error" class="calculation-error" role="alert" hidden>
         <div class="calculation-error-title"></div>
         <div class="calculation-error-message"></div>
@@ -303,16 +312,13 @@
     </div>
 
     <div id="resources_tab" class="tab">
-      <p>
-        Click and drag items to configure resource priority.<br />
-        Higher numbers = more valuable
-      </p>
+      <p class="resources-intro">Drag resources between tiers to tell the solver what to conserve. Higher tiers are treated as more valuable.</p>
       <div id="resource_settings"></div>
     </div>
 
     <div id="help_tab" class="tab">
       <div class="help-content">
-        <section class="help-section help-card">
+        <section id="help-about" class="help-section help-card">
           <h2>Factorio Calculator</h2>
           <p>
             A maintained fork of Kirk McDonald’s calculator for planning production chains from starter factories
@@ -323,7 +329,7 @@
           </p>
         </section>
 
-        <section class="help-section help-card">
+        <section id="help-faq" class="help-section help-card">
           <h2>FAQ</h2>
           <div class="faq-list">
             <div>
@@ -357,7 +363,7 @@
           </div>
         </section>
 
-        <section class="help-section help-card">
+        <section id="help-changelog" class="help-section help-card">
           <h2>Changelog</h2>
           <div class="changelog-entry">
             <time datetime="2026-07-31">July 31, 2026</time>
@@ -365,7 +371,7 @@
             <ul>
               <li>Added factory summaries, clearer calculation errors, share-link copying, and compact production-location controls.</li>
               <li>Corrected recipe, machine, module, quality, and beacon compatibility for the Factorio 2.1 dataset.</li>
-              <li>Added Factory table density controls, progression presets, and a clearer evidence-first interface.</li>
+              <li>Added progression presets, direct item labels, compact Factory controls, and clearer visualizations.</li>
             </ul>
           </div>
           <div class="changelog-entry">

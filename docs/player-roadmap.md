@@ -20,9 +20,10 @@ The highest-value remaining work is not a framework rewrite. It is extending the
 - Preserved exported quality-module probabilities and recipe `allow_quality` rules in the 2.1.12 dataset.
 - Added a compact factory summary for active recipes, rounded machine counts, machine electrical power, and imported inputs.
 - Added per-recipe production-location visibility for plans using multiple selected locations.
-- Added concise warnings for shared-material multi-location plans, ambiguous recipe placement, quality-tier aggregation, and beacon electricity.
+- Added concise notes for shared-material multi-location plans, ambiguous recipe placement, quality-tier aggregation, and imported inputs.
 - Added a one-click copyable plan link without changing the existing URL format.
-- Added comfortable and compact Factory table density controls as a local display preference.
+- Added relaxed and compact Factory row density controls as a local display preference and placed them beside the Factory tab.
+- Added progression presets, direct item labels, visible target/import state, and a clearer evidence-first Factory and visualization interface.
 - Consolidated About, FAQ, and recent changelog information into one Help tab.
 - Added runtime coverage for quality modules, machine/beacon compatibility, production locations, and missing-recipe failures.
 
@@ -63,18 +64,6 @@ The current typed error is a safer UI boundary. The next step is a diagnostic tr
 - cyclic or multi-output component missing an external source/sink
 
 ## Priority 1: faster player workflows
-
-### Progression presets
-
-Add presets that configure machines, belts, modules, beacons, mining productivity, and unlocked recipes without hiding advanced controls:
-
-- early game
-- pre-rocket
-- first Space Age planet
-- late Space Age
-- megabase
-
-Presets should be editable snapshots, not a second rules engine.
 
 ### Recipe and machine decision support
 

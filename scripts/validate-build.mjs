@@ -26,6 +26,21 @@ if (calculatorHtml.includes("/src/") || calculatorHtml.includes("src/main.ts")) 
 if (!calculatorHtml.includes("third_party/BigInteger.min.js")) {
   throw new Error("calc.html is missing the BigInteger runtime dependency")
 }
+if (!calculatorHtml.includes('id="targets_title"')) {
+  throw new Error("calc.html is missing the production-target heading")
+}
+if (!calculatorHtml.includes('id="visualization_summary"') || !calculatorHtml.includes("fluids use a 10:1 scale")) {
+  throw new Error("calc.html is missing the visualization scale and scope guidance")
+}
+const tabsStart = calculatorHtml.indexOf('<div class="tabs">')
+const graphTabStart = calculatorHtml.indexOf('<div id="graph_tab"')
+const factoryToolsIndex = calculatorHtml.indexOf('id="factory_tab_tools"')
+if (tabsStart === -1 || graphTabStart === -1 || factoryToolsIndex < tabsStart || factoryToolsIndex > graphTabStart) {
+  throw new Error("Factory row-density controls must stay on the right side of the tab bar")
+}
+if (calculatorHtml.includes("factory-view-toolbar") || calculatorHtml.includes("Table density")) {
+  throw new Error("calc.html still contains the old separate Factory density toolbar")
+}
 if (!calculatorHtml.includes("id=\"location_toolbar\"")) {
   throw new Error("calc.html is missing the top-level production-location control")
 }

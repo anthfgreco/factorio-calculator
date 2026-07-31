@@ -469,6 +469,11 @@ function makeGraph(totals, ignore) {
 
 export function renderTotals(totals, ignore) {
   let data = makeGraph(totals, ignore)
+  let processCount = data.nodes.filter((node) => node.recipe?.isReal?.()).length
+  let summary = document.getElementById("visualization_summary")
+  if (summary !== null) {
+    summary.textContent = `${processCount} processes · ${data.links.length} flows`
+  }
 
   let callback = function () {
     let svg = d3.select("svg#graph")
@@ -477,7 +482,7 @@ export function renderTotals(totals, ignore) {
       tab.style("min-width", 0)
       svg.attr("width", null)
       svg.attr("height", null)
-      svg.style("border", "1px var(--foreground) solid")
+      svg.style("border", null)
       installSVGEvents(svg)
     } else {
       tab.style("min-width", "max-content")

@@ -200,10 +200,12 @@ function alignPower(x) {
 
 class Header {
   [key: string]: any
-  constructor(text, colspan, surplus = false) {
+  constructor(text, colspan, surplus = false, title = null, icon = null) {
     this.text = text
     this.colspan = colspan
     this.surplus = surplus
+    this.title = title
+    this.icon = icon
   }
 }
 
@@ -753,12 +755,10 @@ function renderFactorySummary(specification, totals) {
     warnings.push(`Shared materials; transport is not modeled.${ambiguity}`)
   }
   if (summary.qualityRecipeCount > 0) {
-    warnings.push(
-      "Quality module compatibility and electricity are modeled, but output quality tiers are not. Adding quality modules does not change requested output rates or calculate target-quality and upcycling yields.",
-    )
+    warnings.push("Quality modules affect machines, but quality-tier yields and upcycling are not calculated.")
   }
   if (summary.importedItems.length > 0) {
-    warnings.push(`Treated as imported: ${summary.importedItems.map((item) => item.name).join(", ")}.`)
+    warnings.push(`Imported: ${summary.importedItems.map((item) => item.name).join(", ")}.`)
   }
 
   root
@@ -800,15 +800,15 @@ export function displayItems(spec, totals) {
   renderFactorySummary(spec, totals)
   let showLocations = spec.selectedPlanets?.size > 1
   let headers = [
-    new Header("", 1),
-    new Header("items/" + spec.format.rateName, 2),
-    new Header("surplus/" + spec.format.rateName, 1, true),
-    new Header("belts", 2),
-    new Header("buildings", 2),
-    ...(showLocations ? [new Header("location", 1)] : []),
-    new Header("modules", 1),
-    new Header("beacons", 1),
-    new Header("power", 2),
+    new Header("Item", 2),
+    new Header("Rate / " + spec.format.rateName, 1),
+    new Header("Surplus", 1, true),
+    new Header("Belts", 1, false, `Equivalent ${spec.belt.name} belts at the selected rate`, spec.belt.icon),
+    new Header("Machines", 2),
+    ...(showLocations ? [new Header("Location", 1)] : []),
+    new Header("Modules", 1),
+    new Header("Beacons", 1),
+    new Header("Power", 1),
     new Header("", 1), // pop-out links
   ]
   let totalCols = 0
@@ -821,11 +821,19 @@ export function displayItems(spec, totals) {
 
   let headerRow = table.selectAll("thead tr").classed("factory-header", true).selectAll("th").data(headers)
   headerRow.exit().remove()
-  headerRow
+  let headerCell = headerRow
     .join("th")
     .classed("surplus", (d) => d.surplus)
-    .text((d) => d.text)
     .attr("colspan", (d) => d.colspan)
+    .attr("title", (d) => d.title)
+  headerCell.each(function (this: HTMLTableCellElement, header) {
+    let cell = d3.select(this)
+    cell.selectAll("*").remove()
+    if (header.icon !== null) {
+      cell.append(() => header.icon.make(18)).classed("header-icon", true)
+    }
+    cell.append("span").text(header.text)
+  })
 
   getDisplayGroups(totals)
   let rowGroup = table
@@ -853,33 +861,35 @@ export function displayItems(spec, totals) {
         .attr("height", 16)
         .append("use")
         .attr("href", "images/icons.svg#right")
-      // cell 2: item icon
-      row.append("td").classed("item item-icon", true)
+      // cell 2: item identity and import toggle
+      let itemCell = row.append("td").classed("item item-identity", true)
+      let itemToggle = itemCell.append("button").classed("item-import-toggle", true).attr("type", "button")
+      itemToggle.append("span").classed("item-icon", true)
+      itemToggle.append("span").classed("item-name", true)
+      itemToggle.append("span").classed("item-state", true)
       // cell 3: item rate
       row.append("td").classed("item right-align", true).append("tt").classed("item-rate", true)
       // cell 4: surplus rate
       row.append("td").classed("item surplus right-align", true).append("tt").classed("surplus-rate", true)
-      // cell 5: belt icon
-      let beltCell = row.append("td").classed("item pad belt-icon", true)
-      // cell 6: belt count
+      // cell 5: equivalent belt count (fluids are blank for Factorio 2.x datasets)
       row
         .append("td")
-        .classed("item right-align belt-count-cell pad-right", true)
+        .classed("item right-align logistics-cell pad-right", true)
         .append("tt")
         .classed("belt-count", true)
 
-      // cell 7: building icon
+      // cell 6: building icon
       let buildingCell = row.append("td").classed("pad building building-icon leftmost right-align", true)
-      // cell 8: building count
+      // cell 7: building count
       row.append("td").classed("right-align building", true).append("tt").classed("building-count", true)
 
       // Production location for multi-location plans.
       row.append("td").classed("location-cell", true)
 
-      // cell 9: modules
+      // cell 8: modules
       let moduleCell = row.append("td").classed("pad building module module-cell", true)
 
-      // cell 10: beacons
+      // cell 9: beacons
       let beaconCell = row.append("td").classed("pad building module beacon", true)
       beaconCell.append("span").classed("beacon-container", true)
       let beaconCountSpan = beaconCell.append("span").classed("beacon-count", true)
@@ -898,18 +908,18 @@ export function displayItems(spec, totals) {
           }
         })
 
-      // cell 11: fuel icon
-      row.append("td").classed("pad building fuel-icon", true)
-      // cell 12: power value
-      row.append("td").classed("right-align building", true).append("tt").classed("power", true)
+      // cell 10: power or fuel rate
+      let powerCell = row.append("td").classed("right-align building power-cell", true)
+      powerCell.append("span").classed("fuel-icon", true)
+      powerCell.append("tt").classed("power", true)
 
-      // cell 13: popout
+      // cell 11: popout
       row
         .append("td")
         .classed("popout pad item", true)
         .append("a")
         .attr("target", "_blank")
-        .attr("title", "Open this item in separate window.")
+        .attr("title", "Open this item as a separate plan.")
         .append("svg")
         .classed("popout", true)
         .attr("viewBox", "0 0 24 24")
@@ -923,6 +933,8 @@ export function displayItems(spec, totals) {
     .classed("nobuilding", (d) => d.building === null)
     .classed("nomodule", (d) => d.moduleSpec === null)
     .classed("noitem", (d) => d.item === null)
+    .classed("target-output", (d) => d.item !== null && spec.buildTargets.some((target) => target.item === d.item))
+    .classed("imported-output", (d) => d.item !== null && spec.ignore.has(d.item))
   row
     .selectAll("td.location-cell")
     .classed("hide", !showLocations)
@@ -937,20 +949,32 @@ export function displayItems(spec, totals) {
 
   // Update row data.
   let itemRow = row.filter((d) => d.item !== null)
-  let itemIcon = itemRow.selectAll(".item-icon")
+  let itemToggle = itemRow
+    .selectAll("button.item-import-toggle")
+    .classed("imported", (d) => spec.ignore.has(d.item))
+    .attr("title", (d) =>
+      spec.ignore.has(d.item) ? `Produce ${d.item.name} in this plan` : `Treat ${d.item.name} as imported`,
+    )
+    .attr("aria-label", (d) =>
+      spec.ignore.has(d.item) ? `Produce ${d.item.name} in this plan` : `Treat ${d.item.name} as imported`,
+    )
+    .on("click", toggleIgnoreHandler)
+  let itemIcon = itemToggle.select("span.item-icon")
   itemIcon.selectAll("img").remove()
   itemIcon
     .append((d) => {
       let icon = new ItemIcon(d.item)
-      if (spec.ignore.has(d.item)) {
-        icon.setText("(Click to unignore.)")
-      } else {
-        icon.setText("(Click to ignore.)")
-      }
+      icon.setText(spec.ignore.has(d.item) ? "Imported." : "Produced in this plan.")
       return icon.icon.make(32)
     })
     .classed("ignore", (d) => spec.ignore.has(d.item))
-    .on("click", toggleIgnoreHandler)
+  itemToggle.select("span.item-name").text((d) => d.item.name)
+  itemToggle.select("span.item-state").text((d) => {
+    let labels = []
+    if (spec.buildTargets.some((target) => target.item === d.item)) labels.push("target")
+    if (spec.ignore.has(d.item)) labels.push("imported")
+    return labels.join(" · ")
+  })
   itemRow.selectAll("tt.item-rate").text((d) => {
     let rate = totals.items.get(d.item)
     if (totals.surplus.has(d.item)) {
@@ -962,21 +986,17 @@ export function displayItems(spec, totals) {
     .selectAll("tt.surplus-rate")
     .text((d) => spec.format.alignRate(totals.surplus.has(d.item) ? totals.surplus.get(d.item) : zero))
   let beltRow = itemRow.filter((d) => d.item.phase === "solid")
-  let beltIcon = beltRow.selectAll("td.belt-icon").classed("pad-right", false).attr("colspan", 1)
-  beltIcon.selectAll("*").remove()
-  beltIcon.append((d) => spec.belt.icon.make(32))
-  beltIcon.append("span").text(" \u00d7")
   beltRow
-    .selectAll("td.belt-count-cell")
-    .classed("hide", false)
+    .selectAll("td.logistics-cell")
+    .attr("title", `Equivalent ${spec.belt.name} belts`)
     .selectAll("tt.belt-count")
     .text((d) => spec.format.alignCount(spec.getBeltCount(totals.items.get(d.item))))
   let pipeRow = itemRow.filter((d) => d.item.phase === "fluid")
-  let pipeIcon = pipeRow.selectAll("td.belt-icon").classed("pad-right", true).attr("colspan", 2)
-  pipeIcon.selectAll("*").remove()
-  pipeIcon.append((d) => new PipeIcon().icon.make(32))
-  pipeIcon.append("tt").text((d) => pipeText(totals.items.get(d.item)))
-  pipeRow.selectAll("td.belt-count-cell").classed("hide", true).selectAll("tt.belt-count").text("")
+  pipeRow
+    .selectAll("td.logistics-cell")
+    .attr("title", usesLegacyCalculation() ? "Legacy maximum pipe length" : null)
+    .selectAll("tt.belt-count")
+    .text((d) => pipeText(totals.items.get(d.item)))
   let itemBuildingCell = itemRow.selectAll("td.building-icon")
   itemBuildingCell.selectAll("*").remove()
   itemBuildingCell
@@ -1003,8 +1023,8 @@ export function displayItems(spec, totals) {
   let fuelRow = buildingRow.filter((d) => d.building.fuel !== null)
   let fuelIcon = fuelRow.selectAll(".fuel-icon")
   fuelIcon.selectAll("*").remove()
-  fuelIcon.append((d) => spec.fuel.icon.make(32))
-  fuelIcon.append("span").text(" \u00d7 ")
+  fuelIcon.append((d) => spec.fuel.icon.make(24))
+  fuelIcon.append("span").text(" × ")
   fuelRow.selectAll("tt.power").text((d) => {
     let rate = totals.rates.get(d.recipe)
     let { fuel, power } = spec.getPowerUsage(d.recipe, rate)

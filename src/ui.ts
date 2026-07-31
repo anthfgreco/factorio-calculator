@@ -136,8 +136,8 @@ export class BuildTarget {
     element
       .append("button")
       .classed("targetButton ui", true)
-      .text("x")
-      .attr("title", "Remove this item.")
+      .text("×")
+      .attr("title", "Remove this production target.")
       .on("click", removeHandler(this))
     this.element = element.node()
 
@@ -160,10 +160,11 @@ export class BuildTarget {
     let itemLabel = addInputs(items, `target-${targetCount}`, (d) => d === item, itemHandler(this))
 
     itemLabel.append((d) => d.icon.make(32, false, dropdown.node()))
+    itemLabel.append("span").classed("target-item-name", true).text((d) => d.name)
 
     targetCount++
 
-    this.buildingLabel = element.append("label").classed(SELECTED_INPUT, true).text(" Buildings: ").node()
+    this.buildingLabel = element.append("label").classed(SELECTED_INPUT, true).text(" Machines ").node()
 
     this.recipeSelector = element.append("span")
 
@@ -209,7 +210,7 @@ export class BuildTarget {
     this.displayRecipes()
   }
   setRateLabel() {
-    this.rateLabel.textContent = " Items/" + spec.format.longRate + ": "
+    this.rateLabel.textContent = " Rate/" + spec.format.longRate + " "
   }
   displayLocationWarning() {
     let info = getUnavailableLocationInfo(spec, this.item)

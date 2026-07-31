@@ -122,11 +122,21 @@ export function plusHandler() {
   spec.updateSolution()
 }
 
+let shareStatusTimer: ReturnType<typeof setTimeout> | null = null
+
 function setShareStatus(message: string) {
   let status = document.getElementById("share_status")
-  if (status !== null) {
-    status.textContent = message
+  if (status === null) {
+    return
   }
+  status.textContent = message
+  if (shareStatusTimer !== null) {
+    clearTimeout(shareStatusTimer)
+  }
+  shareStatusTimer = setTimeout(() => {
+    status.textContent = ""
+    shareStatusTimer = null
+  }, 2500)
 }
 
 function fallbackCopyText(text: string) {
@@ -177,6 +187,7 @@ export function clickTab(tabName) {
   d3.selectAll(".tab_button, .toolbar-tab-button").classed("active", false)
   d3.select("#" + tabName + "_tab").style("display", "block")
   d3.select("#" + tabName + "_button").classed("active", true)
+  document.getElementById("factory_tab_tools")?.toggleAttribute("hidden", tabName !== "totals")
   spec.setHash()
 }
 
