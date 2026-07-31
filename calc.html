@@ -318,70 +318,87 @@
 
     <div id="help_tab" class="tab">
       <div class="help-content">
-        <section id="help-about" class="help-section help-card">
-          <h2>Factorio Calculator</h2>
-          <p>
-            A maintained fork of Kirk McDonald’s calculator for planning production chains from starter factories
-            through Space Age megabases. It supports Factorio 2.1 recipes, locations, recycling, machines, modules,
-            beacons, productivity restrictions, and shareable calculator URLs. The project is licensed under the
-            Apache License 2.0 and developed openly
-            <a href="https://github.com/anthfgreco/factorio-calculator">on GitHub</a>.
+        <section id="help-about" class="help-section">
+          <header class="help-header">
+            <h2>Factorio Calculator</h2>
+            <div class="help-meta">
+              <span>Factorio 2.1 &amp; Space Age</span>
+              <span class="meta-separator">•</span>
+              <span>Apache 2.0 Open Source</span>
+              <span class="meta-separator">•</span>
+              <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noopener">GitHub Repository</a>
+            </div>
+          </header>
+          <p class="help-summary">
+            Plan Factorio production chains from early game through Space Age. Calculates exact machine counts, item rates, power draw, and belt requirements for any recipe target.
           </p>
         </section>
 
-        <section id="help-faq" class="help-section help-card">
-          <h2>FAQ</h2>
-          <div class="faq-list">
-            <div>
-              <h3>How do I treat an ingredient as imported?</h3>
-              <p>Click its item icon in the Factory table. Its upstream dependencies are removed; click again to restore them.</p>
+        <section id="help-faq" class="help-section">
+          <h2 class="help-section-title">Quick Reference &amp; Workflows</h2>
+          <dl class="help-reference-list">
+            <div class="help-reference-row">
+              <dt>Imported Ingredients</dt>
+              <dd>Click any item icon in the Factory table to mark it as imported. Upstream production dependencies are removed; click again to restore internal production.</dd>
             </div>
-            <div>
-              <h3>What do progression presets change?</h3>
-              <p>Presets quickly select sensible locations, modules, beacons, belts, and mining productivity for a stage of the game. They never change your production targets, and every setting remains editable.</p>
+            <div class="help-reference-row">
+              <dt>Progression Presets</dt>
+              <dd>Presets quickly set standard locations, modules, beacons, belts, and mining productivity for key game stages without altering your production targets.</dd>
             </div>
-            <div>
-              <h3>How do production locations work?</h3>
-              <p>Select one location, or Shift-click to combine locations. Combined plans share materials; recipe assignment and transport costs are not modeled yet.</p>
+            <div class="help-reference-row">
+              <dt>Production Locations</dt>
+              <dd>Select a single planet/surface, or Shift-click to combine multiple locations into a shared material pool. (Recipe assignment and interstellar transport costs are unmodeled).</dd>
             </div>
-            <div>
-              <h3>How is quality handled?</h3>
-              <p>Module compatibility, power effects, and speed-module quality penalties are validated. Quality tiers and recycling upcycling are not yet solved as separate item flows.</p>
+            <div class="help-reference-row">
+              <dt>Quality &amp; Recycling</dt>
+              <dd>Module effects, power consumption, and speed-module quality penalties are fully calculated. Upcycling loops and multi-tier quality flows are not yet solved as separate item species.</dd>
             </div>
-            <div>
-              <h3>What do the factory totals include?</h3>
-              <p>Machines to place rounds each recipe up. Machine power is the electricity used by those machines.</p>
+            <div class="help-reference-row">
+              <dt>Factory Totals</dt>
+              <dd>Building counts show ceiling-rounded counts for physical placement. Total power reflects electricity draw for those machines.</dd>
             </div>
-            <div>
-              <h3>How do alternate recipes affect the result?</h3>
-              <p>Use the recipe control in a Factory row or the Recipes section in Settings. When several solutions are valid, the Resources tab controls which inputs the solver prefers.</p>
+            <div class="help-reference-row">
+              <dt>Alternate Recipes &amp; Priorities</dt>
+              <dd>Override recipes per Factory row or globally in Settings. When multiple solution paths exist, the <strong>Resources</strong> priority hierarchy determines resource preference.</dd>
             </div>
-            <div>
-              <h3>Why was my plan rejected?</h3>
-              <p>The plan may lack an enabled production path or contain an infeasible cyclic or multi-output system. Check locations, recipes, priorities, and imported inputs.</p>
+            <div class="help-reference-row">
+              <dt>Plan Diagnostics</dt>
+              <dd>Infeasible plans (missing recipes, cyclic deadlocks, or unhandled outputs) trigger solver failure reports. Check location availability, enabled recipes, and imported items.</dd>
             </div>
-          </div>
+          </dl>
         </section>
 
-        <section id="help-changelog" class="help-section help-card">
-          <h2>Changelog</h2>
-          <div class="changelog-entry">
-            <time datetime="2026-07-31">July 31, 2026</time>
-            <h3>Factory-planning improvements</h3>
-            <ul>
-              <li>Added factory summaries, clearer calculation errors, share-link copying, and compact production-location controls.</li>
-              <li>Corrected recipe, machine, module, quality, and beacon compatibility for the Factorio 2.1 dataset.</li>
-              <li>Added progression presets, direct item labels, compact Factory controls, and clearer visualizations.</li>
-            </ul>
-          </div>
-          <div class="changelog-entry">
-            <time datetime="2026-07-30">July 30, 2026</time>
-            <h3>Factorio 2.1.12 and Space Age</h3>
-            <ul>
-              <li>Added the experimental Space Age 2.1.12 dataset and made it the default.</li>
-              <li>Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe selection.</li>
-              <li>Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.</li>
-            </ul>
+        <section id="help-changelog" class="help-section">
+          <h2 class="help-section-title">Changelog</h2>
+          <div class="changelog-timeline">
+            <article class="changelog-entry">
+              <div class="changelog-meta">
+                <time datetime="2026-07-31">2026-07-31</time>
+              </div>
+              <div class="changelog-details">
+                <h3>Architecture, UI &amp; Calculation Fixes</h3>
+                <ul>
+                  <li>Refactored repository architecture into consolidated, fully typed acyclic modules with automated boundary checks.</li>
+                  <li>Reworked UI and Help section applying Tufte visualization principles (high data-ink ratio, unbordered layouts, structured reference tables, and marginal dates).</li>
+                  <li>Added top-level planet/location selector, KPI factory summary cards, progression presets, direct item labels, and share-link copying.</li>
+                  <li>Corrected machine floor limits for negative speed multipliers, rate display calculations, beacon power warnings, and state synchronization.</li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="changelog-entry">
+              <div class="changelog-meta">
+                <time datetime="2026-07-30">2026-07-30</time>
+              </div>
+              <div class="changelog-details">
+                <h3>Factorio 2.1.12 and Space Age</h3>
+                <ul>
+                  <li>Added the experimental Space Age 2.1.12 dataset and made it the default.</li>
+                  <li>Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe selection.</li>
+                  <li>Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.</li>
+                </ul>
+              </div>
+            </article>
           </div>
         </section>
       </div>

@@ -754,48 +754,102 @@ details.recipe-selector[open] > summary {
 .help-content {
   max-width: 58em;
   margin: 0 auto;
-  padding: 0.5em 1em 2em;
+  padding: 1em 1em 3em;
 }
 .help-section + .help-section {
-  margin-top: 2em;
+  margin-top: 2.2em;
 }
 .help-section h2 {
   margin: 0 0 0.65em;
   color: var(--bright);
 }
-.help-section > p {
+.help-header h2 {
+  margin: 0 0 0.2em;
+  font-size: 1.35em;
+}
+.help-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+  font-size: 0.85em;
+  color: var(--muted);
+  margin-bottom: 0.85em;
+}
+.meta-separator {
+  opacity: 0.5;
+}
+.help-summary {
   max-width: 54em;
   margin: 0;
   line-height: 1.55;
+  color: var(--foreground);
 }
-.faq-list {
-  display: grid;
-  gap: 1em;
-}
-.faq-list h3 {
-  margin: 0 0 0.25em;
+.help-section-title {
+  font-size: 0.88em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--bright);
-  font-size: 1em;
+  padding-bottom: 0.4em;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 1em;
 }
-.faq-list p {
+.help-reference-list {
+  margin: 0;
+  padding: 0;
+}
+.help-reference-row {
+  display: grid;
+  grid-template-columns: 14em 1fr;
+  column-gap: 1.5em;
+  padding: 0.7em 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.help-reference-row dt {
+  font-weight: 600;
+  color: var(--bright);
+  font-size: 0.9em;
+}
+.help-reference-row dd {
   margin: 0;
   line-height: 1.5;
-}
-.changelog-entry + .changelog-entry {
-  margin-top: 1.25em;
-}
-.changelog-entry time {
+  font-size: 0.9em;
   color: var(--foreground);
+}
+.changelog-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25em;
+}
+.changelog-entry {
+  display: grid;
+  grid-template-columns: 8em 1fr;
+  column-gap: 1.5em;
+  padding-bottom: 1.25em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.changelog-entry:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+.changelog-meta time {
+  color: var(--muted);
   font-family: monospace;
   font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
 }
-.changelog-entry h3 {
-  margin: 0.2em 0 0.4em;
+.changelog-details h3 {
+  margin: 0 0 0.4em;
   color: var(--bright);
+  font-size: 0.98em;
 }
-.changelog-entry ul {
+.changelog-details ul {
   margin: 0;
-  padding-left: 1.25em;
+  padding-left: 1.2em;
+  color: var(--foreground);
+  font-size: 0.88em;
+  line-height: 1.5;
 }
 
 .setting-help {
