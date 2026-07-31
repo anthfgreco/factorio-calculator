@@ -98,11 +98,25 @@ class SurfaceCondition {
 
 class Recipe {
   [key: string]: any
-  constructor(key, name, order, col, row, allow_prod, categories, time, ingredients, products, conditions = []) {
+  constructor(
+    key,
+    name,
+    order,
+    col,
+    row,
+    allow_prod,
+    allow_quality,
+    categories,
+    time,
+    ingredients,
+    products,
+    conditions = [],
+  ) {
     this.key = key
     this.name = name
     this.order = order
     this.allow_productivity = allow_prod
+    this.allow_quality = allow_quality !== false
     if (categories === undefined || categories === null) {
       categories = []
     } else if (!Array.isArray(categories)) {
@@ -366,6 +380,7 @@ function makeRecipe(data, items, d) {
     d.icon_col,
     d.icon_row,
     d.allow_productivity,
+    d.allow_quality,
     d.categories ?? d.category,
     time,
     ingredients,
@@ -401,6 +416,7 @@ class ResourceRecipe extends Recipe {
       item.icon_col,
       item.icon_row,
       false,
+      true,
       category,
       zero,
       [],
@@ -427,6 +443,7 @@ class SpoilageRecipe extends Recipe {
       to_item.icon_col,
       to_item.icon_row,
       false,
+      true,
       null,
       zero,
       [new Ingredient(from_item, one)],
@@ -446,6 +463,7 @@ class PlantRecipe extends Recipe {
       col,
       row,
       false,
+      true,
       null,
       zero,
       [new Ingredient(seed, one)],
@@ -469,7 +487,7 @@ class MiningRecipe extends Recipe {
     if (!ingredients) {
       ingredients = []
     }
-    super(key, name, order, col, row, true, category, zero, ingredients, products, [])
+    super(key, name, order, col, row, true, true, category, zero, ingredients, products, [])
     this.miningTime = miningTime
 
     this.defaultPriority = 1
@@ -484,7 +502,7 @@ class MiningRecipe extends Recipe {
 class PumpjackRecipe extends Recipe {
   [key: string]: any
   constructor(key, name, col, row, category, product) {
-    super(key, name, undefined, col, row, false, category, zero, [], [new Ingredient(product, one)], [])
+    super(key, name, undefined, col, row, false, true, category, zero, [], [new Ingredient(product, one)], [])
     this.defaultPriority = 1
     this.defaultWeight = Rational.from_float(100)
   }
@@ -496,7 +514,7 @@ class PumpjackRecipe extends Recipe {
 class OffshorePumpRecipe extends Recipe {
   [key: string]: any
   constructor(key, name, order, col, row, product) {
-    super(key, name, order, col, row, false, "offshore-pumping", zero, [], [new Ingredient(product, one)], [])
+    super(key, name, order, col, row, false, true, "offshore-pumping", zero, [], [new Ingredient(product, one)], [])
 
     this.defaultPriority = 0
     this.defaultWeight = Rational.from_float(100)
@@ -556,6 +574,7 @@ export function getRecipes(data, items) {
       reactor.icon_col,
       reactor.icon_row,
       false,
+      true,
       "nuclear",
       Rational.from_float(200),
       [new Ingredient(items.get("uranium-fuel-cell"), one)],
@@ -573,6 +592,7 @@ export function getRecipes(data, items) {
         rocket.icon_col,
         rocket.icon_row,
         false,
+        true,
         "rocket-launch",
         one,
         [
@@ -594,6 +614,7 @@ export function getRecipes(data, items) {
       steam.icon_col,
       steam.icon_row,
       false,
+      true,
       "boiler",
       one,
       [new Ingredient(items.get("water"), waterRate)],

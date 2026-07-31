@@ -48,7 +48,7 @@ Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
 
 `src/math.ts` owns exact arithmetic, matrices, the simplex primitive, display formatting, and power formatting.
 
-`src/solver.ts` owns solver contracts, cycle detection, totals, and the pure `solve()` operation. It depends only on `math.ts`.
+`src/solver.ts` owns solver contracts, cycle detection, totals, typed `SolverFailure` diagnostics, and the pure `solve()` operation. It depends only on `math.ts`.
 
 ### Factory
 
@@ -70,7 +70,7 @@ These modules must not access the DOM, D3, storage, or browser globals. `data.ts
 
 `src/presentation.ts` contains generic icons, tooltips, and dropdown primitives.
 
-`src/settings.ts`, `src/results.ts`, and `src/ui.ts` own settings, result tables, and target-row DOM respectively. Calculation policy should be called through `factory.ts`, `recipes.ts`, or `priorities.ts` rather than implemented in event handlers.
+`src/settings.ts`, `src/results.ts`, and `src/ui.ts` own settings, result tables, factory summaries and diagnostics, and target-row DOM respectively. Calculation policy should be called through `factory.ts`, `recipes.ts`, or `priorities.ts` rather than implemented in event handlers.
 
 `src/graph.ts` contains Sankey and shared graph primitives. `src/visualization.ts` contains viewport behavior, box-line rendering, and visualization selection/orchestration.
 
@@ -89,3 +89,9 @@ The module map is deliberately explicit. Update the checker alongside any intent
 The preferred module is usually a few hundred lines and owns one recognizable feature or deterministic boundary. A module may exceed that range when splitting it would separate tightly coupled behavior.
 
 Do not create tiny forwarding files solely to reduce line counts. Split only when the extracted code has an independent responsibility, stable interface, or separate test surface.
+
+## Player-model boundaries
+
+Location selection is currently a feasibility filter over a shared production graph. `factory.ts` answers which selected locations can run a recipe with the selected machine; `results.ts` presents ambiguity and transport limitations. A future per-location solver should extend the solver contract rather than hiding assignment logic in the result renderer.
+
+Quality-module compatibility belongs to `models.ts` because it combines module effects, recipe permissions, machine allowed effects, and beacon allowed effects. Quality-tier output distributions and upcycling are intentionally not approximated in the current scalar item model; implementing them requires quality-qualified item identities or a separate stochastic flow layer.

@@ -23,10 +23,11 @@ globalThis.d3 = {
 const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
 
 const { getItems, getRecipes } = await loadModule("recipes")
-const { getBelts, getBuildings, getFuel, getItemGroups, getModules, getPlanets, configureModelRuntime } = await loadModule("models")
+const { ModuleSpec, getBelts, getBuildings, getFuel, getItemGroups, getModules, getPlanets, configureModelRuntime } =
+  await loadModule("models")
 const factory = await loadModule("factory")
 const { itemMatchesSearch, formatLocationList, getUnavailableLocationInfo } = await loadModule("data")
-const { getItemProductionRecipes, setRecipeEnabled } = factory
+const { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled } = factory
 const {
   getRecipeSelectorGroups,
   getRecipeSettingsCategory,
@@ -34,7 +35,8 @@ const {
   recipeMatchesSettingsSearch,
   recipeVisibleInSettings,
 } = await loadModule("recipes")
-const { one } = await loadModule("math")
+const { one, zero } = await loadModule("math")
+const { getFactorySummary } = await loadModule("results")
 const { solve } = await loadModule("solver")
 configureModelRuntime({ getSpecification: () => factory.spec, useLegacyCalculation: () => false })
 
@@ -137,6 +139,17 @@ try {
       const spaceTotals = solve(factory.spec, [{ item: spaceScience, rate: one, recipe: null }])
       const usedRecipes = [...spaceTotals.rates.keys()]
       const usedRecipeKeys = new Set(usedRecipes.filter((recipe) => recipe.isReal()).map((recipe) => recipe.key))
+      factory.spec.populateModuleSpec(spaceTotals)
+      const spaceSummary = getFactorySummary(factory.spec, spaceTotals)
+      if (spaceSummary.recipeCount !== usedRecipeKeys.size) {
+        throw new Error(`Factory summary counted ${spaceSummary.recipeCount} recipes, expected ${usedRecipeKeys.size}`)
+      }
+      if (!zero.less(spaceSummary.exactMachines) || !zero.less(spaceSummary.electricalPower)) {
+        throw new Error("Factory summary did not calculate machine or power totals")
+      }
+      if (spaceSummary.selectedLocations.length !== 1 || spaceSummary.selectedLocations[0] !== spacePlatform) {
+        throw new Error("Factory summary did not retain the selected production location")
+      }
       const unavailableSources = usedRecipes.filter((recipe) => recipe.isDisable?.())
       if (unavailableSources.length > 0) {
         throw new Error(
@@ -158,6 +171,97 @@ try {
       }
       if (usedRecipeKeys.has("biter-egg")) {
         throw new Error("Space science used a surface-restricted captive-spawner recipe")
+      }
+
+      const qualityModule = modules.get("quality-module")
+      const qualityModule2 = modules.get("quality-module-2")
+      const qualityModule3 = modules.get("quality-module-3")
+      if (qualityModule.quality.toString() !== "1/100") {
+        throw new Error("Quality module 1 did not retain its +1% quality effect")
+      }
+      if (qualityModule2.quality.toString() !== "1/50") {
+        throw new Error("Quality module 2 did not retain its +2% quality effect")
+      }
+      if (qualityModule3.quality.toString() !== "1/40") {
+        throw new Error("Quality module 3 did not retain its +2.5% quality effect")
+      }
+      if (qualityModule.canBeacon()) {
+        throw new Error("Quality modules were incorrectly allowed in beacons")
+      }
+      const speedModule = modules.get("speed-module")
+      const speedModule2 = modules.get("speed-module-2")
+      const speedModule3 = modules.get("speed-module-3")
+      if (speedModule.quality.toString() !== "-1/100") {
+        throw new Error("Speed module 1 did not retain its -1% quality penalty")
+      }
+      if (speedModule2.quality.toString() !== "-3/200") {
+        throw new Error("Speed module 2 did not retain its -1.5% quality penalty")
+      }
+      if (speedModule3.quality.toString() !== "-1/40") {
+        throw new Error("Speed module 3 did not retain its -2.5% quality penalty")
+      }
+      if (!speedModule.canBeacon()) {
+        throw new Error("Speed modules were incorrectly excluded from beacons")
+      }
+      const electronicCircuit = recipes.get("electronic-circuit")
+      const ironOreRecipe = recipes.get("iron-ore")
+      const electricMiningDrill = buildings.find((building) => building.key === "electric-mining-drill")
+      if (!speedModule.canUse(ironOreRecipe, electricMiningDrill)) {
+        throw new Error("Default mining-drill effects were incorrectly treated as an explicit empty restriction")
+      }
+      if (!qualityModule.canUse(ironOreRecipe, electricMiningDrill)) {
+        throw new Error("Quality modules were incorrectly excluded from the electric mining drill")
+      }
+      const assembler1 = buildings.find((building) => building.key === "assembling-machine-1")
+      const assembler2 = buildings.find((building) => building.key === "assembling-machine-2")
+      if (qualityModule.canUse(electronicCircuit, assembler1)) {
+        throw new Error("Quality modules were allowed in a machine without the quality effect")
+      }
+      if (!qualityModule.canUse(electronicCircuit, assembler2)) {
+        throw new Error("Quality modules were excluded from a compatible machine")
+      }
+      if (!speedModule.canUse(electronicCircuit, assembler1)) {
+        throw new Error("A speed module quality penalty incorrectly required machine quality support")
+      }
+      const qualityDisabledRecipes = [
+        "kovarex-enrichment-process",
+        "heavy-oil-cracking",
+        "light-oil-cracking",
+        "lubricant",
+        "basic-oil-processing",
+        "advanced-oil-processing",
+        "metallic-asteroid-reprocessing",
+        "carbonic-asteroid-reprocessing",
+        "oxide-asteroid-reprocessing",
+        "steam-condensation",
+        "fish-breeding",
+        "nutrients-from-fish",
+        "nutrients-from-biter-egg",
+      ]
+      for (const key of qualityDisabledRecipes) {
+        const recipe = recipes.get(key)
+        if (recipe.allow_quality !== false || qualityModule.canUse(recipe, assembler2)) {
+          throw new Error(`${key} did not preserve its Factorio 2.1 quality restriction`)
+        }
+      }
+      const restrictedBeaconReceiver = buildings.find((building) => building.key === "oil-refinery")
+      const beaconSpec = new ModuleSpec(recipes.get("basic-oil-processing"), factory.spec)
+      beaconSpec.setBuilding(restrictedBeaconReceiver, factory.spec)
+      beaconSpec.setBeaconModule(speedModule, 0)
+      if (beaconSpec.beaconModules[0] !== speedModule) {
+        throw new Error("A compatible speed beacon was rejected by the receiver machine")
+      }
+      const receiverRestrictedBeaconModule = {
+        canBeacon: () => true,
+        canUse: (_recipe, building) => building.allowsModule(qualityModule),
+      }
+      beaconSpec.setBeaconModule(receiverRestrictedBeaconModule, 0)
+      if (beaconSpec.beaconModules[0] !== null) {
+        throw new Error("A receiver-incompatible beacon module was accepted")
+      }
+      factory.spec.setDefaultBeacon(qualityModule, 0)
+      if (factory.spec.defaultBeacon[0] !== null) {
+        throw new Error("An incompatible default beacon module was not sanitized")
       }
 
       const recyclingRecipe = recipes.get("accumulator-recycling")
@@ -246,6 +350,25 @@ try {
       factory.spec.selectedPlanets.add(aquilo)
       factory.spec.planetaryBaseline = combinedDisable
       factory.spec.disable = new Set(combinedDisable)
+      const cryogenicLocations = getRecipeLocations(
+        factory.spec,
+        cryogenicRecipe,
+        factory.spec.getBuilding(cryogenicRecipe),
+      )
+      if (cryogenicLocations.length !== 1 || cryogenicLocations[0] !== aquilo) {
+        throw new Error("Cryogenic science was not assigned exclusively to Aquilo")
+      }
+      const ironPlateRecipe = getItemProductionRecipes(items.get("iron-plate")).find(
+        (recipe) => recipe.key === "iron-plate",
+      )
+      const ironPlateLocations = getRecipeLocations(
+        factory.spec,
+        ironPlateRecipe,
+        factory.spec.getBuilding(ironPlateRecipe),
+      )
+      if (ironPlateLocations.length !== 2) {
+        throw new Error("A generally craftable recipe did not report both selected locations")
+      }
       if (getUnavailableLocationInfo(factory.spec, item) !== null) {
         throw new Error("Location warning remained after enabling a compatible production location")
       }

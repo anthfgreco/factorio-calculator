@@ -26,6 +26,18 @@ if (calculatorHtml.includes("/src/") || calculatorHtml.includes("src/main.ts")) 
 if (!calculatorHtml.includes("third_party/BigInteger.min.js")) {
   throw new Error("calc.html is missing the BigInteger runtime dependency")
 }
+if (!calculatorHtml.includes("id=\"location_toolbar\"")) {
+  throw new Error("calc.html is missing the top-level production-location control")
+}
+if (
+  !calculatorHtml.includes("id=\"changelog_tab\"") ||
+  !calculatorHtml.includes("src=\"./docs/changelog.html\"")
+) {
+  throw new Error("calc.html is missing the embedded changelog tab")
+}
+if (calculatorHtml.includes("Machine equivalents")) {
+  throw new Error("calc.html still shows the confusing machine-equivalents summary")
+}
 
 const dataPath = await requireFile("data/space-age-2.1.12.json")
 const data = JSON.parse(await readFile(dataPath, "utf8"))

@@ -85,6 +85,18 @@ export interface SolverOutput {
   recipe: SolverRecipe | null
 }
 
+export class SolverFailure extends Error {
+  readonly code: "missing-recipe" | "infeasible"
+  readonly item: SolverItem | null
+
+  constructor(code: "missing-recipe" | "infeasible", message: string, item: SolverItem | null = null) {
+    super(message)
+    this.name = "SolverFailure"
+    this.code = code
+    this.item = item
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Cycle detection
 // -----------------------------------------------------------------------------
@@ -326,7 +338,11 @@ function traverse(
   if (recipe === null) {
     let itemRecipes = spec.getRecipes(item)
     if (itemRecipes.length === 0) {
-      throw new Error(`No production recipe available for ${item.name ?? item.key ?? "unknown item"}`)
+      throw new SolverFailure(
+        "missing-recipe",
+        `No enabled production recipe can make ${item.name ?? item.key ?? "unknown item"}.`,
+        item,
+      )
     }
     if (itemRecipes.length > 1 || itemRecipes[0].products.length > 1 || cyclic.has(itemRecipes[0])) {
       result.remainder(item, rate)
@@ -524,7 +540,15 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
 
   spec.lastTableau = tableau.copy()
   spec.lastMetadata = { items, recipes: recipeArray, targets: partialSolution.targets }
-  simplex(tableau)
+  try {
+    simplex(tableau)
+  } catch (error) {
+    let detail = error instanceof Error ? error.message : String(error)
+    throw new SolverFailure(
+      "infeasible",
+      `The selected recipes and priorities do not form a feasible production plan. ${detail}`,
+    )
+  }
   spec.lastSolution = tableau
 
   for (let [row, recipe] of recipeArray.entries()) {

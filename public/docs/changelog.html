@@ -8,6 +8,24 @@
   <body>
     <h1>Changelog</h1>
 
+    <h2>2026-07-31</h2>
+
+    Added a compact factory summary with rounded machine counts, electrical power, active recipes, imported inputs,
+    and modeling warnings.
+    <p>
+      A compact location selector now appears above the calculator tabs. Multi-location plans show where each active
+      recipe can run and briefly note that transport and recipe assignment are not yet calculated.
+    </p>
+    <p>
+      Corrected module eligibility using recipe, machine, and beacon allowed effects. Quality module probabilities are
+      preserved in the 2.1.12 dataset, incompatible quality modules are no longer offered for machines or beacons, and
+      the UI explains the remaining quality-tier and upcycling limitation.
+    </p>
+    <p>
+      Added a one-click plan-link copy action and actionable error messages for missing production paths, invalid input,
+      and infeasible recipe systems.
+    </p>
+
     <h2>2026-07-30</h2>
 
     Added experimental Space Age 2.1.12 dataset and made it the default. This update includes Factorio 2.1's multiple
@@ -19,7 +37,7 @@
     <p>
       Corrected Space platform calculations by treating asteroid chunks as local resources and respecting machine
       surface restrictions. Factory rows now include controls for enabling or disabling individual production recipes,
-      and Settings clarifies that selected locations share materials without transport costs.
+      and selected locations share materials without transport costs.
     </p>
     <p>
       Reworked Recipe Settings with search by recipe, item, ingredient, or machine; crafting-category groups;

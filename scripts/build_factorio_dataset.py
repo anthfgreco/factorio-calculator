@@ -104,6 +104,22 @@ def write_json(path: Path, value: Any) -> None:
         file.write("\n")
 
 
+def normalize_allowed_effects(value: Any) -> list[str] | None:
+    """Normalize Factorio's array-or-set-like allowed_effects export.
+
+    Factorio's raw dump can represent an omitted/default limitation as an
+    empty object. Preserve that as None (all effects allowed), while keeping an
+    explicit empty array as [] (no effects allowed).
+    """
+    if isinstance(value, list):
+        return [str(effect) for effect in value]
+    if isinstance(value, dict):
+        if not value:
+            return None
+        return [str(effect) for effect, enabled in value.items() if enabled]
+    return None
+
+
 def convert_power(value: Any) -> float | int | None:
     if value is None:
         return None
@@ -489,6 +505,7 @@ class DatasetBuilder:
                     "consumption": effect.get("consumption"),
                     "pollution": effect.get("pollution"),
                     "productivity": effect.get("productivity"),
+                    "quality": effect.get("quality"),
                     "speed": effect.get("speed"),
                 }),
             })
@@ -514,7 +531,7 @@ class DatasetBuilder:
                 machine = clean_none({
                     "key": key,
                     "localized_name": {"en": self._entity_name(key)},
-                    "allowed_effects": raw.get("allowed_effects", []),
+                    "allowed_effects": normalize_allowed_effects(raw.get("allowed_effects")),
                     "crafting_categories": raw.get("crafting_categories", []),
                     "crafting_speed": raw.get("crafting_speed"),
                     "energy_source": make_energy_source(raw),
@@ -533,7 +550,7 @@ class DatasetBuilder:
             drill = clean_none({
                 "key": key,
                 "localized_name": {"en": self._entity_name(key)},
-                "allowed_effects": raw.get("allowed_effects", []),
+                "allowed_effects": normalize_allowed_effects(raw.get("allowed_effects")),
                 "energy_source": make_energy_source(raw),
                 "energy_usage": convert_power(raw.get("energy_usage")),
                 "mining_speed": raw.get("mining_speed"),
@@ -552,7 +569,7 @@ class DatasetBuilder:
             silo = clean_none({
                 "key": key,
                 "localized_name": {"en": self._entity_name(key)},
-                "allowed_effects": raw.get("allowed_effects", []),
+                "allowed_effects": normalize_allowed_effects(raw.get("allowed_effects")),
                 "crafting_categories": raw.get("crafting_categories", []),
                 "crafting_speed": raw.get("crafting_speed"),
                 "energy_usage": convert_power(raw.get("energy_usage")),
@@ -749,6 +766,7 @@ class DatasetBuilder:
             "key": key,
             "localized_name": {"en": self._recipe_name(key, main_product)},
             "allow_productivity": bool(raw.get("allow_productivity", False)),
+            "allow_quality": bool(raw.get("allow_quality", True)),
             "categories": categories,
             "energy_required": raw.get("energy_required", 0.5),
             "ingredients": ingredients,
@@ -812,7 +830,7 @@ class DatasetBuilder:
             "planets": planets,
             "recipes": recipes,
             "beacon": {
-                "allowed_effects": beacon.get("allowed_effects", []),
+                "allowed_effects": normalize_allowed_effects(beacon.get("allowed_effects")),
                 "distribution_effectivity": beacon.get("distribution_effectivity"),
                 "energy_usage": convert_power(beacon.get("energy_usage")),
                 "profile": beacon.get("profile"),

@@ -27,13 +27,25 @@
         <td class="changecell">
           <div class="changebox">
             Recent changes:<br />
-            2026-07-30 - Added Factorio 2.1.12 support, improved item and recipe search, and in-place recipe
-            selection.<br />
-            <a href="docs/changelog.html" target="_blank">Changelog</a>.
+            2026-07-31 - Improved factory planning.
           </div>
         </td>
       </tr>
     </table>
+
+    <div class="planner-toolbar">
+      <div id="location_toolbar" class="location-toolbar" hidden>
+        <span class="location-toolbar-label">Locations</span>
+        <div id="planet_selector"></div>
+        <span class="location-toolbar-help">Shift-click to combine</span>
+      </div>
+      <div class="share-controls">
+        <button id="copy_share_link" class="ui" type="button" onclick="handlers.copyShareLink()">
+          Copy plan link
+        </button>
+        <span id="share_status" role="status" aria-live="polite"></span>
+      </div>
+    </div>
 
     <div class="tabs">
       <button class="tab_button" id="totals_button" onclick="handlers.clickTab('totals')">Factory</button>
@@ -41,6 +53,7 @@
       <button class="tab_button" id="resources_button" onclick="handlers.clickTab('resources')">Resources</button>
       <button class="tab_button" id="settings_button" onclick="handlers.clickTab('settings')">Settings</button>
       <button class="tab_button" id="faq_button" onclick="handlers.clickTab('faq')">FAQ</button>
+      <button class="tab_button" id="changelog_button" onclick="handlers.clickTab('changelog')">Changelog</button>
       <button class="tab_button" id="about_button" onclick="handlers.clickTab('about')">About</button>
       <button class="tab_button" id="debug_button" onclick="handlers.clickTab('debug')">Debug</button>
     </div>
@@ -133,20 +146,20 @@
     </div>
 
     <div id="totals_tab" class="tab">
-      <table id="totals">
-        <thead>
-          <tr></tr>
-        </thead>
-        <tbody></tbody>
-        <tfoot>
-          <tr class="power-row">
-            <td class="surplus"></td>
-            <td class="right-align power-label"><b>total power: </b></td>
-            <td class="right-align pad"><tt></tt></td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
+      <div id="calculation_error" class="calculation-error" role="alert" hidden>
+        <div class="calculation-error-title"></div>
+        <div class="calculation-error-message"></div>
+        <div class="calculation-error-guidance"></div>
+      </div>
+      <div id="factory_summary" class="factory-summary" aria-live="polite" hidden></div>
+      <div class="factory-table-scroll">
+        <table id="totals">
+          <thead>
+            <tr></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="settings_tab" class="tab">
@@ -309,18 +322,6 @@
           </td>
         </tr>
 
-        <tr id="planet_setting_row" class="setting-row">
-          <td class="setting-label top">Planets:</td>
-          <td>
-            <div id="planet_selector"></div>
-            <div class="setting-help">
-              Select one planet, or Shift-click for multiple. Multiple planets share materials without transport costs.
-            </div>
-          </td>
-        </tr>
-
-        <tr style="height: 24px"></tr>
-
         <tr class="setting-row">
           <td class="setting-label top">Recipes:</td>
           <td><div id="recipe_toggles"></div></td>
@@ -345,34 +346,39 @@
         cable requirements on their own.
         <p>Clicking on the icon a second time will restore its dependencies.</p>
 
-        <h3>How do I interpret the pipe numbers on the "Factory" tab?</h3>
-        Pipe throughput is inversely proportional to the length of the pipe. This means that the longer a pipe is, the
-        more parallel lanes of pipes will be required.
-        <p>
-          Say the solution calls for 7500 units of heavy oil per second. With the default "minimum pipe length" setting,
-          the calculator will display a value of "[pipe] &times; 7 &le; 47." This means you will need seven parallel
-          lanes of pipes, each with a maximum length of 47 segments.
-        </p>
+        <h3>How do multiple production locations work?</h3>
+        Use the Locations control above to choose where recipes may run. Selecting multiple locations creates
+        one shared production plan using recipes that are possible on at least one selected location. The Factory table shows the possible location or locations for each active recipe. The
+        calculator does not yet assign ambiguous recipes to a planet or include rocket and platform transport costs.
+        Machine electric-power totals exclude beacon buildings because the calculator does not assume a physical
+        beacon-sharing layout.
 
-        <p>
-          The "minimum pipe length" setting controls the minimum number of segments that a pipe will be permitted before
-          the calculator uses multiple lanes of pipes. It defaults to 17, which corresponds to a fluid rate of 1200/s,
-          which is the output rate of an offshore pump.
-        </p>
+        <h3>How is quality handled?</h3>
+        The calculator validates whether quality modules are allowed in the selected machine and recipe, includes their
+        electricity effect, and prevents them from being placed in beacons. Speed modules retain their negative quality
+        modifier, but the calculator does not yet split production into quality tiers or calculate recycling-based
+        upcycling yields.
 
-        <p>The number of pipes will be omitted if only one pipe is required.</p>
+        <h3>Why did the calculator reject my plan?</h3>
+        The Factory tab now explains when no enabled recipe can produce an item or when a cyclic, multi-output recipe
+        system is infeasible. Enable a compatible recipe or location, choose an alternate recipe, adjust resource
+        priority, or treat an input as imported by clicking its item icon.
       </div>
+    </div>
+
+    <div id="changelog_tab" class="tab">
+      <iframe
+        class="changelog-frame"
+        src="./docs/changelog.html"
+        title="Factorio Calculator changelog"
+        loading="lazy"
+      ></iframe>
     </div>
 
     <div id="about_tab" class="tab">
       <div class="about-content">
         This is a maintained fork of Kirk McDonald's Factorio Calculator, licensed under the Apache License 2.0. The
         source is available <a href="https://github.com/anthfgreco/factorio-calculator">on GitHub</a>.
-        <p>
-          Kirk McDonald's original essay describing the calculator's recipe-graph approach is available
-          <a href="posts/calculation.html">here</a>.
-        </p>
-
         <p>Features of this calculator include:</p>
 
         <ul>
@@ -380,7 +386,9 @@
             Proper handling of oil products. Obtaining numbers for these recipes can be tricky, as several of the items
             involved may be produced from multiple recipes.
           </li>
-          <li>Support for modules, including beacons.</li>
+          <li>Support for Factorio 2.1 and Space Age production locations, recipes, recycling, machines, and modules.</li>
+          <li>Compatibility-aware modules and beacons, including Factorio 2.0+ beacon profiles.</li>
+          <li>Factory summaries, in-row alternate recipe selection, and shareable URL state.</li>
           <li>Support for the mining productivity bonus, introduced in 0.15.</li>
           <li>Support for "expensive" mode.</li>
           <li>

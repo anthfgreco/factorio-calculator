@@ -11,6 +11,7 @@ declare global {
     plusHandler: () => void
     clickTab: (tabName: string) => void
     clickVisualize: () => void
+    copyShareLink: () => Promise<void>
     changeTitle: (event: Event) => void
     changeRatePrecision: (event: Event) => void
     changeCountPrecision: (event: Event) => void

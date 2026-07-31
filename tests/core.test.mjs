@@ -19,6 +19,7 @@ const { Matrix } = await load("math")
 const { Rational, one, zero } = await load("math")
 const { itemMatchesSearch } = await load("data")
 const { PriorityList } = await load("priorities")
+const { solve, SolverFailure } = await load("solver")
 
 test("dataset parser accepts the generated Space Age dataset", async () => {
   const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
@@ -31,6 +32,16 @@ test("dataset parser reports the failing path", () => {
   assert.throws(
     () => parseCalculatorData({ items: [] }),
     (error) => error instanceof DatasetValidationError && error.path === "recipes",
+  )
+})
+
+test("dataset parser rejects malformed machine effect lists", async () => {
+  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
+  raw.crafting_machines[0].allowed_effects = {}
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) =>
+      error instanceof DatasetValidationError && error.path === "crafting_machines[0].allowed_effects",
   )
 })
 
@@ -55,6 +66,36 @@ test("search handles aliases and spaced names", () => {
   assert.equal(zero.toString(), "0")
 })
 
+
+
+test("solver reports a missing production path", () => {
+  const item = {
+    key: "unproducible-item",
+    name: "Unproducible item",
+    recipes: [],
+    uses: [],
+    disableRecipe: null,
+  }
+  const specification = {
+    ignore: new Set(),
+    buildTargets: [],
+    priority: [],
+    fuel: { item },
+    lastPartial: null,
+    lastTableau: null,
+    lastMetadata: null,
+    lastSolution: null,
+    getRecipes: () => [],
+    getRecipeGraph: () => new Set(),
+    getProdEffect: () => one,
+    getBuilding: () => null,
+  }
+
+  assert.throws(
+    () => solve(specification, [{ item, rate: one, recipe: null }]),
+    (error) => error instanceof SolverFailure && error.code === "missing-recipe" && error.item === item,
+  )
+})
 
 test("priority model stays deterministic without a DOM", () => {
   const low = { key: "low", isResource: () => true, defaultPriority: 0, defaultWeight: Rational.from_integer(2) }

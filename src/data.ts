@@ -58,6 +58,7 @@ export interface RecipeData extends SpriteReference {
   ingredients: RecipeAmountData[]
   results: RecipeAmountData[]
   allow_productivity: boolean
+  allow_quality?: boolean
   order: string
   subgroup: string
   surface_conditions?: SurfaceCondition[]
@@ -223,6 +224,35 @@ function validateRecipes(value: unknown): void {
     if (recipe.categories !== undefined && !Array.isArray(recipe.categories)) {
       throw new DatasetValidationError(`${path}.categories`, "expected an array")
     }
+    if (recipe.allow_productivity !== undefined && typeof recipe.allow_productivity !== "boolean") {
+      throw new DatasetValidationError(`${path}.allow_productivity`, "expected a boolean")
+    }
+    if (recipe.allow_quality !== undefined && typeof recipe.allow_quality !== "boolean") {
+      throw new DatasetValidationError(`${path}.allow_quality`, "expected a boolean")
+    }
+  }
+}
+
+function validateMachines(value: unknown, path: string): void {
+  for (let [index, entry] of requireArray(value, path).entries()) {
+    let machinePath = `${path}[${index}]`
+    let machine = requireRecord(entry, machinePath)
+    requireString(machine.key, `${machinePath}.key`)
+    if (machine.allowed_effects !== undefined) {
+      let effects = requireArray(machine.allowed_effects, `${machinePath}.allowed_effects`)
+      for (let [effectIndex, effect] of effects.entries()) {
+        requireString(effect, `${machinePath}.allowed_effects[${effectIndex}]`)
+      }
+    }
+  }
+}
+
+function validateModules(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "modules").entries()) {
+    let path = `modules[${index}]`
+    let module = requireRecord(entry, path)
+    requireString(module.item_key, `${path}.item_key`)
+    requireRecord(module.effect, `${path}.effect`)
   }
 }
 
@@ -231,11 +261,11 @@ export function parseCalculatorData(value: unknown): CalculatorData {
   let data = requireRecord(value, "dataset")
   validateKeyedEntries(data.items, "items")
   validateRecipes(data.recipes)
-  validateKeyedEntries(data.crafting_machines, "crafting_machines")
-  validateKeyedEntries(data.mining_drills, "mining_drills")
+  validateMachines(data.crafting_machines, "crafting_machines")
+  validateMachines(data.mining_drills, "mining_drills")
   validateKeyedEntries(data.belts, "belts")
   requireArray(data.fuel, "fuel")
-  requireArray(data.modules, "modules")
+  validateModules(data.modules)
   requireArray(data.resources, "resources")
   requireRecord(data.groups, "groups")
   requireRecord(data.sprites, "sprites")

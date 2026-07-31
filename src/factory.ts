@@ -34,6 +34,7 @@ export interface FactoryViewPort {
   mountBuildTarget(target: any): void
   removeBuildTarget(target: any): void
   renderSolution(specification: unknown, totals: unknown): void
+  renderCalculationError(specification: unknown, error: unknown): void
   persistUrlState(): void
   renderDebug(): void
 }
@@ -239,6 +240,25 @@ export function unselectLocation(specification, location): void {
   syncLocationDisabledRecipes(specification)
 }
 
+export function getRecipeLocations(specification, recipe, building = null) {
+  if (!specification.selectedPlanets || specification.selectedPlanets.size === 0) {
+    return []
+  }
+
+  let result = []
+  for (let location of specification.selectedPlanets) {
+    if (!location.allowsRecipe(recipe)) {
+      continue
+    }
+    if (building !== null && !location.allowsBuilding(building)) {
+      continue
+    }
+    result.push(location)
+  }
+  result.sort((a, b) => a.order.localeCompare(b.order))
+  return result
+}
+
 // -----------------------------------------------------------------------------
 // Recipe selection commands
 // -----------------------------------------------------------------------------
@@ -289,6 +309,7 @@ export class FactorySpecification {
   defaultPriority: Map<any, Rational>[] | null
   format: Formatter
   lastTotals: any
+  lastError: unknown
   lastPartial: any
   lastTableau: any
   lastMetadata: any
@@ -336,6 +357,7 @@ export class FactorySpecification {
     this.format = new Formatter()
 
     this.lastTotals = null
+    this.lastError = null
 
     this.lastPartial = null
     this.lastTableau = null
@@ -493,14 +515,18 @@ export class FactorySpecification {
   setDefaultModule(module) {
     for (let [recipe, moduleSpec] of this.spec) {
       for (let i = 0; i < moduleSpec.modules.length; i++) {
-        let m = moduleSpec.modules[i]
-        if (m === this.defaultModule && (!module || module.canUse(recipe))) {
+        if (moduleSpec.modules[i] !== this.defaultModule) {
+          continue
+        }
+        if (module === null || module.canUse(recipe, moduleSpec.building)) {
           moduleSpec.modules[i] = module
         } else if (
-          m === this.defaultModule &&
-          (!this.secondaryDefaultModule || this.secondaryDefaultModule.canUse(recipe))
+          this.secondaryDefaultModule === null ||
+          this.secondaryDefaultModule.canUse(recipe, moduleSpec.building)
         ) {
           moduleSpec.modules[i] = this.secondaryDefaultModule
+        } else {
+          moduleSpec.modules[i] = null
         }
       }
     }
@@ -511,8 +537,8 @@ export class FactorySpecification {
       for (let [recipe, moduleSpec] of this.spec) {
         for (let i = 0; i < moduleSpec.modules.length; i++) {
           let m = moduleSpec.modules[i]
-          if (m === this.secondaryDefaultModule && (!module || module.canUse(recipe))) {
-            moduleSpec.modules[i] = module
+          if (m === this.secondaryDefaultModule) {
+            moduleSpec.modules[i] = !module || module.canUse(recipe, moduleSpec.building) ? module : null
           }
         }
       }
@@ -521,11 +547,11 @@ export class FactorySpecification {
   }
   // Gets the default module for this recipe, given the current
   // default/secondary settings.
-  getDefaultModule(recipe) {
-    if (this.defaultModule === null || this.defaultModule.canUse(recipe)) {
+  getDefaultModule(recipe, building = this.getBuilding(recipe)) {
+    if (this.defaultModule === null || this.defaultModule.canUse(recipe, building)) {
       return this.defaultModule
     }
-    if (this.secondaryDefaultModule === null || this.secondaryDefaultModule.canUse(recipe)) {
+    if (this.secondaryDefaultModule === null || this.secondaryDefaultModule.canUse(recipe, building)) {
       return this.secondaryDefaultModule
     }
     return null
@@ -534,13 +560,17 @@ export class FactorySpecification {
     return this.defaultBeacon[0] === null && this.defaultBeacon[1] === null
   }
   setDefaultBeacon(module, i) {
-    for (let [recipe, moduleSpec] of this.spec) {
-      let m = moduleSpec.beaconModules[i]
-      if (m === this.defaultBeacon[i] && (!module || module.canUse(recipe))) {
-        moduleSpec.beaconModules[i] = module
+    let compatibleModule = module === null || module.canBeacon() ? module : null
+    for (let moduleSpec of this.spec.values()) {
+      let currentModule = moduleSpec.beaconModules[i]
+      if (currentModule === this.defaultBeacon[i]) {
+        moduleSpec.beaconModules[i] =
+          compatibleModule === null || compatibleModule.canUse(moduleSpec.recipe, moduleSpec.building)
+            ? compatibleModule
+            : null
       }
     }
-    this.defaultBeacon[i] = module
+    this.defaultBeacon[i] = compatibleModule
   }
   setDefaultBeaconCount(count) {
     for (let [recipe, moduleSpec] of this.spec) {
@@ -689,9 +719,20 @@ export class FactorySpecification {
   // The top-level calculation function. Called whenever the solution
   // requires recalculation.
   updateSolution() {
-    this.lastTotals = this.solve()
-    this.populateModuleSpec(this.lastTotals)
-    this.display()
+    try {
+      this.lastTotals = this.solve()
+      this.lastError = null
+      this.populateModuleSpec(this.lastTotals)
+      this.display()
+    } catch (error) {
+      this.lastTotals = null
+      this.lastError = error
+      this.view?.renderCalculationError(this, error)
+      this.persistUrlState()
+      if (this.debug) {
+        this.view?.renderDebug()
+      }
+    }
   }
   // Re-renders the current solution, without re-computing it.
   //
@@ -705,7 +746,13 @@ export class FactorySpecification {
     for (let target of this.buildTargets) {
       target.getRate()
     }
-    this.view?.renderSolution(this, this.lastTotals)
+    if (this.lastTotals === null) {
+      if (this.lastError !== null) {
+        this.view?.renderCalculationError(this, this.lastError)
+      }
+    } else {
+      this.view?.renderSolution(this, this.lastTotals)
+    }
     this.persistUrlState()
 
     if (this.debug) {

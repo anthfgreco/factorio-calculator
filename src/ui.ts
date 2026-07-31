@@ -224,7 +224,7 @@ export class BuildTarget {
     this.locationWarning
       .select(".location-warning-title")
       .text(`Unavailable on selected ${selectedLabel}: ${formatLocationList(info.selectedLocations, "and")}`)
-    this.locationWarning.select(".location-warning-message").text("Update locations in Settings.")
+    this.locationWarning.select(".location-warning-message").text("Choose a compatible production location above.")
     this.locationWarning.style("display", null)
   }
   enableCompatibleLocations() {
@@ -234,7 +234,9 @@ export class BuildTarget {
         spec.selectPlanet(location)
       }
     }
-    d3.selectAll("#planet_selector .toggle").classed("selected", (location) => spec.selectedPlanets.has(location))
+    d3.selectAll("#planet_selector .toggle")
+      .classed("selected", (location) => spec.selectedPlanets.has(location))
+      .attr("aria-pressed", (location) => String(spec.selectedPlanets.has(location)))
     refreshRecipeSettings(spec)
     spec.updateSolution()
   }

@@ -62,7 +62,7 @@ Use `pnpm format` before committing. `pnpm verify` is the release gate and build
 - Do not add new mutable globals. Existing `spec` is a compatibility facade; prefer methods and policies over direct property mutation.
 - Keep URL fragments backward-compatible unless the task explicitly permits a migration.
 - Preserve every bundled dataset and run `pnpm validate:runtime` after model or solver changes.
-- Never manually edit generated sprite coordinates or generated 2.1.12 recipe values. Regenerate them from the official export.
+- Never manually edit generated sprite coordinates or generated 2.1.12 game values. Fix the exporter and regenerate the bundled output from the official export; keep extractor changes and generated output together.
 - Add the smallest high-signal test that would have caught a bug before fixing it.
 
 ## Working style for agents

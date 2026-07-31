@@ -1,4 +1,4 @@
-import { getItemProductionRecipes, setRecipeEnabled, spec } from "./factory.js"
+import { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled, spec } from "./factory.js"
 import { one, powerRepresentation, Rational, zero } from "./math.js"
 import { moduleDropdown, moduleRows } from "./models.js"
 import { addInputs, Icon, makeDropdown } from "./presentation.js"
@@ -348,7 +348,7 @@ class ModuleSlot {
       let j = 0
       for (; j < modules.length; j++) {
         let module = modules[j]
-        if (module === null || module.canUse(mSpec.recipe)) {
+        if (module === null || module.canUse(mSpec.recipe, mSpec.building)) {
           if (rowIndex > inputRow.length - 1) {
             inputRow.push(new ModuleInput())
           }
@@ -399,10 +399,19 @@ class BeaconCell {
     this.row = row
     this.index = index
     this.inputRows = []
+  }
+  setData(moduleSpec) {
+    this.inputRows.length = 0
+    if (moduleSpec === null) {
+      return
+    }
     for (let row of moduleRows) {
       let inputRow = []
       for (let module of row) {
-        if (module === null || module.canBeacon()) {
+        if (
+          module === null ||
+          (module.canBeacon() && module.canUse(moduleSpec.recipe, moduleSpec.building))
+        ) {
           inputRow.push(new BeaconInput(this, module))
         }
       }
@@ -429,6 +438,9 @@ class DisplayRow {
     this.moduleSpec = moduleSpec
     this.single = single
     this.breakdown = breakdown
+    for (let beaconCell of this.beaconModules) {
+      beaconCell.setData(moduleSpec)
+    }
   }
 }
 
@@ -618,13 +630,187 @@ class PipeIcon {
   }
 }
 
+function formatLocationNames(locations) {
+  return locations.map((location) => location.name).join(" / ")
+}
+
+function getLocationCellText(specification, recipe, building) {
+  if (recipe === null || !recipe.isReal?.()) {
+    return ""
+  }
+  let locations = getRecipeLocations(specification, recipe, building)
+  if (locations.length === 0) {
+    return "Unavailable"
+  }
+  if (locations.length === specification.selectedPlanets.size && locations.length > 2) {
+    return "Any selected"
+  }
+  if (locations.length > 2) {
+    return `${locations.length} locations`
+  }
+  return formatLocationNames(locations)
+}
+
+function hasQualityModules(moduleSpec) {
+  return moduleSpec?.modules.some((module) => module?.category === "quality") ?? false
+}
+
+export function getFactorySummary(specification, totals) {
+  let exactMachines = zero
+  let placedMachines = zero
+  let electricalPower = zero
+  let recipeCount = 0
+  let ambiguousRecipeCount = 0
+  let qualityRecipeCount = 0
+  let beaconedRecipeCount = 0
+
+  for (let [recipe, rate] of totals.rates) {
+    if (!recipe.isReal?.()) {
+      continue
+    }
+    recipeCount++
+    let building = specification.getBuilding(recipe)
+    if (building === null) {
+      continue
+    }
+
+    let count = specification.getCount(recipe, rate)
+    exactMachines = exactMachines.add(count)
+    placedMachines = placedMachines.add(count.ceil())
+
+    let { fuel, power } = specification.getPowerUsage(recipe, rate)
+    if (fuel === "electric") {
+      electricalPower = electricalPower.add(power)
+    }
+
+    if (getRecipeLocations(specification, recipe, building).length > 1) {
+      ambiguousRecipeCount++
+    }
+    let moduleSpec = specification.getModuleSpec(recipe)
+    if (hasQualityModules(moduleSpec)) {
+      qualityRecipeCount++
+    }
+    if (
+      moduleSpec !== undefined &&
+      !moduleSpec.beaconCount.isZero() &&
+      moduleSpec.beaconModules.some((module) => module !== null)
+    ) {
+      beaconedRecipeCount++
+    }
+  }
+
+  let selectedLocations = [...(specification.selectedPlanets ?? [])].sort((a, b) => a.order.localeCompare(b.order))
+  let importedItems = [...specification.ignore]
+    .filter((item) => totals.items.has(item))
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  return {
+    exactMachines,
+    placedMachines,
+    electricalPower,
+    recipeCount,
+    ambiguousRecipeCount,
+    qualityRecipeCount,
+    beaconedRecipeCount,
+    selectedLocations,
+    importedItems,
+  }
+}
+
+function renderFactorySummary(specification, totals) {
+  let summary = getFactorySummary(specification, totals)
+  let root = d3.select("#factory_summary").property("hidden", false)
+  let { power, suffix } = powerRepresentation(summary.electricalPower)
+  let cards = [
+    { label: "Active recipes", value: String(summary.recipeCount) },
+    { label: "Machines to place", value: summary.placedMachines.toDecimal(0) },
+    { label: "Machine electric power", value: `${specification.format.count(power)} ${suffix}` },
+  ]
+  let card = root
+    .selectAll("div.factory-summary-card")
+    .data(cards, (entry) => entry.label)
+    .join("div")
+    .classed("factory-summary-card", true)
+  card
+    .selectAll("div.factory-summary-value")
+    .data((entry) => [entry])
+    .join("div")
+    .classed("factory-summary-value", true)
+    .text((entry) => entry.value)
+  card
+    .selectAll("div.factory-summary-label")
+    .data((entry) => [entry])
+    .join("div")
+    .classed("factory-summary-label", true)
+    .text((entry) => entry.label)
+
+  let warnings = []
+  if (summary.selectedLocations.length > 1) {
+    let ambiguity =
+      summary.ambiguousRecipeCount === 0
+        ? ""
+        : ` ${summary.ambiguousRecipeCount} recipe${summary.ambiguousRecipeCount === 1 ? " has" : "s have"} multiple possible locations.`
+    warnings.push(`Shared materials; transport is not modeled.${ambiguity}`)
+  }
+  if (summary.qualityRecipeCount > 0) {
+    warnings.push(
+      "Quality module compatibility and electricity are modeled, but output quality tiers are not. Adding quality modules does not change requested output rates or calculate target-quality and upcycling yields.",
+    )
+  }
+  if (summary.beaconedRecipeCount > 0) {
+    warnings.push(
+      "Machine electric power excludes the beacon buildings themselves because shared beacon layouts do not have a single implied beacon count.",
+    )
+  }
+  if (summary.importedItems.length > 0) {
+    warnings.push(`Treated as imported: ${summary.importedItems.map((item) => item.name).join(", ")}.`)
+  }
+
+  root
+    .selectAll("div.factory-summary-warning")
+    .data(warnings)
+    .join("div")
+    .classed("factory-summary-warning", true)
+    .text((warning) => warning)
+}
+
+export function displayCalculationError(_specification, error) {
+  let code = error && typeof error === "object" ? error.code : null
+  let message = error instanceof Error ? error.message : String(error)
+  let title = "Unable to calculate this factory"
+  let guidance = "Check the target values, selected recipes, machines, locations, and resource priorities."
+
+  if (code === "missing-recipe") {
+    guidance =
+      "Choose a compatible production location above, enable a recipe in Settings, choose another recipe, or click the item icon in the Factory table to treat that item as imported."
+  } else if (code === "infeasible") {
+    guidance =
+      "Review alternate recipes and resource priorities. A cyclic or multi-output chain may require at least one additional recipe or imported input."
+  } else if (/integer|number|denominator|divide|invalid/i.test(message)) {
+    title = "Invalid numeric value"
+    guidance = "Use a whole number, decimal, or fraction such as 60, 2.5, or 1/3."
+  }
+
+  let root = d3.select("#calculation_error").property("hidden", false)
+  root.select(".calculation-error-title").text(title)
+  root.select(".calculation-error-message").text(message)
+  root.select(".calculation-error-guidance").text(guidance)
+  d3.select("#factory_summary").property("hidden", true)
+  d3.select("table#totals").property("hidden", true)
+}
+
 export function displayItems(spec, totals) {
+  d3.select("#calculation_error").property("hidden", true)
+  d3.select("table#totals").property("hidden", false)
+  renderFactorySummary(spec, totals)
+  let showLocations = spec.selectedPlanets?.size > 1
   let headers = [
     new Header("", 1),
     new Header("items/" + spec.format.rateName, 2),
     new Header("surplus/" + spec.format.rateName, 1, true),
     new Header("belts", 2),
     new Header("buildings", 2),
+    ...(showLocations ? [new Header("location", 1)] : []),
     new Header("modules", 1),
     new Header("beacons", 1),
     new Header("power", 2),
@@ -692,6 +878,9 @@ export function displayItems(spec, totals) {
       // cell 8: building count
       row.append("td").classed("right-align building", true).append("tt").classed("building-count", true)
 
+      // Production location for multi-location plans.
+      row.append("td").classed("location-cell", true)
+
       // cell 9: modules
       let moduleCell = row.append("td").classed("pad building module module-cell", true)
 
@@ -739,6 +928,18 @@ export function displayItems(spec, totals) {
     .classed("nobuilding", (d) => d.building === null)
     .classed("nomodule", (d) => d.moduleSpec === null)
     .classed("noitem", (d) => d.item === null)
+  row
+    .selectAll("td.location-cell")
+    .classed("hide", !showLocations)
+    .attr("title", (d) => {
+      if (d.recipe === null) {
+        return null
+      }
+      let locations = getRecipeLocations(spec, d.recipe, d.building)
+      return locations.length === 0 ? "Unavailable on selected locations" : formatLocationNames(locations)
+    })
+    .text((d) => getLocationCellText(spec, d.recipe, d.building))
+
   // Update row data.
   let itemRow = row.filter((d) => d.item !== null)
   let itemIcon = itemRow.selectAll(".item-icon")
@@ -815,12 +1016,10 @@ export function displayItems(spec, totals) {
     return `${spec.format.alignRate(power.div(spec.fuel.value))}/${spec.format.rateName}`
   })
   let electricRow = buildingRow.filter((d) => d.building.fuel === null)
-  let totalPower = zero
   electricRow.selectAll(".fuel-icon").selectAll("*").remove()
   electricRow.selectAll("tt.power").text((d) => {
     let rate = totals.rates.get(d.recipe)
     let { fuel, power } = spec.getPowerUsage(d.recipe, rate)
-    totalPower = totalPower.add(power)
     return alignPower(power)
   })
   refreshRecipeSettings(spec)
@@ -901,9 +1100,4 @@ export function displayItems(spec, totals) {
     .classed("right-align", true)
     .append("tt")
     .text((d) => d.percent)
-
-  let footerRow = table.select("tfoot tr")
-  footerRow.select("td.power-label").attr("colspan", totalCols - 3)
-  footerRow.select("tt").text((d) => alignPower(totalPower))
-  table.select("tfoot").raise()
 }

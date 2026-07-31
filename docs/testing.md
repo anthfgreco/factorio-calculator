@@ -54,7 +54,8 @@ Prefer a few high-signal tests:
 
 - exact solver/math results
 - dataset rejection paths
-- recipe/location/machine eligibility
+- recipe/location/machine/module/beacon eligibility
+- typed solver failures and impossible-plan diagnostics
 - state serialization round trips
 - regressions reported by users
 

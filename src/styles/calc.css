@@ -287,7 +287,64 @@ table.resource input[type="radio"] + label:hover {
 table.resource input[type="radio"]:checked + label {
   fill: var(--accent);
 }
-/* tabs */
+/* planner toolbar and tabs */
+.planner-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55em;
+  margin: 0.35em 0;
+}
+.location-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.25em 0.45em;
+  border: 1px solid var(--light);
+  border-radius: 0.3em;
+  background: var(--main);
+}
+.location-toolbar[hidden] {
+  display: none;
+}
+.location-toolbar-label {
+  color: var(--bright);
+  font-size: 0.9em;
+  font-weight: bold;
+}
+.location-toolbar-help {
+  color: var(--foreground);
+  font-size: 0.75em;
+  white-space: nowrap;
+}
+#planet_selector {
+  display: flex;
+  flex-wrap: wrap;
+}
+#planet_selector .location-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2em;
+  margin: 1px;
+  padding: 1px 3px;
+  border-width: 1px;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.9em;
+}
+#planet_selector .location-toggle.selected {
+  color: var(--bright);
+}
+#planet_selector .location-name {
+  padding-right: 0.2em;
+}
+.share-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  margin-left: auto;
+}
 div.tabs {
   overflow: hidden;
 }
@@ -318,6 +375,83 @@ div.tab {
   padding: 0.5em;
   background-color: var(--main);
 }
+
+#copy_share_link {
+  cursor: pointer;
+  padding: 0.35em 0.7em;
+}
+#share_status {
+  color: var(--bright);
+  font-size: 0.9em;
+}
+.factory-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  margin-bottom: 0.75em;
+}
+.factory-summary[hidden] {
+  display: none;
+}
+.factory-summary-card {
+  min-width: 9em;
+  padding: 0.55em 0.7em;
+  border: 1px solid var(--light);
+  border-radius: 0.35em;
+  background: var(--medium);
+}
+.factory-summary-value {
+  color: var(--bright);
+  font-family: monospace;
+  font-size: 1.05em;
+}
+.factory-summary-label {
+  margin-top: 0.15em;
+  font-size: 0.8em;
+}
+.factory-summary-warning {
+  flex-basis: 100%;
+  padding: 0.55em 0.7em;
+  border-left: 3px solid var(--accent);
+  background: var(--medium);
+  line-height: 1.35;
+}
+.calculation-error {
+  max-width: 52em;
+  margin-bottom: 0.75em;
+  padding: 0.8em 1em;
+  border: 1px solid var(--accent);
+  border-left-width: 4px;
+  border-radius: 0.35em;
+  background: var(--medium);
+}
+.calculation-error-title {
+  color: var(--bright);
+  font-weight: bold;
+}
+.calculation-error-message {
+  margin-top: 0.35em;
+  font-family: monospace;
+}
+.calculation-error-guidance {
+  margin-top: 0.55em;
+  line-height: 1.35;
+}
+.factory-table-scroll {
+  overflow-x: auto;
+}
+td.location-cell {
+  max-width: 11em;
+  padding-right: 0.75em;
+  padding-left: 0.75em;
+  color: var(--bright);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+td.location-cell.hide {
+  display: none;
+}
+
 /* visualizer */
 div.graph {
   /*min-width: max-content;*/
@@ -395,13 +529,11 @@ tr.display-row .item-icon img {
 }
 tr.display-row td,
 tr.factory-header th,
-tr.breakdown-row td,
-tr.power-row td {
+tr.breakdown-row td {
   padding-top: 8px;
   padding-bottom: 8px;
 }
-tbody.display-group > tr:first-child td,
-tr.power-row td {
+tbody.display-group > tr:first-child td {
   border-top: 1px solid var(--light);
 }
 tbody.display-group.multi td.leftmost {
@@ -669,4 +801,11 @@ button.recipe-setting-toggle.unavailable:hover {
 /* Extra separation before the large recipe browser. */
 tr.recipe-setting-section td {
   padding-top: 2.25em;
+}
+
+.changelog-frame {
+  width: 100%;
+  min-height: 70vh;
+  border: 0;
+  background: var(--dark);
 }

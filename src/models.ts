@@ -210,7 +210,20 @@ let thirty = Rational.from_float(30)
 
 class Building {
   [key: string]: any
-  constructor(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel, conditions = []) {
+  constructor(
+    key,
+    name,
+    col,
+    row,
+    categories,
+    speed,
+    prodBonus,
+    moduleSlots,
+    power,
+    fuel,
+    conditions = [],
+    allowedEffects = null,
+  ) {
     this.key = key
     this.name = name
     this.categories = new Set(categories)
@@ -220,6 +233,17 @@ class Building {
     this.power = power
     this.fuel = fuel
     this.conditions = conditions ?? []
+    if (allowedEffects === null || allowedEffects === undefined) {
+      this.allowedEffects = null
+    } else if (Array.isArray(allowedEffects)) {
+      this.allowedEffects = new Set(allowedEffects)
+    } else {
+      this.allowedEffects = new Set(
+        Object.entries(allowedEffects)
+          .filter(([, enabled]) => enabled)
+          .map(([effect]) => effect),
+      )
+    }
 
     this.icon_col = col
     this.icon_row = row
@@ -241,6 +265,17 @@ class Building {
   }
   allowedOn(location) {
     return location.allowsConditions(this.conditions)
+  }
+  allowsModule(module) {
+    if (module === null || this.allowedEffects === null) {
+      return true
+    }
+    for (let effect of module.requiredEffectTypes()) {
+      if (!this.allowedEffects.has(effect)) {
+        return false
+      }
+    }
+    return true
   }
   getCount(spec, recipe, rate) {
     return rate.div(this.getRecipeRate(spec, recipe))
@@ -286,8 +321,20 @@ class Building {
 
 class Miner extends Building {
   [key: string]: any
-  constructor(key, name, col, row, categories, miningSpeed, moduleSlots, power, fuel, conditions = []) {
-    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions)
+  constructor(
+    key,
+    name,
+    col,
+    row,
+    categories,
+    miningSpeed,
+    moduleSlots,
+    power,
+    fuel,
+    conditions = [],
+    allowedEffects = null,
+  ) {
+    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions, allowedEffects)
     this.miningSpeed = miningSpeed
   }
   less(other) {
@@ -473,6 +520,7 @@ export function getBuildings(data, items) {
         Rational.from_float_approximate(d.energy_usage),
         fuel,
         d.surface_conditions ?? [],
+        d.allowed_effects ?? null,
       ),
     )
   }
@@ -490,6 +538,7 @@ export function getBuildings(data, items) {
         Rational.from_float_approximate(d.energy_usage),
         null,
         d.surface_conditions ?? [],
+        d.allowed_effects ?? null,
       ),
     )
   }
@@ -518,6 +567,7 @@ export function getBuildings(data, items) {
         Rational.from_float_approximate(d.energy_usage),
         fuel,
         d.surface_conditions ?? [],
+        d.allowed_effects ?? null,
       ),
     )
   }
@@ -539,15 +589,33 @@ function percent(x) {
 
 class Module {
   [key: string]: any
-  constructor(key, name, col, row, category, order, productivity, speed, power) {
-    // Other module effects not modeled by this calculator.
+  constructor(key, name, col, row, category, order, productivity, quality, speed, power, pollution) {
+    // Pollution is retained in the dataset but does not affect production rates.
     this.key = key
     this.name = name
     this.category = category
     this.order = order
     this.productivity = productivity
+    this.quality = quality
     this.speed = speed
     this.power = power
+    this.pollution = pollution
+    this.effectTypes = new Set()
+    if (!power.isZero()) {
+      this.effectTypes.add("consumption")
+    }
+    if (!speed.isZero()) {
+      this.effectTypes.add("speed")
+    }
+    if (!productivity.isZero()) {
+      this.effectTypes.add("productivity")
+    }
+    if (!quality.isZero() || category === "quality") {
+      this.effectTypes.add("quality")
+    }
+    if (!pollution.isZero()) {
+      this.effectTypes.add("pollution")
+    }
 
     this.icon_col = col
     this.icon_row = row
@@ -558,17 +626,40 @@ class Module {
   shortName() {
     return this.key[0] + this.key[this.key.length - 1]
   }
-  canUse(recipe) {
+  requiredEffectTypes(): Set<string> {
+    const effects = new Set<string>(this.effectTypes)
+    // Speed modules reduce quality in Factorio 2.1, but that penalty does not
+    // require a machine or beacon to advertise support for positive quality.
+    if (this.quality.less(zero)) {
+      effects.delete("quality")
+    }
+    return effects
+  }
+  canUse(recipe, building = null) {
+    if (building !== null && !building.allowsModule(this)) {
+      return false
+    }
     if (this.hasProdEffect() && !recipe.allow_productivity) {
+      return false
+    }
+    if ((this.category === "quality" || zero.less(this.quality)) && recipe.allow_quality === false) {
       return false
     }
     return true
   }
   canBeacon() {
-    return this.productivity.isZero()
+    for (let effect of this.requiredEffectTypes()) {
+      if (!beaconAllowedEffects.has(effect)) {
+        return false
+      }
+    }
+    return true
   }
   hasProdEffect() {
     return !this.productivity.isZero()
+  }
+  hasQualityEffect() {
+    return !this.quality.isZero() || this.category === "quality"
   }
   renderTooltip() {
     let self = this
@@ -591,6 +682,16 @@ class Module {
       line = t.append("div")
       line.append("b").text("Productivity: ")
       line.append("span").text(percent(this.productivity))
+    }
+    if (!this.quality.isZero()) {
+      line = t.append("div")
+      line.append("b").text("Quality: ")
+      line.append("span").text(percent(this.quality))
+    }
+    if (!this.pollution.isZero()) {
+      line = t.append("div")
+      line.append("b").text("Pollution: ")
+      line.append("span").text(percent(this.pollution))
     }
     return t.node()
   }
@@ -646,7 +747,7 @@ export class ModuleSpec {
     this.recipe = recipe
     this.building = null
     this.modules = []
-    this.beaconModules = [spec.defaultBeacon[0], spec.defaultBeacon[1]]
+    this.beaconModules = spec.defaultBeacon.map((module) => (module === null || module.canBeacon() ? module : null))
     this.beaconCount = spec.defaultBeaconCount
   }
   setBuilding(building, spec) {
@@ -654,9 +755,21 @@ export class ModuleSpec {
     if (this.modules.length > building.moduleSlots) {
       this.modules.length = building.moduleSlots
     }
-    let toAdd = spec.getDefaultModule(this.recipe)
+    let toAdd = spec.getDefaultModule(this.recipe, building)
+    for (let i = 0; i < this.modules.length; i++) {
+      let module = this.modules[i]
+      if (module !== null && !module.canUse(this.recipe, building)) {
+        this.modules[i] = toAdd
+      }
+    }
     while (this.modules.length < building.moduleSlots) {
       this.modules.push(toAdd)
+    }
+    for (let i = 0; i < this.beaconModules.length; i++) {
+      let module = this.beaconModules[i]
+      if (module !== null && (!module.canBeacon() || !module.canUse(this.recipe, building))) {
+        this.beaconModules[i] = null
+      }
     }
   }
   getModule(index) {
@@ -667,13 +780,17 @@ export class ModuleSpec {
     if (index >= this.modules.length) {
       return false
     }
+    if (module !== null && !module.canUse(this.recipe, this.building)) {
+      return false
+    }
     let oldModule = this.modules[index]
     let needRecalc = (oldModule && oldModule.hasProdEffect()) || (module && module.hasProdEffect())
     this.modules[index] = module
     return needRecalc
   }
   setBeaconModule(module, i) {
-    this.beaconModules[i] = module
+    this.beaconModules[i] =
+      module === null || (module.canBeacon() && module.canUse(this.recipe, this.building)) ? module : null
   }
   setBeaconCount(count) {
     this.beaconCount = count
@@ -752,6 +869,7 @@ export let shortModules = null
 
 let beaconProfile
 let beaconEffect
+let beaconAllowedEffects = new Set(["consumption", "speed", "pollution"])
 
 export function getModules(data, items) {
   let modules = new Map()
@@ -762,10 +880,24 @@ export function getModules(data, items) {
     let order = item.order
     let speed = Rational.from_float_approximate(effect.speed || 0)
     let productivity = Rational.from_float_approximate(effect.productivity || 0)
+    let quality = Rational.from_float_approximate(effect.quality || 0)
     let power = Rational.from_float_approximate(effect.consumption || 0)
+    let pollution = Rational.from_float_approximate(effect.pollution || 0)
     modules.set(
       d.item_key,
-      new Module(d.item_key, item.name, item.icon_col, item.icon_row, category, order, productivity, speed, power),
+      new Module(
+        d.item_key,
+        item.name,
+        item.icon_col,
+        item.icon_row,
+        category,
+        order,
+        productivity,
+        quality,
+        speed,
+        power,
+        pollution,
+      ),
     )
   }
   let sortedModules = sorted(modules.values(), (m) => m.order)
@@ -788,6 +920,7 @@ export function getModules(data, items) {
     }
     shortModules.set(shortName, module)
   }
+  beaconAllowedEffects = new Set(data.beacon.allowed_effects ?? ["consumption", "speed", "pollution"])
   beaconEffect = Rational.from_float_approximate(data.beacon.distribution_effectivity)
   if (usesLegacyCalculation() || !data.beacon.profile) {
     beaconProfile = null

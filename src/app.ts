@@ -4,7 +4,7 @@ import { configureFactoryView, resetSpec, spec } from "./factory.js"
 import { configureModelRuntime, getBelts, getBuildings, getFuel, getItemGroups, getModules, getPlanets } from "./models.js"
 import { getSprites, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
-import { displayItems, resetDisplay } from "./results.js"
+import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
 import { renderSettings } from "./settings.js"
 import { configureDatasetChangeHandler, currentMod, currentTab, MODIFICATIONS, renderDataSetOptions, setLegacyCalculation, usesLegacyCalculation } from "./state.js"
 import { BuildTarget } from "./ui.js"
@@ -95,6 +95,11 @@ export const browserFactoryView: FactoryViewPort = {
     if (currentTab === "graph") {
       renderTotals(totals, specification.ignore)
     }
+    reapTooltips()
+  },
+
+  renderCalculationError(specification: any, error) {
+    displayCalculationError(specification, error)
     reapTooltips()
   },
 

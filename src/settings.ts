@@ -226,8 +226,7 @@ export function refreshRecipeSettings(spec: any) {
 
 function applyLocationSettings(settings): boolean {
   let hasMultipleLocations = spec.planets && spec.planets.size > 1
-  let row = d3.select("#planet_setting_row")
-  row.style("display", hasMultipleLocations ? null : "none")
+  d3.select("#location_toolbar").property("hidden", !hasMultipleLocations)
   if (!hasMultipleLocations) {
     return false
   }
@@ -273,12 +272,15 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
     return
   }
 
-  selector
-    .selectAll("div")
+  let toggles = selector
+    .selectAll("button")
     .data(sorted(spec.planets.values(), (location) => location.order))
-    .join("div")
-    .classed("toggle", true)
+    .join("button")
+    .attr("type", "button")
+    .classed("toggle location-toggle", true)
     .classed("selected", (location) => spec.selectedPlanets.has(location))
+    .attr("aria-pressed", (location) => String(spec.selectedPlanets.has(location)))
+    .attr("title", (location) => location.name)
     .on("click", function (event, location) {
       if (event.shiftKey) {
         event.preventDefault()
@@ -290,13 +292,16 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
       } else {
         spec.selectOnePlanet(location)
       }
-      d3.selectAll("#planet_selector .toggle").classed("selected", (candidate) =>
-        spec.selectedPlanets.has(candidate),
-      )
+      d3.selectAll("#planet_selector .toggle")
+        .classed("selected", (candidate) => spec.selectedPlanets.has(candidate))
+        .attr("aria-pressed", (candidate) => String(spec.selectedPlanets.has(candidate)))
       refreshRecipeSettings(spec)
       spec.updateSolution()
     })
-    .append((location) => location.icon.make(32))
+
+  toggles.selectAll("*").remove()
+  toggles.append((location) => location.icon.make(24))
+  toggles.append("span").classed("location-name", true).text((location) => location.name)
 }
 
 export function renderRecipeAndLocationSettings(settings): void {

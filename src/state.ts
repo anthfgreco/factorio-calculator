@@ -22,6 +22,43 @@ export function plusHandler() {
   spec.updateSolution()
 }
 
+function setShareStatus(message: string) {
+  let status = document.getElementById("share_status")
+  if (status !== null) {
+    status.textContent = message
+  }
+}
+
+function fallbackCopyText(text: string) {
+  let input = document.createElement("textarea")
+  input.value = text
+  input.setAttribute("readonly", "")
+  input.style.position = "fixed"
+  input.style.opacity = "0"
+  document.body.appendChild(input)
+  input.select()
+  let copied = document.execCommand("copy")
+  input.remove()
+  if (!copied) {
+    throw new Error("The browser did not allow clipboard access.")
+  }
+}
+
+export async function copyShareLink() {
+  spec.persistUrlState()
+  let url = window.location.href
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url)
+    } else {
+      fallbackCopyText(url)
+    }
+    setShareStatus("Plan link copied.")
+  } catch {
+    setShareStatus("Could not copy automatically. Copy the URL from the address bar.")
+  }
+}
+
 // tab events
 
 export const DEFAULT_TAB = "totals"

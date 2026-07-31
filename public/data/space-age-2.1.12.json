@@ -315,7 +315,6 @@
             "prod_bonus": 0.5
         },
         {
-            "allowed_effects": {},
             "crafting_categories": [
                 "captive-spawner-process"
             ],
@@ -5575,7 +5574,6 @@
     ],
     "mining_drills": [
         {
-            "allowed_effects": [],
             "energy_source": {
                 "emissions_per_minute": {
                     "pollution": 40
@@ -5598,7 +5596,6 @@
             "takes_fluid": true
         },
         {
-            "allowed_effects": {},
             "energy_source": {
                 "emissions_per_minute": {
                     "pollution": 12
@@ -5627,7 +5624,6 @@
             "takes_fluid": false
         },
         {
-            "allowed_effects": [],
             "energy_source": {
                 "emissions_per_minute": {
                     "pollution": 10
@@ -5738,6 +5734,7 @@
         {
             "category": "quality",
             "effect": {
+                "quality": 0.01,
                 "speed": -0.05
             },
             "item_key": "quality-module"
@@ -5745,6 +5742,7 @@
         {
             "category": "quality",
             "effect": {
+                "quality": 0.02,
                 "speed": -0.05
             },
             "item_key": "quality-module-2"
@@ -5752,6 +5750,7 @@
         {
             "category": "quality",
             "effect": {
+                "quality": 0.025,
                 "speed": -0.05
             },
             "item_key": "quality-module-3"
@@ -5760,6 +5759,7 @@
             "category": "speed",
             "effect": {
                 "consumption": 0.5,
+                "quality": -0.01,
                 "speed": 0.2
             },
             "item_key": "speed-module"
@@ -5768,6 +5768,7 @@
             "category": "speed",
             "effect": {
                 "consumption": 0.6,
+                "quality": -0.015,
                 "speed": 0.3
             },
             "item_key": "speed-module-2"
@@ -5776,6 +5777,7 @@
             "category": "speed",
             "effect": {
                 "consumption": 0.7,
+                "quality": -0.025,
                 "speed": 0.5
             },
             "item_key": "speed-module-3"
@@ -6380,7 +6382,8 @@
                     "name": "petroleum-gas"
                 }
             ],
-            "subgroup": "fluid-recipes"
+            "subgroup": "fluid-recipes",
+            "allow_quality": false
         },
         {
             "allow_productivity": true,
@@ -7701,7 +7704,8 @@
                     "name": "petroleum-gas"
                 }
             ],
-            "subgroup": "fluid-recipes"
+            "subgroup": "fluid-recipes",
+            "allow_quality": false
         },
         {
             "allow_productivity": true,
@@ -9697,7 +9701,8 @@
                     }
                 }
             ],
-            "subgroup": "space-crushing"
+            "subgroup": "space-crushing",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -14034,7 +14039,8 @@
                     "min": 1000,
                     "property": "pressure"
                 }
-            ]
+            ],
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -15685,7 +15691,8 @@
                     "name": "light-oil"
                 }
             ],
-            "subgroup": "fluid-recipes"
+            "subgroup": "fluid-recipes",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -16686,7 +16693,8 @@
                     "name": "uranium-238"
                 }
             ],
-            "subgroup": "uranium-processing"
+            "subgroup": "uranium-processing",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -17148,7 +17156,8 @@
                     "name": "petroleum-gas"
                 }
             ],
-            "subgroup": "fluid-recipes"
+            "subgroup": "fluid-recipes",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -17948,7 +17957,8 @@
                     "name": "lubricant"
                 }
             ],
-            "subgroup": "fluid-recipes"
+            "subgroup": "fluid-recipes",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -18220,7 +18230,8 @@
                     }
                 }
             ],
-            "subgroup": "space-crushing"
+            "subgroup": "space-crushing",
+            "allow_quality": false
         },
         {
             "allow_productivity": true,
@@ -18779,7 +18790,8 @@
                     "name": "nutrients"
                 }
             ],
-            "subgroup": "nauvis-agriculture"
+            "subgroup": "nauvis-agriculture",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -18807,7 +18819,8 @@
                     "name": "nutrients"
                 }
             ],
-            "subgroup": "nauvis-agriculture"
+            "subgroup": "nauvis-agriculture",
+            "allow_quality": false
         },
         {
             "allow_productivity": true,
@@ -19394,7 +19407,8 @@
                     }
                 }
             ],
-            "subgroup": "space-crushing"
+            "subgroup": "space-crushing",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,
@@ -24806,7 +24820,8 @@
                     "name": "water"
                 }
             ],
-            "subgroup": "fluid-recipes"
+            "subgroup": "fluid-recipes",
+            "allow_quality": false
         },
         {
             "allow_productivity": false,

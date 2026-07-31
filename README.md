@@ -4,6 +4,21 @@ A browser calculator for Factorio.
 
 This fork includes experimental **Factorio Space Age 2.1.12** data.
 
+## Player-facing behavior
+
+- Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
+- Factorio 2.1 recipe categories, result probabilities, recycling recipes, surface conditions, machines, modules, beacons, and built-in productivity bonuses.
+- Production-location filtering for Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, and Space platforms.
+- A factory summary with machines to place, electrical power, active recipes, imported inputs, and modeling warnings.
+- In-row recipe selection, searchable recipe settings, URL-persistent state, and a one-click copyable plan link.
+- Actionable calculation errors when a production path is unavailable or the selected recipe system is infeasible.
+
+## Current model boundaries
+
+The calculator deliberately keeps one shared material pool when multiple locations are selected. It reports where each active recipe can run, but it does not yet assign every recipe to a specific planet or calculate rocket capacity, platform cargo throughput, travel time, or spoilage in transit.
+
+Quality modules are validated against recipe and machine capabilities, their quality probabilities and electricity modifiers are preserved, and they are excluded from beacons. Speed modules also retain their negative quality modifiers. The solver does not yet split outputs into normal/uncommon/rare/epic/legendary item tiers or optimize recycling-based upcycling loops. Machine electric-power totals also exclude the beacon entities themselves because a beacon-sharing layout is not implied by the selected effects.
+
 ## Live site
 
 https://anthfgreco.github.io/factorio-calculator/
@@ -56,7 +71,7 @@ The TypeScript source is intentionally consolidated into cohesive feature module
 - `src/url-state.ts` — URL history and fragment serialization
 - `src/app.ts`, `src/main.ts` — composition root and browser entry point
 
-Start with [AGENTS.md](AGENTS.md), [src/README.md](src/README.md), and [docs/architecture.md](docs/architecture.md).
+Start with [AGENTS.md](AGENTS.md), [src/README.md](src/README.md), [docs/architecture.md](docs/architecture.md), and the [player-focused roadmap](docs/player-roadmap.md).
 
 ## GitHub Pages
 
