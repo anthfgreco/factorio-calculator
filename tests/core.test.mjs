@@ -15,8 +15,7 @@ vm.runInThisContext(await readFile(resolve(root, "public/third_party/BigInteger.
 const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 
 const { DatasetValidationError, parseCalculatorData } = await load("data")
-const { Matrix } = await load("math")
-const { Rational, one, zero } = await load("math")
+const { Matrix, powerRepresentation, Rational, one, zero } = await load("math")
 const { itemMatchesSearch } = await load("data")
 const { PriorityList } = await load("priorities")
 const { solve, SolverFailure } = await load("solver")
@@ -50,6 +49,12 @@ test("rational arithmetic remains exact", () => {
   assert.equal(oneThird.add(oneThird).add(oneThird).toString(), "1")
   assert.equal(Rational.from_decimal("12.5").toString(), "25/2")
   assert.equal(Rational.from_float(-0.5).toString(), "-1/2")
+})
+
+test("power representation zero returns clean W suffix", () => {
+  const { power, suffix } = powerRepresentation(zero)
+  assert.equal(power.toString(), "0")
+  assert.equal(suffix, "W")
 })
 
 test("matrix reduction preserves exact pivots", () => {

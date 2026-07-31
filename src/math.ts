@@ -577,7 +577,7 @@ export class Formatter {
 // Power formatting
 // -----------------------------------------------------------------------------
 
-const powerSuffixes = ["\u00A0W", "kW", "MW", "GW", "TW", "PW"] as const
+const powerSuffixes = ["W", "kW", "MW", "GW", "TW", "PW"] as const
 
 export function powerRepresentation(value: Rational): { power: Rational; suffix: string } {
   let thousand = Rational.from_float(1000)

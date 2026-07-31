@@ -19,9 +19,13 @@ test("player-facing controls stay close to the evidence they affect", async () =
   assert.ok(html.includes("fluids use a 10:1 scale"))
 
   assert.ok(results.includes('classed("item-name", true)'))
-  assert.ok(results.includes('new Header("Item / " + spec.format.rateName, itemColumns)'))
+  assert.ok(results.includes('new Header("Item / " + spec.format.rateName, itemColumns'))
   assert.ok(results.includes('new Header("Belts", 1'))
-  assert.ok(results.includes('new Header("Power", 1)'))
+  assert.ok(results.includes('new Header("Power", 1'))
+  assert.ok(results.includes('classed("align-left"'))
+  assert.ok(results.includes('classed("align-center"'))
+  assert.ok(results.includes('classed("align-right"'))
+  assert.ok(results.includes('if (x.isZero())'))
   assert.ok(results.includes('classed("target-output"'))
 })
 

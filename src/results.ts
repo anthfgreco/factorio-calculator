@@ -194,18 +194,29 @@ export function makeRecipeSelector(row) {
 export { powerRepresentation as powerRepr } from "./math.js"
 
 function alignPower(x) {
+  if (x.isZero()) {
+    return "0 W"
+  }
   let { power, suffix } = powerRepresentation(x)
   return spec.format.alignCount(power) + " " + suffix
 }
 
 class Header {
   [key: string]: any
-  constructor(text, colspan, surplus = false, title = null, icon = null) {
+  constructor(
+    text: string,
+    colspan: number,
+    surplus = false,
+    title: string | null = null,
+    icon: any = null,
+    align: "left" | "right" | "center" = "right",
+  ) {
     this.text = text
     this.colspan = colspan
     this.surplus = surplus
     this.title = title
     this.icon = icon
+    this.align = align
   }
 }
 
@@ -801,14 +812,14 @@ export function displayItems(spec, totals) {
   let showLocations = spec.selectedPlanets?.size > 1
   let itemColumns = totals.surplus.size === 0 ? 3 : 4
   let headers = [
-    new Header("Item / " + spec.format.rateName, itemColumns),
-    new Header("Belts", 1, false, `Equivalent ${spec.belt.name} belts at the selected rate`, spec.belt.icon),
-    new Header("Machines", 2),
-    ...(showLocations ? [new Header("Location", 1)] : []),
-    new Header("Modules", 1),
-    new Header("Beacons", 1),
-    new Header("Power", 1),
-    new Header("", 1), // pop-out links
+    new Header("Item / " + spec.format.rateName, itemColumns, false, null, null, "left"),
+    new Header("Belts", 1, false, `Equivalent ${spec.belt.name} belts at the selected rate`, spec.belt.icon, "right"),
+    new Header("Machines", 2, false, null, null, "center"),
+    ...(showLocations ? [new Header("Location", 1, false, null, null, "left")] : []),
+    new Header("Modules", 1, false, null, null, "left"),
+    new Header("Beacons", 1, false, null, null, "left"),
+    new Header("Power", 1, false, null, null, "right"),
+    new Header("", 1, false, null, null, "center"), // pop-out links
   ]
   let totalCols = 0
   for (let header of headers) {
@@ -823,6 +834,9 @@ export function displayItems(spec, totals) {
   let headerCell = headerRow
     .join("th")
     .classed("surplus", (d) => d.surplus)
+    .classed("align-left", (d) => d.align === "left")
+    .classed("align-center", (d) => d.align === "center")
+    .classed("align-right", (d) => d.align === "right")
     .attr("colspan", (d) => d.colspan)
     .attr("title", (d) => d.title)
   headerCell.each(function (this: HTMLTableCellElement, header) {

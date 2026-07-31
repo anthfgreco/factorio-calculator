@@ -166,10 +166,13 @@ div.tab { padding: .85rem 0; background: transparent; }
   text-align: right;
   white-space: nowrap;
 }
+#totals tr.factory-header th.align-left { text-align: left; }
+#totals tr.factory-header th.align-center { text-align: center; }
+#totals tr.factory-header th.align-right { text-align: right; }
 #totals tr.factory-header th:first-child { text-align: left; }
 #totals tbody.display-group > tr:first-child td { border-top: 1px solid #30353a; }
 #totals tr.display-row:hover td { background: rgba(255,255,255,.025); }
-#totals td { white-space: nowrap; }
+#totals td { white-space: nowrap; vertical-align: middle; }
 span.beacon-container { padding: .2rem .3rem; border: 1px solid var(--rule); border-radius: 2px; background: transparent; }
 .breakdown table { border: 0; border-left: 2px solid var(--rule); border-radius: 0; background: transparent; }
 .breakdown-first-output td { border-top-color: var(--rule); }
@@ -469,14 +472,20 @@ td.item-identity {
 }
 .power-cell {
   min-width: 6.4rem;
+  vertical-align: middle;
 }
 .power-cell .fuel-icon {
   display: inline-flex;
   align-items: center;
+  vertical-align: middle;
   margin-right: 0.25rem;
   color: var(--muted);
 }
+.power-cell tt.power {
+  vertical-align: middle;
+}
 #totals td.popout {
+  vertical-align: middle;
   opacity: 0.22;
   transition: opacity 100ms ease;
 }
