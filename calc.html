@@ -14,24 +14,11 @@
   </head>
 
   <body onload="handlers.init()">
-    <table>
-      <tr>
-        <td>
-          <ul id="targets">
-            <li id="plusButton">
-              <button class="targetButton ui" title="Add new item." onclick="handlers.plusHandler()">+</button>
-            </li>
-          </ul>
-        </td>
-
-        <td class="changecell">
-          <div class="changebox">
-            Recent changes:<br />
-            2026-07-31 - Improved factory planning.
-          </div>
-        </td>
-      </tr>
-    </table>
+    <ul id="targets">
+      <li id="plusButton">
+        <button class="targetButton ui" title="Add new item." onclick="handlers.plusHandler()">+</button>
+      </li>
+    </ul>
 
     <div class="planner-toolbar">
       <div id="location_toolbar" class="location-toolbar" hidden>
@@ -39,9 +26,28 @@
         <div id="planet_selector"></div>
         <span class="location-toolbar-help">Shift-click to combine</span>
       </div>
-      <div class="share-controls">
-        <button id="copy_share_link" class="ui" type="button" onclick="handlers.copyShareLink()">
+      <div class="progression-presets" role="group" aria-label="Progression preset">
+        <label for="progression_preset">Preset</label>
+        <select id="progression_preset" onchange="handlers.applyProgressionPreset(event)">
+          <option value="">Custom</option>
+          <option value="early">Early game</option>
+          <option value="pre-rocket">Pre-rocket</option>
+          <option value="first-planets">First planets</option>
+          <option value="late-space-age">Late Space Age</option>
+          <option value="megabase">Megabase</option>
+        </select>
+      </div>
+      <div class="planner-actions">
+        <button id="copy_share_link" class="ui planner-action" type="button" onclick="handlers.copyShareLink()">
           Copy plan link
+        </button>
+        <button
+          id="debug_button"
+          class="ui planner-action toolbar-tab-button"
+          type="button"
+          onclick="handlers.clickTab('debug')"
+        >
+          Debug
         </button>
         <span id="share_status" role="status" aria-live="polite"></span>
       </div>
@@ -52,93 +58,39 @@
       <button class="tab_button" id="graph_button" onclick="handlers.clickVisualize()">Visualize</button>
       <button class="tab_button" id="resources_button" onclick="handlers.clickTab('resources')">Resources</button>
       <button class="tab_button" id="settings_button" onclick="handlers.clickTab('settings')">Settings</button>
-      <button class="tab_button" id="faq_button" onclick="handlers.clickTab('faq')">FAQ</button>
-      <button class="tab_button" id="changelog_button" onclick="handlers.clickTab('changelog')">Changelog</button>
-      <button class="tab_button" id="about_button" onclick="handlers.clickTab('about')">About</button>
-      <button class="tab_button" id="debug_button" onclick="handlers.clickTab('debug')">Debug</button>
+      <button class="tab_button" id="help_button" onclick="handlers.clickTab('help')">Help</button>
     </div>
 
     <div id="graph_tab" class="tab graph">
-      <div class="graph_setting">
-        <form id="graph_type">
-          <input
-            id="sankey_type"
-            type="radio"
-            name="type"
-            value="sankey"
-            checked
-            autocomplete="off"
-            onchange="handlers.changeVisType(event)"
-          />
-          <label for="sankey_type">
-            <svg viewBox="0 0 64 64" width="64" height="64">
-              <use href="images/icons.svg#sankey"></use>
-            </svg>
-          </label>
-
-          <input
-            id="boxline_type"
-            type="radio"
-            name="type"
-            value="boxline"
-            autocomplete="off"
-            onchange="handlers.changeVisType(event)"
-          />
-          <label for="boxline_type">
-            <svg viewBox="0 0 64 64" width="64" height="64">
-              <use href="images/icons.svg#boxline"></use>
-            </svg>
-          </label>
-        </form>
-      </div>
-      <div class="graph_setting">
-        Render mode:<br />
-        <form id="graph_render">
-          <input
-            id="zoom_render"
-            type="radio"
-            name="render"
-            value="zoom"
-            checked
-            autocomplete="off"
-            onchange="handlers.changeVisRender(event)"
-          />
-          <label for="zoom_render">Zoom &amp; pan</label>
-
-          <input
-            id="fix_render"
-            type="radio"
-            name="render"
-            value="fix"
-            autocomplete="off"
-            onchange="handlers.changeVisRender(event)"
-          />
-          <label for="fix_render">Fixed</label>
-        </form>
-      </div>
-      <div class="graph_setting">
-        Graph direction:<br />
-        <form id="graph_direction">
-          <input
-            id="right_direction"
-            type="radio"
-            name="direction"
-            value="right"
-            autocomplete="off"
-            onchange="handlers.changeVisDir(event)"
-          />
-          <label for="right_direction">Left to right</label>
-
-          <input
-            id="down_direction"
-            type="radio"
-            name="direction"
-            value="down"
-            autocomplete="off"
-            onchange="handlers.changeVisDir(event)"
-          />
-          <label for="down_direction">Top to bottom</label>
-        </form>
+      <div class="visualization-toolbar" aria-label="Visualization controls">
+        <div class="visualization-control">
+          <span class="visualization-label">View</span>
+          <form id="graph_type" class="segmented-control">
+            <input id="sankey_type" type="radio" name="type" value="sankey" checked autocomplete="off" onchange="handlers.changeVisType(event)" />
+            <label for="sankey_type">Flow</label>
+            <input id="boxline_type" type="radio" name="type" value="boxline" autocomplete="off" onchange="handlers.changeVisType(event)" />
+            <label for="boxline_type">Recipe graph</label>
+          </form>
+        </div>
+        <div class="visualization-control">
+          <span class="visualization-label">Viewport</span>
+          <form id="graph_render" class="segmented-control">
+            <input id="zoom_render" type="radio" name="render" value="zoom" checked autocomplete="off" onchange="handlers.changeVisRender(event)" />
+            <label for="zoom_render">Zoom &amp; pan</label>
+            <input id="fix_render" type="radio" name="render" value="fix" autocomplete="off" onchange="handlers.changeVisRender(event)" />
+            <label for="fix_render">Fit</label>
+          </form>
+        </div>
+        <div class="visualization-control">
+          <span class="visualization-label">Direction</span>
+          <form id="graph_direction" class="segmented-control">
+            <input id="right_direction" type="radio" name="direction" value="right" autocomplete="off" onchange="handlers.changeVisDir(event)" />
+            <label for="right_direction">Left to right</label>
+            <input id="down_direction" type="radio" name="direction" value="down" autocomplete="off" onchange="handlers.changeVisDir(event)" />
+            <label for="down_direction">Top to bottom</label>
+          </form>
+        </div>
+        <p class="visualization-key">Width shows material rate. Dashed connections show fuel. Hover a node or flow to isolate its path.</p>
       </div>
       <div id="graph_container">
         <svg id="graph"><g /></svg>
@@ -146,6 +98,27 @@
     </div>
 
     <div id="totals_tab" class="tab">
+      <div class="factory-view-toolbar">
+        <div class="factory-density-control" role="group" aria-label="Factory table density">
+          <span class="factory-density-label">Table density</span>
+          <input
+            id="factory_density_comfortable"
+            type="radio"
+            name="factory_density"
+            value="comfortable"
+            onchange="handlers.changeFactoryDensity(event)"
+          />
+          <label for="factory_density_comfortable">Comfortable</label>
+          <input
+            id="factory_density_compact"
+            type="radio"
+            name="factory_density"
+            value="compact"
+            onchange="handlers.changeFactoryDensity(event)"
+          />
+          <label for="factory_density_compact">Compact</label>
+        </div>
+      </div>
       <div id="calculation_error" class="calculation-error" role="alert" hidden>
         <div class="calculation-error-title"></div>
         <div class="calculation-error-message"></div>
@@ -337,67 +310,74 @@
       <div id="resource_settings"></div>
     </div>
 
-    <div id="faq_tab" class="tab">
-      <div class="about-content">
-        <h3>What does clicking on an item's icon in the "Factory" tab do?</h3>
-        It omits the dependencies of that item from the solution. The intent behind this feature is to model the case of
-        building a factory when you are shipping in one or more ingredients from elsewhere. For example, if you are
-        making an advanced circuit factory and want to ship in electronic circuits, and want to see the remaining copper
-        cable requirements on their own.
-        <p>Clicking on the icon a second time will restore its dependencies.</p>
+    <div id="help_tab" class="tab">
+      <div class="help-content">
+        <section class="help-section help-card">
+          <h2>Factorio Calculator</h2>
+          <p>
+            A maintained fork of Kirk McDonald’s calculator for planning production chains from starter factories
+            through Space Age megabases. It supports Factorio 2.1 recipes, locations, recycling, machines, modules,
+            beacons, productivity restrictions, and shareable calculator URLs. The project is licensed under the
+            Apache License 2.0 and developed openly
+            <a href="https://github.com/anthfgreco/factorio-calculator">on GitHub</a>.
+          </p>
+        </section>
 
-        <h3>How do multiple production locations work?</h3>
-        Use the Locations control above to choose where recipes may run. Selecting multiple locations creates
-        one shared production plan using recipes that are possible on at least one selected location. The Factory table shows the possible location or locations for each active recipe. The
-        calculator does not yet assign ambiguous recipes to a planet or include rocket and platform transport costs.
-        Machine electric-power totals exclude beacon buildings because the calculator does not assume a physical
-        beacon-sharing layout.
+        <section class="help-section help-card">
+          <h2>FAQ</h2>
+          <div class="faq-list">
+            <div>
+              <h3>How do I treat an ingredient as imported?</h3>
+              <p>Click its item icon in the Factory table. Its upstream dependencies are removed; click again to restore them.</p>
+            </div>
+            <div>
+              <h3>What do progression presets change?</h3>
+              <p>Presets quickly select sensible locations, modules, beacons, belts, and mining productivity for a stage of the game. They never change your production targets, and every setting remains editable.</p>
+            </div>
+            <div>
+              <h3>How do production locations work?</h3>
+              <p>Select one location, or Shift-click to combine locations. Combined plans share materials; recipe assignment and transport costs are not modeled yet.</p>
+            </div>
+            <div>
+              <h3>How is quality handled?</h3>
+              <p>Module compatibility, power effects, and speed-module quality penalties are validated. Quality tiers and recycling upcycling are not yet solved as separate item flows.</p>
+            </div>
+            <div>
+              <h3>What do the factory totals include?</h3>
+              <p>Machines to place rounds each active recipe up to a whole machine. Machine electric power includes recipe machines and module effects, but not shared beacon buildings.</p>
+            </div>
+            <div>
+              <h3>How do alternate recipes affect the result?</h3>
+              <p>Use the recipe control in a Factory row or the Recipes section in Settings. When several solutions are valid, the Resources tab controls which inputs the solver prefers.</p>
+            </div>
+            <div>
+              <h3>Why was my plan rejected?</h3>
+              <p>The plan may lack an enabled production path or contain an infeasible cyclic or multi-output system. Check locations, recipes, priorities, and imported inputs.</p>
+            </div>
+          </div>
+        </section>
 
-        <h3>How is quality handled?</h3>
-        The calculator validates whether quality modules are allowed in the selected machine and recipe, includes their
-        electricity effect, and prevents them from being placed in beacons. Speed modules retain their negative quality
-        modifier, but the calculator does not yet split production into quality tiers or calculate recycling-based
-        upcycling yields.
-
-        <h3>Why did the calculator reject my plan?</h3>
-        The Factory tab now explains when no enabled recipe can produce an item or when a cyclic, multi-output recipe
-        system is infeasible. Enable a compatible recipe or location, choose an alternate recipe, adjust resource
-        priority, or treat an input as imported by clicking its item icon.
-      </div>
-    </div>
-
-    <div id="changelog_tab" class="tab">
-      <iframe
-        class="changelog-frame"
-        src="./docs/changelog.html"
-        title="Factorio Calculator changelog"
-        loading="lazy"
-      ></iframe>
-    </div>
-
-    <div id="about_tab" class="tab">
-      <div class="about-content">
-        This is a maintained fork of Kirk McDonald's Factorio Calculator, licensed under the Apache License 2.0. The
-        source is available <a href="https://github.com/anthfgreco/factorio-calculator">on GitHub</a>.
-        <p>Features of this calculator include:</p>
-
-        <ul>
-          <li>
-            Proper handling of oil products. Obtaining numbers for these recipes can be tricky, as several of the items
-            involved may be produced from multiple recipes.
-          </li>
-          <li>Support for Factorio 2.1 and Space Age production locations, recipes, recycling, machines, and modules.</li>
-          <li>Compatibility-aware modules and beacons, including Factorio 2.0+ beacon profiles.</li>
-          <li>Factory summaries, in-row alternate recipe selection, and shareable URL state.</li>
-          <li>Support for the mining productivity bonus, introduced in 0.15.</li>
-          <li>Support for "expensive" mode.</li>
-          <li>
-            Arbitrary numerical precision. Calculations are performed using bigint rationals, so errors from
-            floating-point calculations should not be an issue.
-          </li>
-          <li>Support for multiple simultaneous outputs.</li>
-          <li>May display rates per second, minute, or hour.</li>
-        </ul>
+        <section class="help-section help-card">
+          <h2>Changelog</h2>
+          <div class="changelog-entry">
+            <time datetime="2026-07-31">July 31, 2026</time>
+            <h3>Factory-planning improvements</h3>
+            <ul>
+              <li>Added factory summaries, clearer calculation errors, share-link copying, and compact production-location controls.</li>
+              <li>Corrected recipe, machine, module, quality, and beacon compatibility for the Factorio 2.1 dataset.</li>
+              <li>Added Factory table density controls, progression presets, and a clearer evidence-first interface.</li>
+            </ul>
+          </div>
+          <div class="changelog-entry">
+            <time datetime="2026-07-30">July 30, 2026</time>
+            <h3>Factorio 2.1.12 and Space Age</h3>
+            <ul>
+              <li>Added the experimental Space Age 2.1.12 dataset and made it the default.</li>
+              <li>Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe selection.</li>
+              <li>Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.</li>
+            </ul>
+          </div>
+        </section>
       </div>
     </div>
 

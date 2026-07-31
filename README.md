@@ -11,6 +11,8 @@ This fork includes experimental **Factorio Space Age 2.1.12** data.
 - Production-location filtering for Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, and Space platforms.
 - A factory summary with machines to place, electrical power, active recipes, imported inputs, and modeling warnings.
 - In-row recipe selection, searchable recipe settings, URL-persistent state, and a one-click copyable plan link.
+- Comfortable and compact Factory table densities, stored as a local display preference.
+- A consolidated Help tab with project information, concise workflow guidance, and the current changelog.
 - Actionable calculation errors when a production path is unavailable or the selected recipe system is infeasible.
 
 ## Current model boundaries

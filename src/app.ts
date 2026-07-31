@@ -6,9 +6,25 @@ import { getSprites, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
 import { renderSettings } from "./settings.js"
-import { configureDatasetChangeHandler, currentMod, currentTab, MODIFICATIONS, renderDataSetOptions, setLegacyCalculation, usesLegacyCalculation } from "./state.js"
+import {
+  configureDatasetChangeHandler,
+  currentMod,
+  currentTab,
+  initializeFactoryDensity,
+  MODIFICATIONS,
+  renderDataSetOptions,
+  setLegacyCalculation,
+  usesLegacyCalculation,
+} from "./state.js"
 import { BuildTarget } from "./ui.js"
-import { clearUrlHash, finishUrlInitialization, formatSettings, initializeUrlState, loadSettings, syncUrlHash } from "./url-state.js"
+import {
+  clearUrlHash,
+  finishUrlInitialization,
+  formatSettings,
+  initializeUrlState,
+  loadSettings,
+  syncUrlHash,
+} from "./url-state.js"
 import { renderTotals } from "./visualization.js"
 
 // -----------------------------------------------------------------------------
@@ -200,6 +216,7 @@ function loadData(modName, settings) {
 }
 
 export function init() {
+  initializeFactoryDensity()
   configureFactoryView(browserFactoryView)
   configureDatasetChangeHandler(changeMod)
   window.spec = spec

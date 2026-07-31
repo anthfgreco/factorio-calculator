@@ -11,6 +11,106 @@ export function setTitle(title: string) {
   document.title = title === "" ? DEFAULT_TITLE : title
 }
 
+export type FactoryDensity = "comfortable" | "compact"
+
+const FACTORY_DENSITY_STORAGE_KEY = "factorio-calculator-factory-density"
+const DEFAULT_FACTORY_DENSITY: FactoryDensity = "compact"
+
+export let factoryDensity: FactoryDensity = DEFAULT_FACTORY_DENSITY
+
+function isFactoryDensity(value: string | null): value is FactoryDensity {
+  return value === "comfortable" || value === "compact"
+}
+
+function applyFactoryDensity(value: FactoryDensity) {
+  factoryDensity = value
+  document.documentElement.dataset.factoryDensity = value
+  document.querySelectorAll<HTMLInputElement>('input[name="factory_density"]').forEach((input) => {
+    input.checked = input.value === value
+  })
+}
+
+export function initializeFactoryDensity() {
+  let storedDensity: string | null = null
+  try {
+    storedDensity = window.localStorage.getItem(FACTORY_DENSITY_STORAGE_KEY)
+  } catch {
+    // Storage may be disabled. The control still works for the current page.
+  }
+  applyFactoryDensity(isFactoryDensity(storedDensity) ? storedDensity : DEFAULT_FACTORY_DENSITY)
+}
+
+export function changeFactoryDensity(event: Event) {
+  let input = event.target
+  if (!(input instanceof HTMLInputElement) || !isFactoryDensity(input.value)) {
+    return
+  }
+  applyFactoryDensity(input.value)
+  try {
+    window.localStorage.setItem(FACTORY_DENSITY_STORAGE_KEY, input.value)
+  } catch {
+    // Ignore storage failures; the selected density still applies immediately.
+  }
+}
+
+
+export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age" | "megabase"
+
+type PresetDefinition = {
+  planets: string[]
+  miningProductivity: number
+  belt: string
+  module: string | null
+  beaconModule: string | null
+  beaconCount: number
+}
+
+const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
+  early: { planets: ["nauvis"], miningProductivity: 0, belt: "transport-belt", module: null, beaconModule: null, beaconCount: 0 },
+  "pre-rocket": { planets: ["nauvis"], miningProductivity: 20, belt: "fast-transport-belt", module: "productivity-module", beaconModule: null, beaconCount: 0 },
+  "first-planets": { planets: ["nauvis", "vulcanus", "fulgora", "gleba"], miningProductivity: 50, belt: "express-transport-belt", module: "productivity-module-2", beaconModule: "speed-module-2", beaconCount: 4 },
+  "late-space-age": { planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"], miningProductivity: 100, belt: "turbo-transport-belt", module: "productivity-module-3", beaconModule: "speed-module-3", beaconCount: 8 },
+  megabase: { planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"], miningProductivity: 300, belt: "turbo-transport-belt", module: "productivity-module-3", beaconModule: "speed-module-3", beaconCount: 12 },
+}
+
+function getByKey(collection: Map<any, any> | null, key: string | null) {
+  if (collection === null || key === null) return null
+  return collection.get(key) ?? null
+}
+
+export function applyProgressionPreset(event: Event) {
+  let select = event.target
+  if (!(select instanceof HTMLSelectElement) || !(select.value in PROGRESSION_PRESETS)) return
+  let preset = PROGRESSION_PRESETS[select.value as ProgressionPreset]
+
+  spec.selectedPlanets.clear()
+  for (let key of preset.planets) {
+    let planet = getByKey(spec.planets, key)
+    if (planet !== null) spec.selectPlanet(planet)
+  }
+  if (spec.selectedPlanets.size === 0 && spec.planets?.size) {
+    spec.selectPlanet(spec.planets.values().next().value)
+  }
+
+  spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
+  let belt = getByKey(spec.belts, preset.belt)
+  if (belt !== null) spec.belt = belt
+  spec.defaultModule = getByKey(spec.modules, preset.module)
+  spec.secondaryDefaultModule = null
+  spec.defaultBeacon = [getByKey(spec.modules, preset.beaconModule), getByKey(spec.modules, preset.beaconModule)]
+  spec.defaultBeaconCount = Rational.from_float(preset.beaconCount)
+  spec.spec.clear()
+
+  document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle: any) => {
+    let location = toggle.__data__
+    toggle.classList.toggle("selected", spec.selectedPlanets.has(location))
+    toggle.setAttribute("aria-pressed", String(spec.selectedPlanets.has(location)))
+  })
+  let miningInput = document.getElementById("mprod") as HTMLInputElement | null
+  if (miningInput !== null) miningInput.value = String(preset.miningProductivity)
+  spec.updateSolution()
+}
+
 // -----------------------------------------------------------------------------
 // UI actions
 // -----------------------------------------------------------------------------
@@ -66,9 +166,15 @@ export const DEFAULT_TAB = "totals"
 export let currentTab = DEFAULT_TAB
 
 export function clickTab(tabName) {
+  if (tabName === "about" || tabName === "faq" || tabName === "changelog") {
+    tabName = "help"
+  }
+  if (document.getElementById(tabName + "_tab") === null) {
+    tabName = DEFAULT_TAB
+  }
   currentTab = tabName
   d3.selectAll(".tab").style("display", "none")
-  d3.selectAll(".tab_button").classed("active", false)
+  d3.selectAll(".tab_button, .toolbar-tab-button").classed("active", false)
   d3.select("#" + tabName + "_tab").style("display", "block")
   d3.select("#" + tabName + "_button").classed("active", true)
   spec.setHash()

@@ -30,13 +30,42 @@ if (!calculatorHtml.includes("id=\"location_toolbar\"")) {
   throw new Error("calc.html is missing the top-level production-location control")
 }
 if (
-  !calculatorHtml.includes("id=\"changelog_tab\"") ||
-  !calculatorHtml.includes("src=\"./docs/changelog.html\"")
+  !calculatorHtml.includes('id="help_tab"') ||
+  !calculatorHtml.includes('id="help-about"') ||
+  !calculatorHtml.includes('id="help-faq"') ||
+  !calculatorHtml.includes('id="help-changelog"')
 ) {
-  throw new Error("calc.html is missing the embedded changelog tab")
+  throw new Error("calc.html is missing the consolidated Help tab")
+}
+if (
+  calculatorHtml.includes('id="about_tab"') ||
+  calculatorHtml.includes('id="faq_tab"') ||
+  calculatorHtml.includes('id="changelog_tab"') ||
+  calculatorHtml.includes("changelog-frame")
+) {
+  throw new Error("calc.html still contains a legacy About, FAQ, or Changelog tab")
+}
+if (
+  !calculatorHtml.includes('id="factory_density_comfortable"') ||
+  !calculatorHtml.includes('id="factory_density_compact"')
+) {
+  throw new Error("calc.html is missing Factory table density controls")
+}
+if (calculatorHtml.includes("Recent changes:")) {
+  throw new Error("calc.html still contains the removed Recent changes box")
+}
+const copyButtonIndex = calculatorHtml.indexOf('id="copy_share_link"')
+const debugButtonIndex = calculatorHtml.indexOf('id="debug_button"')
+if (copyButtonIndex === -1 || debugButtonIndex === -1 || copyButtonIndex > debugButtonIndex) {
+  throw new Error("Copy plan link must appear immediately before the Debug toolbar button")
 }
 if (calculatorHtml.includes("Machine equivalents")) {
   throw new Error("calc.html still shows the confusing machine-equivalents summary")
+}
+
+const changelogHtml = await readFile(new URL("docs/changelog.html", dist), "utf8")
+if (/20(?:0\d|1\d|2[0-5])-/.test(changelogHtml)) {
+  throw new Error("The changelog still contains entries from 2025 or earlier")
 }
 
 const dataPath = await requireFile("data/space-age-2.1.12.json")

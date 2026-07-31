@@ -16,7 +16,7 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 - `models.ts`: runtime objects for buildings, modules, belts, fuels, planets, and item groups.
 - `recipes.ts`: item and recipe objects plus recipe search/grouping and enablement policy.
 - `priorities.ts`: the resource-priority data model, serialization policy, and its tightly coupled DOM editor.
-- `state.ts`: mutable UI/application settings, dataset selection, visualizer selection, sharing, and event actions.
+- `state.ts`: mutable UI/application settings, dataset selection, visualizer selection, table density, sharing, and event actions.
 
 ## Browser interface
 

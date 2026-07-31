@@ -22,6 +22,8 @@ The highest-value remaining work is not a framework rewrite. It is extending the
 - Added per-recipe production-location visibility for plans using multiple selected locations.
 - Added concise warnings for shared-material multi-location plans, ambiguous recipe placement, quality-tier aggregation, and beacon electricity.
 - Added a one-click copyable plan link without changing the existing URL format.
+- Added comfortable and compact Factory table density controls as a local display preference.
+- Consolidated About, FAQ, and recent changelog information into one Help tab.
 - Added runtime coverage for quality modules, machine/beacon compatibility, production locations, and missing-recipe failures.
 
 ## Priority 0: calculation fidelity

@@ -3,6 +3,8 @@ import "./styles/dropdown.css"
 import { init } from "./app.js"
 import {
   changeCountPrecision,
+  applyProgressionPreset,
+  changeFactoryDensity,
   changeFormat,
   changeMprod,
   changeRatePrecision,
@@ -26,6 +28,8 @@ window.handlers = {
   clickTab,
   clickVisualize,
   copyShareLink,
+  applyProgressionPreset,
+  changeFactoryDensity,
   changeTitle,
   changeRatePrecision,
   changeCountPrecision,
