@@ -810,9 +810,11 @@ export function displayItems(spec, totals) {
   d3.select("table#totals").property("hidden", false)
   renderFactorySummary(spec, totals)
   let showLocations = spec.selectedPlanets?.size > 1
-  let itemColumns = totals.surplus.size === 0 ? 3 : 4
+  let showSurplus = totals.surplus.size > 0
   let headers = [
-    new Header("Item / " + spec.format.rateName, itemColumns, false, null, null, "left"),
+    new Header("Item", 2, false, null, null, "left"),
+    new Header("Rate / " + spec.format.rateName, 1, false, null, null, "right"),
+    ...(showSurplus ? [new Header("Surplus / " + spec.format.rateName, 1, true, null, null, "right")] : []),
     new Header("Belts", 1, false, `Equivalent ${spec.belt.name} belts at the selected rate`, spec.belt.icon, "right"),
     new Header("Machines", 2, false, null, null, "center"),
     ...(showLocations ? [new Header("Location", 1, false, null, null, "left")] : []),
