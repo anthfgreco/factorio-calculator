@@ -5,8 +5,8 @@ Preserve the existing calculator UI unless a task explicitly requests visual cha
 
 ## Before editing
 
-1. Read `docs/architecture.md` and the README for the layer you will change.
-2. Identify the owning layer before searching broadly.
+1. Read `docs/architecture.md` and `src/README.md`.
+2. Identify the owning module before searching broadly.
 3. Reproduce behavior with an existing validation command or add a focused characterization test.
 4. Keep generated Factorio data out of hand-written source changes.
 
@@ -23,35 +23,43 @@ pnpm verify
 
 Use `pnpm format` before committing. `pnpm verify` is the release gate and builds the GitHub Pages output.
 
-## Layer rules
+## Module rules
 
-- `src/core/`: pure deterministic logic. No DOM, D3, browser globals, application globals, or runtime models.
-- `src/application/`: calculator use cases, policies, and state orchestration. It may depend on core and runtime compatibility models, but never UI or visualization modules. `application/bootstrap.ts` is the only composition-root exception.
-- `src/runtime/`: browser-facing data models produced from calculator datasets. This is a compatibility layer; new business rules belong in core/application.
-- `src/presentation/`: neutral DOM primitives shared by runtime, UI, and visualizations.
-- `src/infrastructure/`: browser or external-system adapters with no application/UI imports.
-- `src/ui/`: DOM rendering and interaction adapters. Keep calculations out of this layer.
-- `src/visualization/`: D3/SVG rendering only.
-- `src/shared/`: tiny dependency-free helpers with no feature ownership.
+- `src/data.ts`: validated dataset contracts, parser, search normalization, location-display queries, and shared sorting.
+- `src/math.ts`: pure exact arithmetic and formatting calculations.
+- `src/solver.ts`: pure solver contracts, cycle handling, totals, and simplex orchestration.
+- `src/factory.ts`: browser-independent calculator state facade and factory policies.
+- `src/models.ts`: runtime dataset models other than items and recipes.
+- `src/recipes.ts`: item/recipe runtime models and recipe policy/query logic.
+- `src/priorities.ts`: resource-priority model, policy, and its tightly coupled editor.
+- `src/state.ts`: small mutable browser/application settings and event actions.
+- `src/presentation.ts`: neutral icon, tooltip, and dropdown primitives.
+- `src/settings.ts`, `src/results.ts`, and `src/ui.ts`: DOM rendering for settings, result tables, and targets.
+- `src/graph.ts` and `src/visualization.ts`: D3/SVG graph implementation and render orchestration.
+- `src/url-state.ts`: URL history and calculator-fragment serialization.
+- `src/app.ts`: composition root and browser adapters. `src/main.ts` only exposes handlers and starts the app.
 
-`scripts/check-architecture.mjs` enforces the important dependency directions.
+`scripts/check-architecture.mjs` enforces the important dependency directions and rejects import cycles.
 
 ## Change routing
 
-- Solver/math/probability bug → `src/core/`
-- Recipe/location/priority policy → `src/application/`
-- Dataset object construction → `src/runtime/`
-- HTML interaction, table, popup, settings → `src/ui/`
-- Graph/Sankey/boxline rendering → `src/visualization/`
-- URL/history/browser integration → `src/infrastructure/` or `src/ui/persistence/`
-- Factorio prototype schema/export → `scripts/build_factorio_dataset.py` and `src/core/data/`
+- Solver/math/probability bug → `src/solver.ts` or `src/math.ts`
+- Dataset schema/validation/search normalization → `src/data.ts`
+- Recipe/item model or recipe policy → `src/recipes.ts`
+- Location/building/factory-state policy → `src/factory.ts`
+- Other runtime dataset objects → `src/models.ts`
+- Resource-priority behavior → `src/priorities.ts`
+- Targets, settings, tables, or popups → `src/ui.ts`, `src/settings.ts`, or `src/results.ts`
+- Graph/Sankey/boxline rendering → `src/graph.ts` or `src/visualization.ts`
+- URL/history persistence → `src/url-state.ts`
+- Factorio prototype schema/export → `scripts/build_factorio_dataset.py` and `src/data.ts`
 
 ## Invariants
 
-- The solver must remain framework-independent and runnable in Node.
+- `data.ts`, `math.ts`, and `solver.ts` must remain framework-independent and runnable in Node.
+- `factory.ts` must remain browser-independent; rendering is delegated through `FactoryViewPort`.
 - All external JSON enters through `parseCalculatorData()`.
-- Do not import UI modules into core or application code.
-- Do not add new mutable globals. Existing `spec` is a compatibility facade; prefer methods/policies over direct property mutation.
+- Do not add new mutable globals. Existing `spec` is a compatibility facade; prefer methods and policies over direct property mutation.
 - Keep URL fragments backward-compatible unless the task explicitly permits a migration.
 - Preserve every bundled dataset and run `pnpm validate:runtime` after model or solver changes.
 - Never manually edit generated sprite coordinates or generated 2.1.12 recipe values. Regenerate them from the official export.
@@ -59,9 +67,10 @@ Use `pnpm format` before committing. `pnpm verify` is the release gate and build
 
 ## Working style for agents
 
-- Prefer small named modules over adding another section to a file above roughly 400 lines.
-- Use explicit interfaces at layer boundaries.
+- Prefer cohesive feature modules, usually a few hundred lines, over both one-function files and giant monoliths.
+- Split a module only when the extracted concept has an independent responsibility, stable interface, or separate test surface; do not split solely because of line count.
+- Use explicit interfaces at deterministic module boundaries.
 - Keep compatibility casts localized and documented.
 - Avoid broad formatting mixed with functional changes.
 - Explain assumptions in code only when the reason is not recoverable from types or names.
-- Do not introduce React or another UI framework solely for code organization; the architecture already separates UI from the core.
+- Do not introduce React or another UI framework solely for code organization.

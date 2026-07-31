@@ -14,11 +14,11 @@ if (!build) {
 vm.runInThisContext(await readFile(resolve(root, "public/third_party/BigInteger.min.js"), "utf8"))
 const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 
-const { DatasetValidationError, parseCalculatorData } = await load("core/data/parse-calculator-data")
-const { Matrix } = await load("core/math/matrix")
-const { Rational, one, zero } = await load("core/math/rational")
-const { itemMatchesSearch } = await load("application/search/search")
-const { PriorityList } = await load("application/calculator/priority-model")
+const { DatasetValidationError, parseCalculatorData } = await load("data")
+const { Matrix } = await load("math")
+const { Rational, one, zero } = await load("math")
+const { itemMatchesSearch } = await load("data")
+const { PriorityList } = await load("priorities")
 
 test("dataset parser accepts the generated Space Age dataset", async () => {
   const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))

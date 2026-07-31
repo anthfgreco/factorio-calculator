@@ -1,21 +1,11 @@
 import "./styles/calc.css"
 import "./styles/dropdown.css"
+import { init } from "./app.js"
+import { changeCountPrecision, changeFormat, changeMprod, changeRatePrecision, changeTitle, changeVisDir, changeVisRender, changeVisType, clickTab, clickVisualize, plusHandler, toggleDebug } from "./state.js"
 
-import {
-  changeCountPrecision,
-  changeFormat,
-  changeMprod,
-  changeRatePrecision,
-  changeTitle,
-  changeVisDir,
-  changeVisRender,
-  changeVisType,
-  clickTab,
-  clickVisualize,
-  plusHandler,
-  toggleDebug,
-} from "./ui/events.js"
-import { init } from "./application/bootstrap.js"
+// -----------------------------------------------------------------------------
+// Browser entry point
+// -----------------------------------------------------------------------------
 
 window.handlers = {
   plusHandler,

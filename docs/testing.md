@@ -12,13 +12,13 @@ pnpm test
 
 `scripts/run-tests.mjs` emits TypeScript into `.tmp/tests` and runs `tests/*.test.mjs`.
 
-### Strict core type checking
+### Strict deterministic-module type checking
 
 ```bash
 pnpm typecheck:core
 ```
 
-This checks the pure core with stricter null, property, `this`, and implicit-any settings than the compatibility UI.
+This checks `data.ts`, `math.ts`, and `solver.ts` with stricter null, property, `this`, and implicit-any settings than the browser-facing modules.
 
 ### Full source type checking
 

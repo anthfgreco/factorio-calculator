@@ -2,109 +2,90 @@
 
 ## Goal
 
-The project keeps the original calculator behavior while making domain changes safe for humans and coding agents. The architecture optimizes for explicit ownership, deterministic logic, narrow dependencies, and executable validation—not for a UI framework.
+The project keeps the original calculator behavior while making repository-level changes easy to locate, understand, and validate. The source is consolidated into cohesive feature modules—large enough to preserve local context, but small enough to retain explicit ownership.
 
-## Dependency flow
+The architecture optimizes for deterministic boundaries, direct imports, an acyclic dependency graph, and executable validation. It does not depend on a UI framework.
+
+## Module map
 
 ```text
 main.ts
-  └─ application/bootstrap.ts        composition root
-       ├─ application/               state and use cases
-       │    ├─ core/                 pure math, solver, validated data contracts
-       │    └─ runtime/              browser dataset models
-       ├─ infrastructure/            URL/browser adapters
-       ├─ presentation/              shared DOM primitives
-       ├─ ui/                        feature DOM adapters
-       └─ visualization/             D3/SVG adapters
+  └─ app.ts                    composition root
+       ├─ data.ts              dataset boundary and shared pure queries
+       ├─ math.ts              exact arithmetic and formatting
+       ├─ solver.ts            pure factory solving
+       ├─ models.ts            runtime dataset models
+       ├─ recipes.ts           item/recipe models and policies
+       ├─ priorities.ts        resource-priority feature
+       ├─ factory.ts           calculator state facade
+       ├─ state.ts             browser/application settings and actions
+       ├─ presentation.ts      reusable DOM primitives
+       ├─ settings.ts          settings DOM
+       ├─ results.ts           results DOM
+       ├─ ui.ts                target DOM
+       ├─ graph.ts             graph and Sankey implementation
+       ├─ visualization.ts     visualization orchestration
+       └─ url-state.ts         URL and fragment persistence
 ```
 
-The intended direction is:
+`app.ts` is the composition root and intentionally connects the browser-facing modules. `main.ts` only loads styles, exposes legacy HTML handlers, and starts the app.
 
-```text
-core ← application ← ui
-core ← runtime ← application
-presentation ← runtime / ui / visualization
-infrastructure → browser APIs
-visualization → application read state + presentation assets
-```
+## Deterministic boundary
 
-`application/bootstrap.ts` is the composition root and is intentionally allowed to connect every layer.
+### Data
 
-## Layers
+`src/data.ts` owns:
 
-### Core
+- the normalized `CalculatorData` contract
+- runtime validation of untrusted JSON
+- normalized item search
+- location-list and unavailable-location queries
+- the small shared sorting helper
 
-`src/core/` contains deterministic code that runs without a browser:
+Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
 
-- exact rational and matrix arithmetic
-- simplex and factory solving
-- totals and solver contracts
-- dataset contracts and runtime validation
-- formatting calculations
+### Math and solver
 
-Core is compiled separately with stricter TypeScript options through `tsconfig.core.json`.
+`src/math.ts` owns exact arithmetic, matrices, the simplex primitive, display formatting, and power formatting.
 
-### Application
+`src/solver.ts` owns solver contracts, cycle detection, totals, and the pure `solve()` operation. It depends only on `math.ts`.
 
-`src/application/` owns calculator behavior:
+### Factory
 
-- `calculator/`: factory state facade, recipe/location/priority policies, view port
-- `recipes/`: recipe selection and settings queries
-- `search/`: normalized application search
-- `bootstrap.ts`: dataset loading and dependency wiring
+`src/factory.ts` owns the browser-independent `FactorySpecification` compatibility facade and closely related building, location, and recipe-selection policy. It converts runtime objects to the explicit solver contracts and delegates rendering through `FactoryViewPort`.
 
-`FactorySpecification` remains the compatibility facade used by the existing UI. It delegates solver work to core and rendering to `FactoryViewPort`.
+These modules must not access the DOM, D3, storage, or browser globals. `data.ts`, `math.ts`, and `solver.ts` receive stricter TypeScript checks through `tsconfig.core.json`.
 
-### Runtime
+## Runtime and policy modules
 
-`src/runtime/` converts validated dataset records into the browser objects used by the legacy UI. Runtime classes reference neutral presentation primitives but do not import feature UI modules. Treat this as an adapter layer, not the home for new domain rules.
+`src/models.ts` constructs buildings, modules, belts, fuels, planets, and item groups from validated data.
 
-`runtime-context.ts` injects the small amount of calculator context required by legacy models and avoids model-to-bootstrap circular imports.
+`src/recipes.ts` contains the item/recipe runtime models together with recipe classification, search, grouping, and enable/disable policy. Keeping these together makes recipe changes discoverable without crossing many files.
 
-### Presentation
+`src/priorities.ts` contains the priority model, its application policy, and its tightly coupled editor. The editor remains in the same module because it directly manipulates that model and has no independent use.
 
-`src/presentation/` contains reusable DOM primitives with no calculator feature ownership: icons, tooltips, and dropdown helpers. Runtime models, UI features, and visualizations may depend on presentation without depending on each other.
+`src/state.ts` contains the small mutable browser/application settings: active tab, selected dataset, visualizer options, legacy-calculation mode, document title, and HTML event actions.
 
-### UI
+## Browser modules
 
-`src/ui/` owns DOM behavior only:
+`src/presentation.ts` contains generic icons, tooltips, and dropdown primitives.
 
-- targets
-- settings and resource-priority editor
-- results and recipe selector
-- feature events and browser interaction
-- URL-fragment serialization tied to current UI settings
+`src/settings.ts`, `src/results.ts`, and `src/ui.ts` own settings, result tables, and target-row DOM respectively. Calculation policy should be called through `factory.ts`, `recipes.ts`, or `priorities.ts` rather than implemented in event handlers.
 
-UI mutation should call calculator methods/application policies and then request either `updateSolution()` or `display()`.
+`src/graph.ts` contains Sankey and shared graph primitives. `src/visualization.ts` contains viewport behavior, box-line rendering, and visualization selection/orchestration.
 
-### Visualization
+`src/url-state.ts` owns both browser history updates and the calculator-specific fragment format. URL fragments remain backward-compatible unless a deliberate migration is approved.
 
-`src/visualization/` contains Sankey and box-line rendering. D3 remains appropriate here. Do not move solver or selection rules into visualizations.
+## Import rules
 
-### Infrastructure
+Use direct imports from the module that owns a symbol. Do not add barrel exports.
 
-`src/infrastructure/` contains browser adapters that do not know about application features. URL-history synchronization belongs here; calculator-fragment serialization remains in UI persistence because it encodes UI-owned settings.
+`scripts/check-architecture.mjs` enforces the approved module dependency map, rejects browser dependencies in deterministic modules, and rejects first-party import cycles.
 
-## Important boundaries
+The module map is deliberately explicit. Update the checker alongside any intentional architectural change.
 
-### Dataset boundary
+## Module size and cohesion
 
-Raw JSON is `unknown` until `parseCalculatorData()` validates it. Domain construction must only receive `CalculatorData`.
+The preferred module is usually a few hundred lines and owns one recognizable feature or deterministic boundary. A module may exceed that range when splitting it would separate tightly coupled behavior.
 
-### Solver boundary
-
-`core/solver/solve.ts` accepts the explicit contracts in `core/solver/contracts.ts`. The compatibility conversion from `FactorySpecification` is localized at the call site.
-
-### Rendering boundary
-
-`FactorySpecification` calls `FactoryViewPort`; it does not import D3, HTML, display modules, URL serialization, or visualizations.
-
-### Priority boundary
-
-Resource priorities are represented by the pure `PriorityList` model. `ui/settings/resource-priority-editor.ts` renders and manipulates that model.
-
-## Enforcement
-
-`scripts/check-architecture.mjs` resolves relative imports and rejects forbidden layer dependencies. It also rejects browser dependencies inside core.
-
-The architecture checker is intentionally simple and readable so future agents can update it alongside deliberate architectural changes. It also rejects import cycles across first-party TypeScript modules.
+Do not create tiny forwarding files solely to reduce line counts. Split only when the extracted code has an independent responsibility, stable interface, or separate test surface.

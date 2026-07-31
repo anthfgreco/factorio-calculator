@@ -1,11 +1,15 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "src/core",
+    "rootDir": "src",
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictPropertyInitialization": true,
     "noImplicitThis": true
   },
-  "include": ["src/core/**/*.ts"]
+  "include": [
+    "src/data.ts",
+    "src/math.ts",
+    "src/solver.ts"
+  ]
 }

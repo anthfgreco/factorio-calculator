@@ -1,58 +1,73 @@
 import { readFile, readdir } from "node:fs/promises"
-import { dirname, extname, relative, resolve, sep } from "node:path"
+import { basename, extname, resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
 const sourceRoot = resolve(root, "src")
-const sourceExtensions = new Set([".ts", ".js"])
 const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g
 
-const files = await collectFiles(sourceRoot)
-const fileSet = new Set(files)
-const importGraph = new Map(files.map((file) => [file, []]))
+const allowedImports = new Map([
+  ["data.ts", new Set()],
+  ["math.ts", new Set()],
+  ["solver.ts", new Set(["math.ts"])],
+  ["presentation.ts", new Set()],
+  ["models.ts", new Set(["data.ts", "math.ts", "presentation.ts"])],
+  ["priorities.ts", new Set(["math.ts"])],
+  ["recipes.ts", new Set(["data.ts", "math.ts", "models.ts", "presentation.ts", "priorities.ts", "solver.ts"])],
+  ["factory.ts", new Set(["math.ts", "models.ts", "priorities.ts", "recipes.ts", "solver.ts"])],
+  ["state.ts", new Set(["factory.ts", "math.ts"])],
+  ["graph.ts", new Set(["factory.ts", "math.ts", "presentation.ts"])],
+  ["visualization.ts", new Set(["factory.ts", "graph.ts", "math.ts", "presentation.ts", "state.ts"])],
+  ["settings.ts", new Set(["data.ts", "factory.ts", "graph.ts", "math.ts", "models.ts", "priorities.ts", "recipes.ts", "state.ts"])],
+  ["ui.ts", new Set(["data.ts", "factory.ts", "math.ts", "presentation.ts", "recipes.ts", "settings.ts"])],
+  ["url-state.ts", new Set(["data.ts", "factory.ts", "math.ts", "settings.ts", "state.ts"])],
+  ["results.ts", new Set(["factory.ts", "math.ts", "models.ts", "presentation.ts", "recipes.ts", "settings.ts", "state.ts", "url-state.ts"])],
+  ["app.ts", new Set(["data.ts", "factory.ts", "models.ts", "presentation.ts", "recipes.ts", "results.ts", "settings.ts", "state.ts", "ui.ts", "url-state.ts", "visualization.ts"])],
+  ["main.ts", new Set(["app.ts", "state.ts"])],
+])
+
+const browserIndependent = new Set(["data.ts", "math.ts", "solver.ts", "factory.ts"])
+const sourceFiles = (await readdir(sourceRoot, { withFileTypes: true }))
+  .filter((entry) => entry.isFile() && extname(entry.name) === ".ts" && !entry.name.endsWith(".d.ts"))
+  .map((entry) => resolve(sourceRoot, entry.name))
+const sourceNames = new Set(sourceFiles.map((file) => basename(file)))
+const graph = new Map(sourceFiles.map((file) => [basename(file), []]))
 const violations = []
 
-for (const file of files) {
+for (const file of sourceFiles) {
+  const name = basename(file)
   const source = await readFile(file, "utf8")
-  const sourcePath = normalize(relative(sourceRoot, file))
-  const sourceLayer = layerOf(sourcePath)
+  const allowed = allowedImports.get(name)
+  if (allowed === undefined) {
+    violations.push(`${name}: missing from the architecture module map`)
+    continue
+  }
 
-  const mustBeBrowserIndependent =
-    sourceLayer === "core" ||
-    sourceLayer === "infrastructure" && !sourcePath.startsWith("infrastructure/url/") ||
-    sourceLayer === "application" && sourcePath !== "application/bootstrap.ts"
-  if (mustBeBrowserIndependent) {
+  if (browserIndependent.has(name)) {
     for (const forbidden of ["document", "window", "localStorage", "sessionStorage", "d3."]) {
       if (source.includes(forbidden)) {
-        violations.push(`${sourcePath}: ${sourceLayer} contains browser dependency ${JSON.stringify(forbidden)}`)
+        violations.push(`${name}: deterministic module contains browser dependency ${JSON.stringify(forbidden)}`)
       }
     }
   }
 
   for (const match of source.matchAll(importPattern)) {
     const specifier = match[1]
-    if (!specifier.startsWith(".")) {
+    if (!specifier.startsWith("./")) {
       continue
     }
-    const target = resolveImport(file, specifier)
-    if (target === null || !target.startsWith(sourceRoot + sep)) {
+    const targetName = basename(specifier.replace(/\.js$/, ".ts"))
+    if (!sourceNames.has(targetName)) {
       continue
     }
-    if (fileSet.has(target)) {
-      importGraph.get(file).push(target)
-    }
-    const targetPath = normalize(relative(sourceRoot, target))
-    const targetLayer = layerOf(targetPath)
-    const allowed = allowedLayers(sourcePath, sourceLayer)
-    if (!allowed.has(targetLayer)) {
-      violations.push(
-        `${sourcePath}: ${sourceLayer} must not import ${targetLayer} (${specifier} -> ${targetPath})`,
-      )
+    graph.get(name).push(targetName)
+    if (!allowed.has(targetName)) {
+      violations.push(`${name}: must not import ${targetName} (${specifier})`)
     }
   }
 }
 
-for (const cycle of findImportCycles(importGraph)) {
-  violations.push(`import cycle: ${cycle.map((file) => normalize(relative(sourceRoot, file))).join(" -> ")}`)
+for (const cycle of findImportCycles(graph)) {
+  violations.push(`import cycle: ${cycle.join(" -> ")}`)
 }
 
 if (violations.length > 0) {
@@ -63,21 +78,21 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log(`Architecture check passed for ${files.length} source files.`)
+console.log(`Architecture check passed for ${sourceFiles.length} consolidated source modules.`)
 
-function findImportCycles(graph) {
+function findImportCycles(moduleGraph) {
   const state = new Map()
   const stack = []
   const stackIndex = new Map()
   const cycles = []
   const seen = new Set()
 
-  function visit(file) {
-    state.set(file, 1)
-    stackIndex.set(file, stack.length)
-    stack.push(file)
+  function visit(moduleName) {
+    state.set(moduleName, 1)
+    stackIndex.set(moduleName, stack.length)
+    stack.push(moduleName)
 
-    for (const dependency of graph.get(file) ?? []) {
+    for (const dependency of moduleGraph.get(moduleName) ?? []) {
       if (!state.has(dependency)) {
         visit(dependency)
       } else if (state.get(dependency) === 1) {
@@ -92,72 +107,14 @@ function findImportCycles(graph) {
     }
 
     stack.pop()
-    stackIndex.delete(file)
-    state.set(file, 2)
+    stackIndex.delete(moduleName)
+    state.set(moduleName, 2)
   }
 
-  for (const file of graph.keys()) {
-    if (!state.has(file)) {
-      visit(file)
+  for (const moduleName of moduleGraph.keys()) {
+    if (!state.has(moduleName)) {
+      visit(moduleName)
     }
   }
   return cycles
-}
-
-async function collectFiles(directory) {
-  const results = []
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const path = resolve(directory, entry.name)
-    if (entry.isDirectory()) {
-      if (entry.name !== "vendor") {
-        results.push(...(await collectFiles(path)))
-      }
-    } else if (sourceExtensions.has(extname(entry.name))) {
-      results.push(path)
-    }
-  }
-  return results
-}
-
-function resolveImport(sourceFile, specifier) {
-  let target = resolve(dirname(sourceFile), specifier)
-  if (target.endsWith(".js")) {
-    target = target.slice(0, -3) + ".ts"
-  }
-  return target
-}
-
-function normalize(path) {
-  return path.split(sep).join("/")
-}
-
-function layerOf(path) {
-  return path.split("/", 1)[0]
-}
-
-function allowedLayers(sourcePath, sourceLayer) {
-  if (sourcePath === "application/bootstrap.ts" || sourcePath === "main.ts") {
-    return new Set(["application", "core", "infrastructure", "runtime", "shared", "ui", "visualization", "vendor", "styles", "presentation"])
-  }
-
-  switch (sourceLayer) {
-    case "core":
-      return new Set(["core"])
-    case "shared":
-      return new Set(["core", "shared"])
-    case "infrastructure":
-      return new Set(["core", "infrastructure", "shared"])
-    case "application":
-      return new Set(["application", "core", "runtime", "shared"])
-    case "presentation":
-      return new Set(["core", "presentation", "shared"])
-    case "runtime":
-      return new Set(["core", "presentation", "runtime", "shared"])
-    case "ui":
-      return new Set(["application", "core", "infrastructure", "presentation", "runtime", "shared", "ui", "visualization"])
-    case "visualization":
-      return new Set(["application", "core", "presentation", "runtime", "shared", "ui", "vendor", "visualization"])
-    default:
-      return new Set([sourceLayer])
-  }
 }

@@ -22,28 +22,20 @@ globalThis.d3 = {
 
 const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
 
-const { getItems } = await loadModule("runtime/item")
-const { getRecipes } = await loadModule("runtime/recipe")
-const { getBuildings } = await loadModule("runtime/building")
-const { getModules } = await loadModule("runtime/module")
-const { getBelts } = await loadModule("runtime/belt")
-const { getFuel } = await loadModule("runtime/fuel")
-const { getPlanets } = await loadModule("runtime/planet")
-const { getItemGroups } = await loadModule("runtime/group")
-const factory = await loadModule("application/calculator/index")
-const { itemMatchesSearch } = await loadModule("application/search/search")
-const { formatLocationList, getUnavailableLocationInfo } = await loadModule("application/recipes/location")
-const { getItemProductionRecipes, setRecipeEnabled } = await loadModule("application/recipes/recipe-selection")
+const { getItems, getRecipes } = await loadModule("recipes")
+const { getBelts, getBuildings, getFuel, getItemGroups, getModules, getPlanets, configureModelRuntime } = await loadModule("models")
+const factory = await loadModule("factory")
+const { itemMatchesSearch, formatLocationList, getUnavailableLocationInfo } = await loadModule("data")
+const { getItemProductionRecipes, setRecipeEnabled } = factory
 const {
   getRecipeSelectorGroups,
   getRecipeSettingsCategory,
   isRecyclingRecipe,
   recipeMatchesSettingsSearch,
   recipeVisibleInSettings,
-} = await loadModule("application/recipes/recipe-settings")
-const { one } = await loadModule("core/math/rational")
-const { solve } = await loadModule("core/solver/solve")
-const { configureModelRuntime } = await loadModule("runtime/runtime-context")
+} = await loadModule("recipes")
+const { one } = await loadModule("math")
+const { solve } = await loadModule("solver")
 configureModelRuntime({ getSpecification: () => factory.spec, useLegacyCalculation: () => false })
 
 const searchCases = [

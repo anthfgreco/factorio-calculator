@@ -26,8 +26,8 @@ pnpm dev
 ```bash
 pnpm dev                 # Start Vite
 pnpm check               # Architecture, types, tests, and dataset runtime checks
-pnpm check:architecture  # Enforce layer dependency rules
-pnpm typecheck:core      # Strictly type-check the pure core
+pnpm check:architecture  # Enforce module dependency rules
+pnpm typecheck:core      # Strictly type-check data, math, and solver modules
 pnpm typecheck           # Type-check the complete browser application
 pnpm test                # Run focused Node characterization tests
 pnpm validate:runtime    # Load and verify every bundled dataset
@@ -40,16 +40,23 @@ pnpm zip                 # Package current working-tree files on Windows
 
 ## Architecture
 
-- `src/core/` — pure exact math, solver, data contracts, and validation
-- `src/application/` — calculator state, policies, queries, and bootstrap wiring
-- `src/runtime/` — browser-facing models built from validated dataset records
-- `src/presentation/` — shared icon, tooltip, and dropdown primitives
-- `src/infrastructure/` — isolated browser adapters
-- `src/ui/` — DOM interaction and rendering
-- `src/visualization/` — Sankey and box-line D3/SVG rendering
-- `src/shared/` — tiny cross-layer helpers
+The TypeScript source is intentionally consolidated into cohesive feature modules rather than many small files:
 
-Start with [AGENTS.md](AGENTS.md) for repository-specific coding rules and [docs/architecture.md](docs/architecture.md) for the full design.
+- `src/data.ts` — dataset contracts, validation, search, and location helpers
+- `src/math.ts` — exact rational/matrix arithmetic and numeric formatting
+- `src/solver.ts` — solver contracts, cycles, totals, and simplex orchestration
+- `src/factory.ts` — calculator state facade and factory policies
+- `src/models.ts` — runtime buildings, modules, belts, fuel, planets, and groups
+- `src/recipes.ts` — item/recipe models and recipe policy/query logic
+- `src/priorities.ts` — resource-priority model, policy, and editor
+- `src/state.ts` — browser/application settings and event actions
+- `src/presentation.ts` — icons, tooltips, and dropdown primitives
+- `src/settings.ts`, `src/results.ts`, `src/ui.ts` — settings, results, and target DOM
+- `src/graph.ts`, `src/visualization.ts` — Sankey/graph implementation and rendering
+- `src/url-state.ts` — URL history and fragment serialization
+- `src/app.ts`, `src/main.ts` — composition root and browser entry point
+
+Start with [AGENTS.md](AGENTS.md), [src/README.md](src/README.md), and [docs/architecture.md](docs/architecture.md).
 
 ## GitHub Pages
 
@@ -90,4 +97,4 @@ The builder writes:
 - `public/images/sprite-sheet-<hash>.png`
 - `build-reports/space-age-2.1.12.json`
 
-Raw JSON is validated by `src/core/data/parse-calculator-data.ts` before runtime objects are created. Do not manually treat generated JSON as the source of truth.
+Raw JSON is validated by `parseCalculatorData()` in `src/data.ts` before runtime objects are created. Do not manually treat generated JSON as the source of truth.
