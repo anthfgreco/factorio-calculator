@@ -12,11 +12,20 @@ if (!build) {
 }
 
 vm.runInThisContext(await readFile(resolve(root, "public/third_party/BigInteger.min.js"), "utf8"))
+globalThis.d3 = {
+  local: () => ({
+    get: () => null,
+    set: () => undefined,
+  }),
+}
 const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 
 const { DatasetValidationError, parseCalculatorData } = await load("data")
 const { Matrix, powerRepresentation, Rational, one, zero } = await load("math")
 const { itemMatchesSearch } = await load("data")
+const { ModuleSpec, configureModelRuntime, getBuildings, getModules, getPlanets, getBelts, getFuel, getItemGroups } = await load("models")
+const { getItems, getRecipes } = await load("recipes")
+const { FactorySpecification } = await load("factory")
 const { PriorityList } = await load("priorities")
 const { solve, SolverFailure } = await load("solver")
 
@@ -119,4 +128,53 @@ test("priority model stays deterministic without a DOM", () => {
   priority.setPriority(priority.getResource(high), newLevel)
   assert.equal(priority.getFirstLevel(), newLevel)
   assert.ok(notifications >= 3)
+})
+
+test("speedEffect clamps total speed multiplier to 20% minimum floor", () => {
+  const prod3 = {
+    speed: Rational.from_float(-0.15),
+    productivity: Rational.from_float(0.1),
+  }
+  const spec = new ModuleSpec(null, { defaultBeacon: [], defaultBeaconCount: zero })
+  spec.modules = Array(8).fill(prod3)
+  assert.equal(spec.speedEffect().toString(), "1/5")
+})
+
+test("cryogenic science at 60 SPM in cryogenic plant with 8 productivity 3 modules has positive building count and power", async () => {
+  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
+  const data = parseCalculatorData(raw)
+  const items = getItems(data)
+  const recipes = getRecipes(data, items)
+  const buildings = getBuildings(data, items)
+  const planets = getPlanets(data, recipes, buildings)
+  const modules = getModules(data, items)
+  const belts = getBelts(data)
+  const fuel = getFuel(data, items)
+  const itemGroups = getItemGroups(items, data)
+
+  const factorySpec = new FactorySpecification()
+  configureModelRuntime({
+    getSpecification: () => factorySpec,
+    useLegacyCalculation: () => false,
+  })
+  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
+  factorySpec.setDefaultPriority()
+
+  const recipe = recipes.get("cryogenic-science-pack")
+  const prod3 = modules.get("productivity-module-3")
+  const plant = factorySpec.buildingKeys.get("cryogenic-plant")
+  const mSpec = factorySpec.getModuleSpec(recipe)
+  mSpec.setBuilding(plant, factorySpec)
+  for (let i = 0; i < 8; i++) {
+    mSpec.setModule(i, prod3)
+  }
+
+  const item = items.get("cryogenic-science-pack")
+  const targetRate = Rational.from_integer(60).div(factorySpec.format.rateFactor)
+  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+  const count = factorySpec.getCount(recipe, totals.rates.get(recipe))
+  const { power } = factorySpec.getPowerUsage(recipe, totals.rates.get(recipe))
+
+  assert.ok(zero.less(count), `Expected positive building count, got ${count.toString()}`)
+  assert.ok(zero.less(power), `Expected positive power usage, got ${power.toString()}`)
 })

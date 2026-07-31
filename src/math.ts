@@ -184,6 +184,14 @@ export class Rational {
     return new Rational(this.p.pow(exponent), this.q.pow(exponent))
   }
 
+  static max(a: Rational, b: Rational): Rational {
+    return a.less(b) ? b : a
+  }
+
+  static min(a: Rational, b: Rational): Rational {
+    return a.less(b) ? a : b
+  }
+
   static from_decimal(value: string): Rational {
     let decimalIndex = value.indexOf(".")
     if (decimalIndex === -1 || decimalIndex === value.length - 1) {

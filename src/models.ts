@@ -739,6 +739,9 @@ export function moduleDropdown(selector, data) {
     )
 }
 
+const MIN_SPEED_EFFECT = Rational.from_floats(1, 5) // 20%
+const MIN_POWER_EFFECT = Rational.from_floats(1, 5) // 20%
+
 // ModuleSpec represents the set of modules (including beacons) configured for
 // a given recipe.
 export class ModuleSpec {
@@ -795,6 +798,7 @@ export class ModuleSpec {
   setBeaconCount(count) {
     this.beaconCount = count
   }
+
   speedEffect() {
     let speed = one
     for (let module of this.modules) {
@@ -819,7 +823,7 @@ export class ModuleSpec {
         speed = speed.add(beacon)
       }
     }
-    return speed
+    return Rational.max(speed, MIN_SPEED_EFFECT)
   }
   prodEffect(spec) {
     let prod = one
@@ -856,11 +860,7 @@ export class ModuleSpec {
         power = power.add(beacon)
       }
     }
-    let minimum = Rational.from_floats(1, 5)
-    if (power.less(minimum)) {
-      power = minimum
-    }
-    return power
+    return Rational.max(power, MIN_POWER_EFFECT)
   }
 }
 
