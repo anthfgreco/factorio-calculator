@@ -29,6 +29,18 @@ if (!calculatorHtml.includes("third_party/BigInteger.min.js")) {
 if (!calculatorHtml.includes('id="targets_title"')) {
   throw new Error("calc.html is missing the production-target heading")
 }
+if (
+  !calculatorHtml.includes('name="description"') ||
+  !calculatorHtml.includes('<link rel="canonical" href="https://anthfgreco.github.io/factorio-calculator/calc.html"')
+) {
+  throw new Error("calc.html is missing its search description or canonical URL")
+}
+if (!calculatorHtml.includes('type="application/ld+json"') || !calculatorHtml.includes('"@type": "WebApplication"')) {
+  throw new Error("calc.html is missing WebApplication structured data")
+}
+if (!calculatorHtml.includes("<h1>Factorio Calculator</h1>")) {
+  throw new Error("calc.html is missing its primary Factorio Calculator heading")
+}
 if (!calculatorHtml.includes('id="visualization_summary"') || !calculatorHtml.includes("fluids use a 10:1 scale")) {
   throw new Error("calc.html is missing the visualization scale and scope guidance")
 }
@@ -81,6 +93,11 @@ if (calculatorHtml.includes("Machine equivalents")) {
 const changelogHtml = await readFile(new URL("docs/changelog.html", dist), "utf8")
 if (/20(?:0\d|1\d|2[0-5])-/.test(changelogHtml)) {
   throw new Error("The changelog still contains entries from 2025 or earlier")
+}
+
+const sitemapXml = await readFile(await requireFile("sitemap.xml"), "utf8")
+if (!sitemapXml.includes("https://anthfgreco.github.io/factorio-calculator/calc.html")) {
+  throw new Error("sitemap.xml is missing the canonical calculator URL")
 }
 
 const dataPath = await requireFile("data/space-age-2.1.12.json")

@@ -371,7 +371,6 @@ div.tab {
   padding: 0.5em;
   background-color: var(--main);
 }
-
 #share_status {
   color: var(--bright);
   font-size: 0.9em;
@@ -763,7 +762,7 @@ details.recipe-selector[open] > summary {
   margin: 0 0 0.65em;
   color: var(--bright);
 }
-.help-header h2 {
+.help-header h1 {
   margin: 0 0 0.2em;
   font-size: 1.35em;
 }

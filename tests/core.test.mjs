@@ -315,6 +315,345 @@ test("changing the crafting machine after selecting Nauvis updates an existing m
   assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
 })
 
+let cachedTestData = null
+
+async function getTestData() {
+  if (!cachedTestData) {
+    const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
+    const data = parseCalculatorData(raw)
+    const items = getItems(data)
+    const recipes = getRecipes(data, items)
+    const buildings = getBuildings(data, items)
+    const planets = getPlanets(data, recipes, buildings)
+    const modules = getModules(data, items)
+    const belts = getBelts(data)
+    const fuel = getFuel(data, items)
+    const itemGroups = getItemGroups(items, data)
+    cachedTestData = { items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
+  }
+  return cachedTestData
+}
+
+async function setupTestFactory() {
+  const { items, recipes, buildings, planets, modules, belts, fuel, itemGroups } = await getTestData()
+
+  const factorySpec = new FactorySpecification()
+  configureModelRuntime({
+    getSpecification: () => factorySpec,
+    useLegacyCalculation: () => false,
+  })
+  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
+  factorySpec.setDefaultPriority()
+
+  return { factorySpec, items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
+}
+
+test("downgrading crafting machine truncates module slots and keeps productivity effect valid", async () => {
+  const { factorySpec, recipes, modules } = await setupTestFactory()
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const prod3 = modules.get("productivity-module-3")
+  const recipe = recipes.get("advanced-circuit")
+
+  factorySpec.setMinimumBuilding(am3)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  for (let i = 0; i < 4; i++) {
+    moduleSpec.setModule(i, prod3)
+  }
+  assert.equal(moduleSpec.modules.length, 4)
+  assert.equal(factorySpec.getProdEffect(recipe).toString(), "7/5")
+
+  factorySpec.setMinimumBuilding(am2)
+  assert.equal(moduleSpec.modules.length, 2)
+  assert.equal(factorySpec.getProdEffect(recipe).toString(), "6/5")
+})
+
+test("downgrading crafting machine to zero slots clears modules without calculation errors", async () => {
+  const { factorySpec, recipes, modules } = await setupTestFactory()
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const am1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const prod1 = modules.get("productivity-module")
+  const recipe = recipes.get("electronic-circuit")
+
+  factorySpec.setMinimumBuilding(am2)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  moduleSpec.setModule(0, prod1)
+  moduleSpec.setModule(1, prod1)
+  assert.equal(moduleSpec.modules.length, 2)
+
+  factorySpec.setMinimumBuilding(am1)
+  assert.equal(factorySpec.getProdEffect(recipe).toString(), "1")
+})
+
+test("upgrading crafting machine expands module slots and populates default module", async () => {
+  const { factorySpec, recipes, modules } = await setupTestFactory()
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const speed3 = modules.get("speed-module-3")
+  const recipe = recipes.get("firearm-magazine")
+
+  factorySpec.setDefaultModule(speed3)
+  factorySpec.setMinimumBuilding(am3)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  assert.ok(moduleSpec !== undefined, "Expected moduleSpec to be defined for AM3")
+  assert.equal(moduleSpec.modules.length, 4)
+  assert.deepEqual(moduleSpec.modules, [speed3, speed3, speed3, speed3])
+})
+
+test("selecting Nauvis after setting minimum building preserves machine selection for populated module spec", async () => {
+  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const item = items.get("firearm-magazine")
+  const recipe = recipes.get("firearm-magazine")
+
+  factorySpec.setMinimumBuilding(am2)
+  const targetRate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
+  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+  factorySpec.populateModuleSpec(totals)
+
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
+})
+
+test("switching planet to Aquilo updates building availability for cryogenic science pack recipe", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  const aquilo = planets.get("aquilo")
+  const nauvis = planets.get("nauvis")
+  const recipe = recipes.get("cryogenic-science-pack")
+  const plant = factorySpec.buildingKeys.get("cryogenic-plant")
+
+  factorySpec.selectOnePlanet(nauvis)
+  assert.equal(factorySpec.isBuildingAvailable(plant, recipe), false)
+
+  factorySpec.selectOnePlanet(aquilo)
+  assert.equal(factorySpec.isBuildingAvailable(plant, recipe), true)
+})
+
+test("deselecting all planets restores default building availability while preserving custom specs", async () => {
+  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const nauvis = planets.get("nauvis")
+  const recipe = recipes.get("firearm-magazine")
+  const item = items.get("firearm-magazine")
+
+  factorySpec.selectOnePlanet(nauvis)
+  const targetRate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
+  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+  factorySpec.populateModuleSpec(totals)
+
+  factorySpec.selectedPlanets.clear()
+  assert.ok(factorySpec.getBuilding(recipe) !== null)
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
+})
+
+test("setting minimum building before or after selectOnePlanet yields identical building selections", async () => {
+  const { factorySpec: specA, recipes: recipesA, planets: planetsA } = await setupTestFactory()
+  const { factorySpec: specB, recipes: recipesB, planets: planetsB } = await setupTestFactory()
+
+  const am2A = specA.buildingKeys.get("assembling-machine-2")
+  specA.setMinimumBuilding(am2A)
+  specA.selectOnePlanet(planetsA.get("nauvis"))
+
+  const am2B = specB.buildingKeys.get("assembling-machine-2")
+  specB.selectOnePlanet(planetsB.get("nauvis"))
+  specB.setMinimumBuilding(am2B)
+
+  const rA = recipesA.get("firearm-magazine")
+  const rB = recipesB.get("firearm-magazine")
+  assert.equal(specA.getBuilding(rA).key, specB.getBuilding(rB).key)
+  assert.equal(specA.getBuilding(rA).key, "assembling-machine-2")
+})
+
+test("changing minimum furnace from Stone Furnace to Electric Furnace changes fuel requirement from coal to null", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const stoneFurnace = factorySpec.buildingKeys.get("stone-furnace")
+  const electricFurnace = factorySpec.buildingKeys.get("electric-furnace")
+  const recipe = recipes.get("iron-plate")
+
+  factorySpec.setMinimumBuilding(stoneFurnace)
+  assert.equal(factorySpec.getBuilding(recipe).key, "stone-furnace")
+  assert.equal(factorySpec.getFuelForRecipe(recipe).key, "coal")
+
+  factorySpec.setMinimumBuilding(electricFurnace)
+  assert.equal(factorySpec.getBuilding(recipe).key, "electric-furnace")
+  assert.equal(factorySpec.getFuelForRecipe(recipe), null)
+})
+
+test("changing minimum furnace from Electric Furnace to Stone Furnace restores fuel requirement", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const stoneFurnace = factorySpec.buildingKeys.get("stone-furnace")
+  const electricFurnace = factorySpec.buildingKeys.get("electric-furnace")
+  const recipe = recipes.get("copper-plate")
+
+  factorySpec.setMinimumBuilding(electricFurnace)
+  assert.equal(factorySpec.getFuelForRecipe(recipe), null)
+
+  factorySpec.setMinimumBuilding(stoneFurnace)
+  assert.equal(factorySpec.getBuilding(recipe).key, "stone-furnace")
+  assert.equal(factorySpec.getFuelForRecipe(recipe).key, "coal")
+})
+
+test("changing crafting machine tier updates calculated power usage", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const am1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const recipe = recipes.get("firearm-magazine")
+  const rate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
+
+  factorySpec.setMinimumBuilding(am1)
+  const power1 = factorySpec.getPowerUsage(recipe, rate).power
+
+  factorySpec.setMinimumBuilding(am2)
+  const power2 = factorySpec.getPowerUsage(recipe, rate).power
+
+  assert.ok(!power1.equal(power2), "Expected power usage to change between AM1 and AM2")
+  assert.ok(zero.less(power1))
+  assert.ok(zero.less(power2))
+})
+
+test("switching from beaconable to non-beaconable machine ignores beacon effects without throwing", async () => {
+  const { factorySpec, recipes, modules } = await setupTestFactory()
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const am1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const speed3 = modules.get("speed-module-3")
+  const recipe = recipes.get("firearm-magazine")
+
+  factorySpec.setMinimumBuilding(am2)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  moduleSpec.setBeaconModule(speed3, 0)
+  moduleSpec.beaconCount = Rational.from_integer(8)
+
+  assert.doesNotThrow(() => factorySpec.setMinimumBuilding(am1))
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
+  assert.equal(factorySpec.getBuilding(recipe).canBeacon(), false)
+})
+
+test("changing minimum crafting machine leaves furnace minimum building isolated", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const steelFurnace = factorySpec.buildingKeys.get("steel-furnace")
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+
+  factorySpec.setMinimumBuilding(steelFurnace)
+  factorySpec.setMinimumBuilding(am3)
+
+  assert.equal(factorySpec.getBuilding(recipes.get("iron-plate")).key, "steel-furnace")
+  assert.equal(factorySpec.getBuilding(recipes.get("firearm-magazine")).key, "assembling-machine-3")
+})
+
+test("changing minimum building updates all pre-existing module specs in that crafting category", async () => {
+  const { factorySpec, items, recipes } = await setupTestFactory()
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const r1 = recipes.get("firearm-magazine")
+  const r2 = recipes.get("electronic-circuit")
+  const r3 = recipes.get("iron-gear-wheel")
+
+  factorySpec.setMinimumBuilding(am2)
+  const targetRate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
+  const totals = solve(factorySpec, [
+    { item: items.get("firearm-magazine"), rate: targetRate, recipe: null },
+    { item: items.get("electronic-circuit"), rate: targetRate, recipe: null },
+  ])
+  factorySpec.populateModuleSpec(totals)
+  factorySpec.getModuleSpec(r3)
+
+  factorySpec.setMinimumBuilding(am3)
+
+  assert.equal(factorySpec.getModuleSpec(r1).building.key, "assembling-machine-3")
+  assert.equal(factorySpec.getModuleSpec(r2).building.key, "assembling-machine-3")
+  assert.equal(factorySpec.getModuleSpec(r3).building.key, "assembling-machine-3")
+})
+
+test("factorySpec.getCount updates building count when machine crafting speed changes", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const am1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const recipe = recipes.get("iron-gear-wheel")
+  const rate = Rational.from_integer(10).div(factorySpec.format.rateFactor)
+
+  factorySpec.setMinimumBuilding(am1)
+  const count1 = factorySpec.getCount(recipe, rate)
+
+  factorySpec.setMinimumBuilding(am3)
+  const count3 = factorySpec.getCount(recipe, rate)
+
+  assert.ok(count3.less(count1), `Expected count3 (${count3}) to be less than count1 (${count1})`)
+})
+
+test("productivity module effect recalculates correctly when machine is downgraded", async () => {
+  const { factorySpec, items, recipes, modules } = await setupTestFactory()
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const prod3 = modules.get("productivity-module-3")
+  const item = items.get("advanced-circuit")
+  const recipe = recipes.get("advanced-circuit")
+
+  factorySpec.setMinimumBuilding(am3)
+  const mSpec = factorySpec.getModuleSpec(recipe)
+  for (let i = 0; i < 4; i++) {
+    mSpec.setModule(i, prod3)
+  }
+
+  const targetRate = Rational.from_integer(10).div(factorySpec.format.rateFactor)
+  const totalsBefore = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+  const rateBefore = totalsBefore.rates.get(recipes.get("electronic-circuit"))
+
+  factorySpec.setMinimumBuilding(am2)
+  const totalsAfter = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+  const rateAfter = totalsAfter.rates.get(recipes.get("electronic-circuit"))
+
+  assert.ok(rateBefore.less(rateAfter), "Expected electronic circuit demand to be higher with fewer prod modules")
+})
+
+test("custom minimum building update synchronizes all recipes in crafting category", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const am1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const rMagazine = recipes.get("firearm-magazine")
+  const rGear = recipes.get("iron-gear-wheel")
+
+  factorySpec.setMinimumBuilding(am2)
+  const mSpec = factorySpec.getModuleSpec(rMagazine)
+  assert.equal(mSpec.building.key, "assembling-machine-2")
+
+  factorySpec.setMinimumBuilding(am3)
+  assert.equal(mSpec.building.key, "assembling-machine-3")
+  assert.equal(factorySpec.getBuilding(rGear).key, "assembling-machine-3")
+
+  factorySpec.setMinimumBuilding(am1)
+  assert.equal(factorySpec.getBuilding(rGear).key, "assembling-machine-1")
+})
+
+test("selecting Fulgora selects Electromagnetic Plant for compatible electronics recipes", async () => {
+  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const fulgora = planets.get("fulgora")
+  const item = items.get("processing-unit")
+  const recipe = recipes.get("processing-unit")
+
+  factorySpec.selectOnePlanet(fulgora)
+  const totals = solve(factorySpec, [{ item, rate: Rational.from_integer(1), recipe: null }])
+  factorySpec.populateModuleSpec(totals)
+
+  const emPlant = factorySpec.buildingKeys.get("electromagnetic-plant")
+  assert.equal(factorySpec.isBuildingAvailable(emPlant, recipe), true)
+})
+
+test("switching planets from Nauvis to Aquilo and back preserves valid spec building states", async () => {
+  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const nauvis = planets.get("nauvis")
+  const aquilo = planets.get("aquilo")
+  const recipe = recipes.get("firearm-magazine")
+  const item = items.get("firearm-magazine")
+
+  factorySpec.selectOnePlanet(nauvis)
+  const totals = solve(factorySpec, [{ item, rate: Rational.from_integer(1), recipe: null }])
+  factorySpec.populateModuleSpec(totals)
+
+  assert.doesNotThrow(() => factorySpec.selectOnePlanet(aquilo))
+  assert.doesNotThrow(() => factorySpec.selectOnePlanet(nauvis))
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
+})
+
 test("burner machines use their own fuel category and consumption-module effects", async () => {
   const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
   const data = parseCalculatorData(raw)

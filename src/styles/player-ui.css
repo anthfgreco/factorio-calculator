@@ -219,7 +219,7 @@ tr.setting-row td:first-child { padding-left: 1rem; }
 .help-content { max-width: 54rem; padding: 1rem 0 3rem; }
 .help-section + .help-section { margin-top: 2rem; }
 .help-section h2 { margin: 0 0 0.4rem; font-size: 1.15rem; color: var(--bright); }
-.help-header h2 { font-size: 1.3rem; letter-spacing: -0.01em; }
+.help-header h1 { font-size: 1.3rem; letter-spacing: -0.01em; }
 .help-meta { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
 .help-meta a { color: var(--accent); text-decoration: none; }
 .help-meta a:hover { text-decoration: underline; }
