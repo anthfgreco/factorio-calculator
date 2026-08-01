@@ -279,6 +279,42 @@ test("cryogenic science at 60 SPM in cryogenic plant with 8 productivity 3 modul
   assert.ok(zero.less(power), `Expected positive power usage, got ${power.toString()}`)
 })
 
+test("changing the crafting machine after selecting Nauvis updates an existing magazine factory", async () => {
+  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
+  const data = parseCalculatorData(raw)
+  const items = getItems(data)
+  const recipes = getRecipes(data, items)
+  const buildings = getBuildings(data, items)
+  const planets = getPlanets(data, recipes, buildings)
+  const modules = getModules(data, items)
+  const belts = getBelts(data)
+  const fuel = getFuel(data, items)
+  const itemGroups = getItemGroups(items, data)
+
+  const factorySpec = new FactorySpecification()
+  configureModelRuntime({
+    getSpecification: () => factorySpec,
+    useLegacyCalculation: () => false,
+  })
+  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
+  factorySpec.setDefaultPriority()
+
+  const assemblingMachine1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const assemblingMachine2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  factorySpec.setMinimumBuilding(assemblingMachine1)
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+
+  const item = items.get("firearm-magazine")
+  const recipe = recipes.get("firearm-magazine")
+  const targetRate = Rational.from_integer(45).div(factorySpec.format.rateFactor)
+  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+  factorySpec.populateModuleSpec(totals)
+
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
+  assert.doesNotThrow(() => factorySpec.setMinimumBuilding(assemblingMachine2))
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
+})
+
 test("burner machines use their own fuel category and consumption-module effects", async () => {
   const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
   const data = parseCalculatorData(raw)

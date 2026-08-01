@@ -476,7 +476,9 @@ export class FactorySpecification {
       }
       if (group === g) {
         let b = this.getBuilding(recipe)
-        moduleSpec.setBuilding(b, this)
+        if (b !== null) {
+          moduleSpec.setBuilding(b, this)
+        }
       }
     }
   }
