@@ -12,6 +12,15 @@ const result = spawnSync(process.execPath, ["--test", "tests/*.test.mjs"], {
   cwd: root,
   stdio: "inherit",
   env: { ...process.env, FACTORIO_TEST_BUILD: outputDirectory },
+  timeout: 120_000,
 })
 await rm(outputDirectory, { recursive: true, force: true })
+
+if (result.error?.code === "ETIMEDOUT") {
+  console.error("Test suite exceeded the 120 second process timeout.")
+  process.exit(1)
+}
+if (result.error) {
+  throw result.error
+}
 process.exit(result.status ?? 1)

@@ -23,16 +23,60 @@ const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 const { DatasetValidationError, parseCalculatorData } = await load("data")
 const { Matrix, powerRepresentation, Rational, one, zero } = await load("math")
 const { itemMatchesSearch } = await load("data")
-const { ModuleSpec, configureModelRuntime, getBuildings, getModules, getPlanets, getBelts, getFuel, getItemGroups } = await load("models")
+const { ModuleSpec, configureModelRuntime, getBuildings, getModules, getPlanets, getBelts, getFuel, getItemGroups } =
+  await load("models")
 const { getExpectedResultAmount, getItems, getRecipes } = await load("recipes")
 const { FactorySpecification } = await load("factory")
 const { getFactorySummary } = await load("results")
 const { PriorityList } = await load("priorities")
 const { Ingredient, solve, SolverFailure } = await load("solver")
 
+// Keep real-dataset solves location-scoped; unrestricted Space Age graphs include recycling cycles and can take minutes.
+const DATASET_SOLVER_TIMEOUT_MS = 10_000
+const SYNTHETIC_SOLVER_TIMEOUT_MS = 2_000
+
+let testDatasetTextPromise = null
+let parsedTestDataPromise = null
+
+function getTestDatasetText() {
+  testDatasetTextPromise ??= readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8")
+  return testDatasetTextPromise
+}
+
+function getParsedTestData() {
+  parsedTestDataPromise ??= getTestDatasetText().then((text) => parseCalculatorData(JSON.parse(text)))
+  return parsedTestDataPromise
+}
+
+async function createTestRuntime() {
+  const data = await getParsedTestData()
+  const items = getItems(data)
+  const recipes = getRecipes(data, items)
+  const buildings = getBuildings(data, items)
+  const planets = getPlanets(data, recipes, buildings)
+  const modules = getModules(data, items)
+  const belts = getBelts(data)
+  const fuel = getFuel(data, items)
+  const itemGroups = getItemGroups(items, data)
+  return { items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
+}
+
+async function setupTestFactory() {
+  const { items, recipes, buildings, planets, modules, belts, fuel, itemGroups } = await createTestRuntime()
+
+  const factorySpec = new FactorySpecification()
+  configureModelRuntime({
+    getSpecification: () => factorySpec,
+    useLegacyCalculation: () => false,
+  })
+  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
+  factorySpec.setDefaultPriority()
+
+  return { factorySpec, items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
+}
+
 test("dataset parser accepts the generated Space Age dataset", async () => {
-  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
-  const data = parseCalculatorData(raw)
+  const data = await getParsedTestData()
   assert.equal(data.game_version, "2.1.12")
   assert.ok(data.recipes.length > 600)
 })
@@ -45,12 +89,11 @@ test("dataset parser reports the failing path", () => {
 })
 
 test("dataset parser rejects malformed machine effect lists", async () => {
-  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
+  const raw = JSON.parse(await getTestDatasetText())
   raw.crafting_machines[0].allowed_effects = {}
   assert.throws(
     () => parseCalculatorData(raw),
-    (error) =>
-      error instanceof DatasetValidationError && error.path === "crafting_machines[0].allowed_effects",
+    (error) => error instanceof DatasetValidationError && error.path === "crafting_machines[0].allowed_effects",
   )
 })
 
@@ -84,13 +127,17 @@ test("Factorio 2.1 independent and shared product probabilities combine", () => 
 })
 
 test("search handles aliases and spaced names", () => {
-  assert.equal(itemMatchesSearch({ key: "fast-underground-belt", name: "Fast underground belt" }, "underground belt"), true)
-  assert.equal(itemMatchesSearch({ key: "automation-science-pack", name: "Automation science pack" }, "red science"), true)
+  assert.equal(
+    itemMatchesSearch({ key: "fast-underground-belt", name: "Fast underground belt" }, "underground belt"),
+    true,
+  )
+  assert.equal(
+    itemMatchesSearch({ key: "automation-science-pack", name: "Automation science pack" }, "red science"),
+    true,
+  )
   assert.equal(itemMatchesSearch({ key: "automation-science-pack", name: "Automation science pack" }, "cyan"), false)
   assert.equal(zero.toString(), "0")
 })
-
-
 
 test("solver reports a missing production path", () => {
   const item = {
@@ -150,10 +197,7 @@ test("simplex productivity excludes catalyst and coolant returns", () => {
     key: "science-recipe",
     name: "Science recipe",
     ingredients: [new Ingredient(coolantCold, three)],
-    products: [
-      new Ingredient(science, one, one),
-      new Ingredient(coolantHot, three, zero),
-    ],
+    products: [new Ingredient(science, one, one), new Ingredient(coolantHot, three, zero)],
     getIngredients() {
       return this.ingredients
     },
@@ -214,15 +258,26 @@ test("simplex productivity excludes catalyst and coolant returns", () => {
 test("priority model stays deterministic without a DOM", () => {
   const low = { key: "low", isResource: () => true, defaultPriority: 0, defaultWeight: Rational.from_integer(2) }
   const high = { key: "high", isResource: () => true, defaultPriority: 0, defaultWeight: Rational.from_integer(1) }
-  const defaults = PriorityList.getDefaultArray(new Map([[low.key, low], [high.key, high]]))
+  const defaults = PriorityList.getDefaultArray(
+    new Map([
+      [low.key, low],
+      [high.key, high],
+    ]),
+  )
   const priority = PriorityList.fromArray(defaults)
   let notifications = 0
   priority.subscribe(() => notifications++)
 
   const level = priority.getFirstLevel()
-  assert.deepEqual(level.resources.map((resource) => resource.recipe.key), ["high", "low"])
+  assert.deepEqual(
+    level.resources.map((resource) => resource.recipe.key),
+    ["high", "low"],
+  )
   priority.setWeight(priority.getResource(low), Rational.from_integer(0))
-  assert.deepEqual(level.resources.map((resource) => resource.recipe.key), ["low", "high"])
+  assert.deepEqual(
+    level.resources.map((resource) => resource.recipe.key),
+    ["low", "high"],
+  )
 
   const newLevel = priority.addPriorityBefore(level)
   priority.setPriority(priority.getResource(high), newLevel)
@@ -240,113 +295,47 @@ test("speedEffect clamps total speed multiplier to 20% minimum floor", () => {
   assert.equal(spec.speedEffect().toString(), "1/5")
 })
 
-test("cryogenic science at 60 SPM in cryogenic plant with 8 productivity 3 modules has positive building count and power", async () => {
-  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
-  const data = parseCalculatorData(raw)
-  const items = getItems(data)
-  const recipes = getRecipes(data, items)
-  const buildings = getBuildings(data, items)
-  const planets = getPlanets(data, recipes, buildings)
-  const modules = getModules(data, items)
-  const belts = getBelts(data)
-  const fuel = getFuel(data, items)
-  const itemGroups = getItemGroups(items, data)
+test(
+  "cryogenic science at 60 SPM in cryogenic plant with 8 productivity 3 modules has positive building count and power",
+  { timeout: DATASET_SOLVER_TIMEOUT_MS },
+  async () => {
+    const { factorySpec, items, recipes, planets, modules } = await setupTestFactory()
+    factorySpec.selectOnePlanet(planets.get("aquilo"))
 
-  const factorySpec = new FactorySpecification()
-  configureModelRuntime({
-    getSpecification: () => factorySpec,
-    useLegacyCalculation: () => false,
-  })
-  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
-  factorySpec.setDefaultPriority()
+    const recipe = recipes.get("cryogenic-science-pack")
+    const prod3 = modules.get("productivity-module-3")
+    const plant = factorySpec.buildingKeys.get("cryogenic-plant")
+    const mSpec = factorySpec.getModuleSpec(recipe)
+    mSpec.setBuilding(plant, factorySpec)
+    for (let i = 0; i < 8; i++) {
+      mSpec.setModule(i, prod3)
+    }
 
-  const recipe = recipes.get("cryogenic-science-pack")
-  const prod3 = modules.get("productivity-module-3")
-  const plant = factorySpec.buildingKeys.get("cryogenic-plant")
-  const mSpec = factorySpec.getModuleSpec(recipe)
-  mSpec.setBuilding(plant, factorySpec)
-  for (let i = 0; i < 8; i++) {
-    mSpec.setModule(i, prod3)
-  }
+    const item = items.get("cryogenic-science-pack")
+    const targetRate = Rational.from_integer(60).div(factorySpec.format.rateFactor)
+    const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+    const count = factorySpec.getCount(recipe, totals.rates.get(recipe))
+    const { power } = factorySpec.getPowerUsage(recipe, totals.rates.get(recipe))
 
-  const item = items.get("cryogenic-science-pack")
-  const targetRate = Rational.from_integer(60).div(factorySpec.format.rateFactor)
-  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
-  const count = factorySpec.getCount(recipe, totals.rates.get(recipe))
-  const { power } = factorySpec.getPowerUsage(recipe, totals.rates.get(recipe))
-
-  assert.ok(zero.less(count), `Expected positive building count, got ${count.toString()}`)
-  assert.ok(zero.less(power), `Expected positive power usage, got ${power.toString()}`)
-})
+    assert.ok(zero.less(count), `Expected positive building count, got ${count.toString()}`)
+    assert.ok(zero.less(power), `Expected positive power usage, got ${power.toString()}`)
+  },
+)
 
 test("changing the crafting machine after selecting Nauvis updates an existing magazine factory", async () => {
-  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
-  const data = parseCalculatorData(raw)
-  const items = getItems(data)
-  const recipes = getRecipes(data, items)
-  const buildings = getBuildings(data, items)
-  const planets = getPlanets(data, recipes, buildings)
-  const modules = getModules(data, items)
-  const belts = getBelts(data)
-  const fuel = getFuel(data, items)
-  const itemGroups = getItemGroups(items, data)
-
-  const factorySpec = new FactorySpecification()
-  configureModelRuntime({
-    getSpecification: () => factorySpec,
-    useLegacyCalculation: () => false,
-  })
-  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
-  factorySpec.setDefaultPriority()
+  const { factorySpec, recipes, planets } = await setupTestFactory()
 
   const assemblingMachine1 = factorySpec.buildingKeys.get("assembling-machine-1")
   const assemblingMachine2 = factorySpec.buildingKeys.get("assembling-machine-2")
   factorySpec.setMinimumBuilding(assemblingMachine1)
   factorySpec.selectOnePlanet(planets.get("nauvis"))
 
-  const item = items.get("firearm-magazine")
   const recipe = recipes.get("firearm-magazine")
-  const targetRate = Rational.from_integer(45).div(factorySpec.format.rateFactor)
-  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
-  factorySpec.populateModuleSpec(totals)
 
   assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
   assert.doesNotThrow(() => factorySpec.setMinimumBuilding(assemblingMachine2))
   assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
 })
-
-let cachedTestData = null
-
-async function getTestData() {
-  if (!cachedTestData) {
-    const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
-    const data = parseCalculatorData(raw)
-    const items = getItems(data)
-    const recipes = getRecipes(data, items)
-    const buildings = getBuildings(data, items)
-    const planets = getPlanets(data, recipes, buildings)
-    const modules = getModules(data, items)
-    const belts = getBelts(data)
-    const fuel = getFuel(data, items)
-    const itemGroups = getItemGroups(items, data)
-    cachedTestData = { items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
-  }
-  return cachedTestData
-}
-
-async function setupTestFactory() {
-  const { items, recipes, buildings, planets, modules, belts, fuel, itemGroups } = await getTestData()
-
-  const factorySpec = new FactorySpecification()
-  configureModelRuntime({
-    getSpecification: () => factorySpec,
-    useLegacyCalculation: () => false,
-  })
-  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
-  factorySpec.setDefaultPriority()
-
-  return { factorySpec, items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
-}
 
 test("downgrading crafting machine truncates module slots and keeps productivity effect valid", async () => {
   const { factorySpec, recipes, modules } = await setupTestFactory()
@@ -400,18 +389,17 @@ test("upgrading crafting machine expands module slots and populates default modu
 })
 
 test("selecting Nauvis after setting minimum building preserves machine selection for populated module spec", async () => {
-  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const { factorySpec, recipes, planets } = await setupTestFactory()
   const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
-  const item = items.get("firearm-magazine")
   const recipe = recipes.get("firearm-magazine")
 
   factorySpec.setMinimumBuilding(am2)
-  const targetRate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
-  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
-  factorySpec.populateModuleSpec(totals)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
 
+  assert.equal(moduleSpec.building.key, "assembling-machine-2")
   assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
   factorySpec.selectOnePlanet(planets.get("nauvis"))
+  assert.equal(moduleSpec.building.key, "assembling-machine-2")
   assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
 })
 
@@ -430,17 +418,15 @@ test("switching planet to Aquilo updates building availability for cryogenic sci
 })
 
 test("deselecting all planets restores default building availability while preserving custom specs", async () => {
-  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const { factorySpec, recipes, planets } = await setupTestFactory()
   const nauvis = planets.get("nauvis")
   const recipe = recipes.get("firearm-magazine")
-  const item = items.get("firearm-magazine")
 
   factorySpec.selectOnePlanet(nauvis)
-  const targetRate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
-  const totals = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
-  factorySpec.populateModuleSpec(totals)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
 
   factorySpec.selectedPlanets.clear()
+  assert.equal(factorySpec.getModuleSpec(recipe), moduleSpec)
   assert.ok(factorySpec.getBuilding(recipe) !== null)
   assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
 })
@@ -540,7 +526,7 @@ test("changing minimum crafting machine leaves furnace minimum building isolated
 })
 
 test("changing minimum building updates all pre-existing module specs in that crafting category", async () => {
-  const { factorySpec, items, recipes } = await setupTestFactory()
+  const { factorySpec, recipes } = await setupTestFactory()
   const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
   const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
   const r1 = recipes.get("firearm-magazine")
@@ -548,12 +534,8 @@ test("changing minimum building updates all pre-existing module specs in that cr
   const r3 = recipes.get("iron-gear-wheel")
 
   factorySpec.setMinimumBuilding(am2)
-  const targetRate = Rational.from_integer(1).div(factorySpec.format.rateFactor)
-  const totals = solve(factorySpec, [
-    { item: items.get("firearm-magazine"), rate: targetRate, recipe: null },
-    { item: items.get("electronic-circuit"), rate: targetRate, recipe: null },
-  ])
-  factorySpec.populateModuleSpec(totals)
+  factorySpec.getModuleSpec(r1)
+  factorySpec.getModuleSpec(r2)
   factorySpec.getModuleSpec(r3)
 
   factorySpec.setMinimumBuilding(am3)
@@ -579,30 +561,35 @@ test("factorySpec.getCount updates building count when machine crafting speed ch
   assert.ok(count3.less(count1), `Expected count3 (${count3}) to be less than count1 (${count1})`)
 })
 
-test("productivity module effect recalculates correctly when machine is downgraded", async () => {
-  const { factorySpec, items, recipes, modules } = await setupTestFactory()
-  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
-  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
-  const prod3 = modules.get("productivity-module-3")
-  const item = items.get("advanced-circuit")
-  const recipe = recipes.get("advanced-circuit")
+test(
+  "productivity module effect recalculates correctly when machine is downgraded",
+  { timeout: DATASET_SOLVER_TIMEOUT_MS },
+  async () => {
+    const { factorySpec, items, recipes, planets, modules } = await setupTestFactory()
+    const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+    const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+    const prod3 = modules.get("productivity-module-3")
+    const item = items.get("advanced-circuit")
+    const recipe = recipes.get("advanced-circuit")
 
-  factorySpec.setMinimumBuilding(am3)
-  const mSpec = factorySpec.getModuleSpec(recipe)
-  for (let i = 0; i < 4; i++) {
-    mSpec.setModule(i, prod3)
-  }
+    factorySpec.selectOnePlanet(planets.get("nauvis"))
+    factorySpec.setMinimumBuilding(am3)
+    const mSpec = factorySpec.getModuleSpec(recipe)
+    for (let i = 0; i < 4; i++) {
+      mSpec.setModule(i, prod3)
+    }
 
-  const targetRate = Rational.from_integer(10).div(factorySpec.format.rateFactor)
-  const totalsBefore = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
-  const rateBefore = totalsBefore.rates.get(recipes.get("electronic-circuit"))
+    const targetRate = Rational.from_integer(10).div(factorySpec.format.rateFactor)
+    const totalsBefore = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+    const rateBefore = totalsBefore.rates.get(recipes.get("electronic-circuit"))
 
-  factorySpec.setMinimumBuilding(am2)
-  const totalsAfter = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
-  const rateAfter = totalsAfter.rates.get(recipes.get("electronic-circuit"))
+    factorySpec.setMinimumBuilding(am2)
+    const totalsAfter = solve(factorySpec, [{ item, rate: targetRate, recipe: null }])
+    const rateAfter = totalsAfter.rates.get(recipes.get("electronic-circuit"))
 
-  assert.ok(rateBefore.less(rateAfter), "Expected electronic circuit demand to be higher with fewer prod modules")
-})
+    assert.ok(rateBefore.less(rateAfter), "Expected electronic circuit demand to be higher with fewer prod modules")
+  },
+)
 
 test("custom minimum building update synchronizes all recipes in crafting category", async () => {
   const { factorySpec, recipes } = await setupTestFactory()
@@ -624,54 +611,36 @@ test("custom minimum building update synchronizes all recipes in crafting catego
   assert.equal(factorySpec.getBuilding(rGear).key, "assembling-machine-1")
 })
 
-test("selecting Fulgora selects Electromagnetic Plant for compatible electronics recipes", async () => {
-  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+test("selecting Fulgora makes Electromagnetic Plant available for compatible electronics recipes", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
   const fulgora = planets.get("fulgora")
-  const item = items.get("processing-unit")
   const recipe = recipes.get("processing-unit")
 
   factorySpec.selectOnePlanet(fulgora)
-  const totals = solve(factorySpec, [{ item, rate: Rational.from_integer(1), recipe: null }])
-  factorySpec.populateModuleSpec(totals)
-
   const emPlant = factorySpec.buildingKeys.get("electromagnetic-plant")
+
   assert.equal(factorySpec.isBuildingAvailable(emPlant, recipe), true)
 })
 
 test("switching planets from Nauvis to Aquilo and back preserves valid spec building states", async () => {
-  const { factorySpec, items, recipes, planets } = await setupTestFactory()
+  const { factorySpec, recipes, planets } = await setupTestFactory()
   const nauvis = planets.get("nauvis")
   const aquilo = planets.get("aquilo")
   const recipe = recipes.get("firearm-magazine")
-  const item = items.get("firearm-magazine")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
 
+  factorySpec.setMinimumBuilding(am2)
   factorySpec.selectOnePlanet(nauvis)
-  const totals = solve(factorySpec, [{ item, rate: Rational.from_integer(1), recipe: null }])
-  factorySpec.populateModuleSpec(totals)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
 
   assert.doesNotThrow(() => factorySpec.selectOnePlanet(aquilo))
   assert.doesNotThrow(() => factorySpec.selectOnePlanet(nauvis))
-  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-1")
+  assert.equal(moduleSpec.building.key, "assembling-machine-2")
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
 })
 
 test("burner machines use their own fuel category and consumption-module effects", async () => {
-  const raw = JSON.parse(await readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8"))
-  const data = parseCalculatorData(raw)
-  const items = getItems(data)
-  const recipes = getRecipes(data, items)
-  const buildings = getBuildings(data, items)
-  const planets = getPlanets(data, recipes, buildings)
-  const modules = getModules(data, items)
-  const belts = getBelts(data)
-  const fuels = getFuel(data, items)
-  const itemGroups = getItemGroups(items, data)
-
-  const factorySpec = new FactorySpecification()
-  configureModelRuntime({
-    getSpecification: () => factorySpec,
-    useLegacyCalculation: () => false,
-  })
-  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuels, itemGroups)
+  const { factorySpec, recipes, modules } = await setupTestFactory()
 
   const biofluxRecipe = recipes.get("bioflux")
   const biochamber = factorySpec.buildingKeys.get("biochamber")
@@ -699,7 +668,7 @@ test("burner machines use their own fuel category and consumption-module effects
   assert.equal(factorySpec.getFuelForRecipe(biterEggRecipe).key, "bioflux")
 })
 
-test("solver handles a 500-step production chain with exact rates", () => {
+test("solver handles a 500-step production chain with exact rates", { timeout: SYNTHETIC_SOLVER_TIMEOUT_MS }, () => {
   const depth = 500
   const items = Array.from({ length: depth + 1 }, (_, index) => ({
     key: `chain-item-${index}`,
@@ -758,42 +727,46 @@ test("solver handles a 500-step production chain with exact rates", () => {
   assert.equal([...totals.rates].filter(([recipe]) => recipe.isReal()).length, depth + 1)
 })
 
-test("solver returns a typed failure for an infeasible zero-net cycle", () => {
-  const item = { key: "closed-loop", name: "Closed loop", recipes: [], uses: [], disableRecipe: null }
-  const recipe = {
-    key: "closed-loop",
-    name: "Closed loop",
-    ingredients: [new Ingredient(item, one)],
-    products: [new Ingredient(item, one)],
-    getIngredients() {
-      return this.ingredients
-    },
-    gives: () => one,
-    isReal: () => true,
-    isDisable: () => false,
-    isResource: () => false,
-  }
-  item.recipes.push(recipe)
-  item.uses.push(recipe)
-  item.disableRecipe = recipe
+test(
+  "solver returns a typed failure for an infeasible zero-net cycle",
+  { timeout: SYNTHETIC_SOLVER_TIMEOUT_MS },
+  () => {
+    const item = { key: "closed-loop", name: "Closed loop", recipes: [], uses: [], disableRecipe: null }
+    const recipe = {
+      key: "closed-loop",
+      name: "Closed loop",
+      ingredients: [new Ingredient(item, one)],
+      products: [new Ingredient(item, one)],
+      getIngredients() {
+        return this.ingredients
+      },
+      gives: () => one,
+      isReal: () => true,
+      isDisable: () => false,
+      isResource: () => false,
+    }
+    item.recipes.push(recipe)
+    item.uses.push(recipe)
+    item.disableRecipe = recipe
 
-  const specification = {
-    ignore: new Set(),
-    buildTargets: [],
-    priority: [],
-    lastPartial: null,
-    lastTableau: null,
-    lastMetadata: null,
-    lastSolution: null,
-    getRecipes: () => [recipe],
-    getRecipeGraph: () => new Set([recipe]),
-    getProdEffect: () => one,
-    getBuilding: () => null,
-    getFuelForRecipe: () => null,
-  }
+    const specification = {
+      ignore: new Set(),
+      buildTargets: [],
+      priority: [],
+      lastPartial: null,
+      lastTableau: null,
+      lastMetadata: null,
+      lastSolution: null,
+      getRecipes: () => [recipe],
+      getRecipeGraph: () => new Set([recipe]),
+      getProdEffect: () => one,
+      getBuilding: () => null,
+      getFuelForRecipe: () => null,
+    }
 
-  assert.throws(
-    () => solve(specification, [{ item, rate: one, recipe: null }]),
-    (error) => error instanceof SolverFailure && error.code === "infeasible",
-  )
-})
+    assert.throws(
+      () => solve(specification, [{ item, rate: one, recipe: null }]),
+      (error) => error instanceof SolverFailure && error.code === "infeasible",
+    )
+  },
+)
