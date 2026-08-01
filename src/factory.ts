@@ -1,5 +1,5 @@
 import { Formatter, half, one, Rational, zero } from "./math.js"
-import { ModuleSpec } from "./models.js"
+import { ModuleSpec, type Fuel, type FuelCollection } from "./models.js"
 import type { PriorityList } from "./priorities.js"
 import { applyPriorities, buildDefaultPriorityArray, restoreDefaultPriorities, isValidPriorityKey as validatePriorityKey } from "./priorities.js"
 import { getRecipeGraph as buildRecipeGraph, disableRecipe, enableRecipe, getEnabledRecipes, getEnabledUses, isItemDisabled as itemIsDisabled, isFactoryTarget as recipeIsFactoryTarget } from "./recipes.js"
@@ -289,7 +289,7 @@ export class FactorySpecification {
   buildings: Map<string, any> | null
   buildingKeys: Map<string, any> | null
   belts: Map<string, any> | null
-  fuels: Map<string, any> | null
+  fuels: FuelCollection | null
   itemGroups: any
   buildTargets: any[]
   spec: Map<any, any>
@@ -298,7 +298,7 @@ export class FactorySpecification {
   defaultBeacon: any[]
   defaultBeaconCount: Rational
   belt: any
-  fuel: any
+  fuel: Fuel | null
   miningProd: Rational | null
   minerSettings: Map<any, { miner: any; purity: any }>
   ignore: Set<any>
@@ -602,15 +602,25 @@ export class FactorySpecification {
   getBeltCount(rate) {
     return rate.div(this.belt.rate)
   }
+  getFuelForBuilding(building) {
+    if (building === null || building.fuel === null || this.fuels === null) {
+      return null
+    }
+    let fuel = this.fuels.getForCategory(building.fuel, this.fuel)
+    if (fuel === null) {
+      throw new Error(`No fuel item is available for the ${building.fuel} fuel category`)
+    }
+    return fuel
+  }
+  getFuelForRecipe(recipe) {
+    return this.getFuelForBuilding(this.getBuilding(recipe))
+  }
   getPowerUsage(recipe, rate) {
     let building = this.getBuilding(recipe)
     if (building === null) {
       return { fuel: null, power: zero }
     }
     let count = this.getCount(recipe, rate)
-    if (building.fuel !== null) {
-      return { fuel: building.fuel, power: building.power.mul(count) }
-    }
     let modules = this.getModuleSpec(recipe)
     let powerEffect
     if (modules) {
@@ -618,7 +628,11 @@ export class FactorySpecification {
     } else {
       powerEffect = one
     }
-    let power = building.power.mul(count).mul(powerEffect).add(building.drain().mul(count.ceil()))
+    let power = building.power.mul(count).mul(powerEffect)
+    if (building.fuel !== null) {
+      return { fuel: building.fuel, power }
+    }
+    power = power.add(building.drain().mul(count.ceil()))
     return { fuel: "electric", power: power }
   }
   addTarget(itemKey = DEFAULT_ITEM_KEY) {

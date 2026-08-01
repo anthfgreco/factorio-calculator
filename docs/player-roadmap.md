@@ -26,6 +26,11 @@ The highest-value remaining work is not a framework rewrite. It is extending the
 - Added progression presets, direct item labels, visible target/import state, and a clearer evidence-first Factory and visualization interface.
 - Consolidated About, FAQ, and recent changelog information into one Help tab.
 - Added runtime coverage for quality modules, machine/beacon compatibility, production locations, and missing-recipe failures.
+- Corrected simplex productivity so returned catalysts, coolant, and other `ignored_by_productivity` outputs are not multiplied by productivity bonuses.
+- Modeled burner fuel by machine category, including biochamber nutrients and captive-spawner bioflux, with module consumption effects included in fuel rates.
+- Combined Factorio 2.1 independent and shared product probabilities in both runtime parsing and dataset generation.
+- Made recipe-specific module URL state slot-safe, deterministic, persistent even when a recipe is temporarily inactive, and safe for large compressed plans.
+- Added regression coverage for 500-step graphs, infeasible cycles, probability combinations, burner fuels, catalyst productivity, and URL persistence.
 
 ## Priority 0: calculation fidelity
 

@@ -48,7 +48,7 @@ Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
 
 `src/math.ts` owns exact arithmetic, matrices, the simplex primitive, display formatting, and power formatting.
 
-`src/solver.ts` owns solver contracts, cycle detection, totals, typed `SolverFailure` diagnostics, and the pure `solve()` operation. It depends only on `math.ts`.
+`src/solver.ts` owns solver contracts, cycle detection, fuel-consumer graph edges, per-product productivity handling, totals, typed `SolverFailure` diagnostics, and the pure `solve()` operation. It depends only on `math.ts`.
 
 ### Factory
 
@@ -74,7 +74,7 @@ These modules must not access the DOM, D3, storage, or browser globals. `data.ts
 
 `src/graph.ts` contains Sankey and shared graph primitives. `src/visualization.ts` contains viewport behavior, box-line rendering, and visualization selection/orchestration.
 
-`src/url-state.ts` owns both browser history updates and the calculator-specific fragment format. URL fragments remain backward-compatible unless a deliberate migration is approved.
+`src/url-state.ts` owns both browser history updates and the calculator-specific fragment format. Module slots use explicit empty placeholders, configured inactive recipes remain shareable, and serialized set-like values are deterministic. URL fragments remain backward-compatible unless a deliberate migration is approved.
 
 ## Import rules
 

@@ -152,13 +152,10 @@ def expected_result_amount(result: dict[str, Any]) -> float:
 
     amount += float(result.get("extra_count_fraction", 0))
 
-    if "independent_probability" in result:
-        amount *= float(result["independent_probability"])
-    elif "shared_probability" in result:
+    amount *= float(result.get("independent_probability", result.get("probability", 1)))
+    if "shared_probability" in result:
         probability = result["shared_probability"]
         amount *= float(probability.get("max", 1)) - float(probability.get("min", 0))
-    elif "probability" in result:
-        amount *= float(result["probability"])
     return amount
 
 

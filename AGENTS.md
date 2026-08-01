@@ -43,7 +43,8 @@ Use `pnpm format` before committing. `pnpm verify` is the release gate and build
 
 ## Change routing
 
-- Solver/math/probability bug → `src/solver.ts` or `src/math.ts`
+- Solver/productivity graph bug → `src/solver.ts`; numeric primitive bug → `src/math.ts`
+- Recipe probability or fuel-ingredient bug → `src/recipes.ts` (and the dataset builder when export normalization changes)
 - Dataset schema/validation/search normalization → `src/data.ts`
 - Recipe/item model or recipe policy → `src/recipes.ts`
 - Location/building/factory-state policy → `src/factory.ts`

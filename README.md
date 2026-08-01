@@ -7,10 +7,10 @@ This fork includes experimental **Factorio Space Age 2.1.12** data.
 ## Player-facing behavior
 
 - Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
-- Factorio 2.1 recipe categories, result probabilities, recycling recipes, surface conditions, machines, modules, beacons, and built-in productivity bonuses.
+- Factorio 2.1 recipe categories, combined result probabilities, recycling recipes, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
 - Production-location filtering for Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, and Space platforms.
-- A compact factory summary with machines to place, machine power, active recipes, imports, and modeling notes.
-- Directly labeled Factory rows, visible target/import state, in-row recipe selection, searchable recipe settings, URL-persistent state, and a one-click plan link.
+- A compact factory summary with machines to place, electrical power, category-specific burner fuel rates, active recipes, imports, and modeling notes.
+- Directly labeled Factory rows, visible target/import state, in-row recipe selection, searchable recipe settings, slot-safe URL-persistent state, and a one-click plan link.
 - Relaxed and compact Factory row densities, stored as a local display preference.
 - Progression presets for early game through megabase planning, plus a consolidated Help tab.
 - Actionable calculation errors when a production path is unavailable or the selected recipe system is infeasible.
@@ -19,7 +19,7 @@ This fork includes experimental **Factorio Space Age 2.1.12** data.
 
 The calculator deliberately keeps one shared material pool when multiple locations are selected. It reports where each active recipe can run, but it does not yet assign every recipe to a specific planet or calculate rocket capacity, platform cargo throughput, travel time, or spoilage in transit.
 
-Quality modules are validated against recipe and machine capabilities, their quality probabilities and electricity modifiers are preserved, and they are excluded from beacons. Speed modules also retain their negative quality modifiers. The solver does not yet split outputs into normal/uncommon/rare/epic/legendary item tiers or optimize recycling-based upcycling loops. Machine power reports production-machine electricity only.
+Quality modules are validated against recipe and machine capabilities, their quality probabilities and electricity modifiers are preserved, and they are excluded from beacons. Speed modules also retain their negative quality modifiers. The solver does not yet split outputs into normal/uncommon/rare/epic/legendary item tiers or optimize recycling-based upcycling loops. Factory totals report production-machine electricity plus burner consumption for chemical fuel, nutrients, bioflux, and other exported fuel categories; inserters, pumps, logistics, platform travel, and infrastructure power remain outside the model.
 
 ## Live site
 

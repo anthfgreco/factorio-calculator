@@ -1,6 +1,6 @@
 import { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled, spec } from "./factory.js"
 import { one, powerRepresentation, Rational, zero } from "./math.js"
-import { moduleDropdown, moduleRows } from "./models.js"
+import { moduleDropdown, moduleRows, type Fuel } from "./models.js"
 import { addInputs, Icon, makeDropdown } from "./presentation.js"
 import { getRecipeSelectorGroups } from "./recipes.js"
 import { refreshRecipeSettings } from "./settings.js"
@@ -672,6 +672,7 @@ export function getFactorySummary(specification, totals) {
   let exactMachines = zero
   let placedMachines = zero
   let electricalPower = zero
+  let fuelRates = new Map<Fuel, Rational>()
   let recipeCount = 0
   let ambiguousRecipeCount = 0
   let qualityRecipeCount = 0
@@ -694,6 +695,11 @@ export function getFactorySummary(specification, totals) {
     let { fuel, power } = specification.getPowerUsage(recipe, rate)
     if (fuel === "electric") {
       electricalPower = electricalPower.add(power)
+    } else if (fuel !== null) {
+      let recipeFuel = specification.getFuelForRecipe(recipe)
+      if (recipeFuel !== null) {
+        fuelRates.set(recipeFuel, (fuelRates.get(recipeFuel) ?? zero).add(power.div(recipeFuel.value)))
+      }
     }
 
     if (getRecipeLocations(specification, recipe, building).length > 1) {
@@ -721,6 +727,7 @@ export function getFactorySummary(specification, totals) {
     exactMachines,
     placedMachines,
     electricalPower,
+    fuelRates,
     recipeCount,
     ambiguousRecipeCount,
     qualityRecipeCount,
@@ -739,6 +746,12 @@ function renderFactorySummary(specification, totals) {
     { label: "Machines to place", value: summary.placedMachines.toDecimal(0) },
     { label: "Machine power", value: `${specification.format.count(power)} ${suffix}` },
   ]
+  for (let [fuel, rate] of [...summary.fuelRates].sort(([fuelA], [fuelB]) => fuelA.name.localeCompare(fuelB.name))) {
+    cards.push({
+      label: `${fuel.name} / ${specification.format.rateName}`,
+      value: specification.format.rate(rate),
+    })
+  }
   let card = root
     .selectAll("div.factory-summary-card")
     .data(cards, (entry) => entry.label)
@@ -1038,12 +1051,13 @@ export function displayItems(spec, totals) {
   let fuelRow = buildingRow.filter((d) => d.building.fuel !== null)
   let fuelIcon = fuelRow.selectAll(".fuel-icon")
   fuelIcon.selectAll("*").remove()
-  fuelIcon.append((d) => spec.fuel.icon.make(24))
+  fuelIcon.append((d) => spec.getFuelForRecipe(d.recipe).icon.make(24))
   fuelIcon.append("span").text(" × ")
   fuelRow.selectAll("tt.power").text((d) => {
     let rate = totals.rates.get(d.recipe)
     let { fuel, power } = spec.getPowerUsage(d.recipe, rate)
-    return `${spec.format.alignRate(power.div(spec.fuel.value))}/${spec.format.rateName}`
+    let recipeFuel = spec.getFuelForRecipe(d.recipe)
+    return `${spec.format.alignRate(power.div(recipeFuel.value))}/${spec.format.rateName}`
   })
   let electricRow = buildingRow.filter((d) => d.building.fuel === null)
   electricRow.selectAll(".fuel-icon").selectAll("*").remove()

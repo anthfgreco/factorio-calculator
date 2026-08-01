@@ -57,6 +57,54 @@ function getModuleKey(module) {
   return moduleKey
 }
 
+/**
+ * Serialize recipe-specific modules without losing their slot positions.
+ *
+ * Empty placeholders are significant: a customized second slot must remain
+ * the second slot after loading even when the first slot still uses the
+ * current default module. Trailing default slots are omitted to keep links
+ * compact.
+ */
+export function serializeModuleSettings(factorySpec) {
+  let settings = []
+  for (let [recipe, moduleSpec] of factorySpec.spec) {
+    let defaultModule = factorySpec.getDefaultModule(recipe, moduleSpec.building)
+    let modules = moduleSpec.modules.map((module) => (module === defaultModule ? "" : getModuleKey(module)))
+    while (modules.at(-1) === "") {
+      modules.pop()
+    }
+
+    let beacon = ""
+    let beaconChanged =
+      moduleSpec.beaconModules[0] !== factorySpec.defaultBeacon[0] ||
+      moduleSpec.beaconModules[1] !== factorySpec.defaultBeacon[1] ||
+      !moduleSpec.beaconCount.equal(factorySpec.defaultBeaconCount)
+    if (beaconChanged) {
+      let beaconKeys = moduleSpec.beaconModules.map(getModuleKey)
+      beacon = beaconKeys.join(":") + ":" + moduleSpec.beaconCount.toString()
+    }
+
+    if (modules.length > 0 || beaconChanged) {
+      let setting = recipe.key + ":" + modules.join(":")
+      if (beacon !== "") {
+        setting += ";" + beacon
+      }
+      settings.push(setting)
+    }
+  }
+  return settings.sort()
+}
+
+/** Convert compressed bytes to a browser-safe binary string in bounded chunks. */
+export function bytesToBinaryString(bytes: Uint8Array) {
+  const chunkSize = 0x8000
+  let result = ""
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    result += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize))
+  }
+  return result
+}
+
 export function formatSettings(excludeTitle = false, overrideTab = null, targets = null) {
   let settings = ""
   if (!excludeTitle && document.title !== DEFAULT_TITLE) {
@@ -163,7 +211,7 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
     ignore.push(item.key)
   }
   if (ignore.length > 0) {
-    settings += "&ignore=" + ignore.join(",")
+    settings += "&ignore=" + ignore.sort().join(",")
   }
 
   if (!spec.isDefaultPlanet()) {
@@ -179,50 +227,17 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
     for (let d of disable) {
       parts.push(d.key)
     }
-    settings += "&disable=" + parts.join(",")
+    settings += "&disable=" + parts.sort().join(",")
   }
   if (enable.size !== 0) {
     let parts = []
     for (let d of enable as Set<any>) {
       parts.push(d.key)
     }
-    settings += "&enable=" + parts.join(",")
+    settings += "&enable=" + parts.sort().join(",")
   }
 
-  let moduleSettings = []
-  for (let [recipe, moduleSpec] of spec.spec) {
-    if (!spec.lastTotals || !spec.lastTotals.rates.has(recipe)) {
-      continue
-    }
-    let modules = []
-    let beacon = ""
-    let any = false
-    for (let module of moduleSpec.modules) {
-      if (module !== spec.getDefaultModule(recipe)) {
-        modules.push(getModuleKey(module))
-        any = true
-      }
-    }
-    if (
-      moduleSpec.beaconModules[0] !== spec.defaultBeacon[0] ||
-      moduleSpec.beaconModules[1] !== spec.defaultBeacon[1] ||
-      !moduleSpec.beaconCount.equal(spec.defaultBeaconCount)
-    ) {
-      let beaconKeys = []
-      for (let module of moduleSpec.beaconModules) {
-        beaconKeys.push(getModuleKey(module))
-      }
-      beacon = beaconKeys.join(":") + ":" + moduleSpec.beaconCount.toString()
-      any = true
-    }
-    if (any) {
-      let s = recipe.key + ":" + modules.join(":")
-      if (beacon !== "") {
-        s += ";" + beacon
-      }
-      moduleSettings.push(s)
-    }
-  }
+  let moduleSettings = serializeModuleSettings(spec)
   if (moduleSettings.length > 0) {
     settings += "&modules=" + moduleSettings.join(",")
   }
@@ -243,7 +258,7 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
     settings += "&debug=1"
   }
 
-  let zip = "zip=" + window.btoa(String.fromCharCode.apply(null, pako.deflateRaw(settings)))
+  let zip = "zip=" + window.btoa(bytesToBinaryString(pako.deflateRaw(settings)))
   if (zip.length < settings.length) {
     return zip
   }

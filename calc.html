@@ -330,7 +330,7 @@
             </div>
           </header>
           <p class="help-summary">
-            Plan Factorio production chains from early game through Space Age. Calculates exact machine counts, item rates, power draw, and belt requirements for any recipe target.
+            Plan Factorio production chains from early game through Space Age. Calculates exact machine counts, item rates, electrical power, burner fuel, and belt requirements for any recipe target.
           </p>
         </section>
 
@@ -351,11 +351,11 @@
             </div>
             <div class="help-reference-row">
               <dt>Quality &amp; Recycling</dt>
-              <dd>Module effects, power consumption, and speed-module quality penalties are fully calculated. Upcycling loops and multi-tier quality flows are not yet solved as separate item species.</dd>
+              <dd>Module eligibility, speed and power effects, and speed-module quality penalties are preserved. Upcycling loops and multi-tier quality flows are not yet solved as separate item species.</dd>
             </div>
             <div class="help-reference-row">
               <dt>Factory Totals</dt>
-              <dd>Building counts show ceiling-rounded counts for physical placement. Total power reflects electricity draw for those machines.</dd>
+              <dd>Building counts show ceiling-rounded counts for physical placement. The summary separates electrical machine power from the required chemical fuel, nutrients, bioflux, or other burner consumables.</dd>
             </div>
             <div class="help-reference-row">
               <dt>Alternate Recipes &amp; Priorities</dt>
@@ -382,6 +382,8 @@
                   <li>Reworked UI and Help section applying Tufte visualization principles (high data-ink ratio, unbordered layouts, structured reference tables, and marginal dates).</li>
                   <li>Added top-level planet/location selector, KPI factory summary cards, progression presets, direct item labels, and share-link copying.</li>
                   <li>Corrected machine floor limits for negative speed multipliers, rate display calculations, beacon power warnings, and state synchronization.</li>
+                  <li>Corrected catalyst and coolant productivity, machine-specific burner fuel, and combined Factorio 2.1 product probabilities.</li>
+                  <li>Made shared links preserve exact module slots and inactive recipe customizations, including large compressed plans.</li>
                 </ul>
               </div>
             </article>

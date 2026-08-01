@@ -64,11 +64,14 @@ export interface SolverBuilding {
   fuel: string | null
 }
 
+export interface SolverFuel {
+  item: SolverItem
+}
+
 export interface SolverSpec {
   ignore: Set<SolverItem>
   buildTargets: SolverTarget[]
   priority: Iterable<Iterable<SolverPriorityEntry>>
-  fuel: { item: SolverItem }
   lastPartial: unknown
   lastTableau: Matrix | null
   lastMetadata: unknown
@@ -77,6 +80,7 @@ export interface SolverSpec {
   getRecipeGraph(items: Map<SolverItem, Rational>): Set<SolverRecipe>
   getProdEffect(recipe: SolverRecipe): Rational
   getBuilding(recipe: SolverRecipe): SolverBuilding | null
+  getFuelForRecipe(recipe: SolverRecipe): SolverFuel | null
 }
 
 export interface SolverOutput {
@@ -101,8 +105,8 @@ export class SolverFailure extends Error {
 // Cycle detection
 // -----------------------------------------------------------------------------
 
-function fuelConsumers(spec: SolverSpec, recipes: Set<SolverRecipe>): SolverRecipe[] {
-  return [...recipes].filter((recipe) => spec.getBuilding(recipe)?.fuel === "chemical")
+function fuelConsumers(spec: SolverSpec, recipes: Set<SolverRecipe>, item: SolverItem): SolverRecipe[] {
+  return [...recipes].filter((recipe) => spec.getFuelForRecipe(recipe)?.item === item)
 }
 
 function neighboringRecipes(
@@ -115,8 +119,8 @@ function neighboringRecipes(
   let itemAmounts = invert ? recipe.products : recipe.getIngredients()
   for (let { item } of itemAmounts) {
     let candidates: SolverRecipe[] = invert ? item.uses : item.recipes
-    if (invert && item === spec.fuel.item) {
-      candidates = candidates.concat(fuelConsumers(spec, recipes))
+    if (invert) {
+      candidates = candidates.concat(fuelConsumers(spec, recipes, item))
     }
     for (let candidate of candidates) {
       if (recipes.has(candidate)) {
@@ -125,6 +129,28 @@ function neighboringRecipes(
     }
   }
   return result
+}
+
+function effectiveProductAmount(spec: SolverSpec, recipe: SolverRecipe, product: SolverIngredient): Rational {
+  let productivity = spec.getProdEffect(recipe)
+  if (!one.less(productivity)) {
+    return product.amount
+  }
+
+  let productivityAmount = product.productivityAmount ?? null
+  if (productivityAmount === null) {
+    productivityAmount = product.amount
+    for (let ingredient of recipe.getIngredients()) {
+      if (ingredient.item === product.item) {
+        productivityAmount = productivityAmount.sub(ingredient.amount)
+      }
+    }
+    if (productivityAmount.less(zero)) {
+      return product.amount
+    }
+  }
+
+  return product.amount.add(productivityAmount.mul(productivity.sub(one)))
 }
 
 function visit(
@@ -452,20 +478,10 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
 
   for (let [row, recipe] of recipeArray.entries()) {
     for (let product of recipe.products) {
-      tableau.setIndex(row, itemColumns.get(product.item)!, product.amount)
+      tableau.setIndex(row, itemColumns.get(product.item)!, effectiveProductAmount(spec, recipe, product))
     }
     for (let ingredient of recipe.getIngredients()) {
       tableau.addIndex(row, itemColumns.get(ingredient.item)!, zero.sub(ingredient.amount))
-    }
-    let productivity = spec.getProdEffect(recipe)
-    if (one.less(productivity)) {
-      for (let product of recipe.products) {
-        let col = itemColumns.get(product.item)!
-        let amount = tableau.index(row, col)
-        if (zero.less(amount)) {
-          tableau.setIndex(row, col, amount.mul(productivity))
-        }
-      }
     }
     tableau.setIndex(row, taxColumn, minusOne)
     tableau.setIndex(row, taxColumn + row + 1, one)

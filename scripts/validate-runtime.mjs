@@ -106,6 +106,11 @@ try {
     const groups = getItemGroups(items, data)
 
     factory.spec.setData(items, recipes, planets, modules, buildings, belts, fuels, groups)
+    for (const building of buildings) {
+      if (building.fuel !== null && factory.spec.getFuelForBuilding(building) === null) {
+        throw new Error(`${filename}: no item available for ${building.fuel} fuel`)
+      }
+    }
     if (!(factory.spec.minerSettings instanceof Map)) {
       throw new Error("Factory specification did not initialize miner settings")
     }
@@ -128,7 +133,14 @@ try {
         }
       }
 
+      const bioflux = recipes.get("bioflux")
+      if (factory.spec.getFuelForRecipe(bioflux)?.key !== "nutrients") {
+        throw new Error("Biochamber recipes did not use nutrients as fuel")
+      }
       const biterEgg = recipes.get("biter-egg")
+      if (factory.spec.getFuelForRecipe(biterEgg)?.key !== "bioflux") {
+        throw new Error("Captive biter spawner recipes did not use bioflux as fuel")
+      }
       if (!spacePlatform.disable.has(biterEgg)) {
         throw new Error("Space platform allowed a recipe whose only machine is surface-restricted")
       }

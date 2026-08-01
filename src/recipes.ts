@@ -149,7 +149,8 @@ class Recipe {
   fuelIngredient() {
     let spec = currentSpecification()
     let building = spec.getBuilding(this)
-    if (building === null || building.fuel === null || building.fuel !== "chemical") {
+    let fuel = spec.getFuelForRecipe(this)
+    if (building === null || fuel === null) {
       return []
     }
     // baseRate = craft/s
@@ -160,8 +161,8 @@ class Recipe {
     let baseRate = spec.getRecipeRate(this)
     let basePower = spec.getPowerUsage(this, baseRate).power
     let perCraftEnergy = basePower.div(baseRate)
-    let fuelAmount = perCraftEnergy.div(spec.fuel.value)
-    return [new Ingredient(spec.fuel.item, fuelAmount)]
+    let fuelAmount = perCraftEnergy.div(fuel.value)
+    return [new Ingredient(fuel.item, fuelAmount)]
   }
   getIngredients() {
     return this.ingredients.concat(this.fuelIngredient())
@@ -302,17 +303,13 @@ export class DisabledRecipe {
 }
 
 function getResultProbability(result) {
-  if (result.independent_probability !== undefined) {
-    return result.independent_probability
-  } else if (result.shared_probability !== undefined) {
+  let probability = result.independent_probability ?? result.probability ?? 1
+  if (result.shared_probability !== undefined) {
     let min = result.shared_probability.min ?? 0
     let max = result.shared_probability.max ?? 1
-    return max - min
-  } else if (result.probability !== undefined) {
-    // Compatibility with Factorio 2.0 and older mod exports.
-    return result.probability
+    probability *= max - min
   }
-  return null
+  return probability === 1 ? null : probability
 }
 
 function applyResultProbability(amount, result) {
@@ -323,7 +320,7 @@ function applyResultProbability(amount, result) {
   return amount
 }
 
-function getExpectedResultAmount(result) {
+export function getExpectedResultAmount(result) {
   let amount
   if (result.amount !== undefined) {
     amount = Rational.from_float_approximate(result.amount)

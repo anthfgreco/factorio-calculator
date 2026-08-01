@@ -130,7 +130,7 @@ export function getBelts(data) {
 
 let energySuffixes = ["J", "kJ", "MJ", "GJ", "TJ", "PJ"]
 
-class Fuel {
+export class Fuel {
   [key: string]: any
   constructor(key, name, col, row, item, category, value) {
     this.key = key
@@ -165,6 +165,25 @@ class Fuel {
   }
 }
 
+export class FuelCollection extends Map<string, Fuel> {
+  readonly categories: Map<string, Fuel[]>
+
+  constructor(categories: Map<string, Fuel[]>) {
+    super()
+    this.categories = categories
+    for (let fuel of categories.get("chemical") ?? []) {
+      this.set(fuel.key, fuel)
+    }
+  }
+
+  getForCategory(category: string, selectedChemicalFuel: Fuel | null = null): Fuel | null {
+    if (category === "chemical" && selectedChemicalFuel !== null) {
+      return selectedChemicalFuel
+    }
+    return this.categories.get(category)?.[0] ?? null
+  }
+}
+
 export function getFuel(data, items) {
   let fuelCategories = new Map()
   for (let d of data.fuel) {
@@ -195,11 +214,7 @@ export function getFuel(data, items) {
       return 0
     })
   }
-  let fuels = new Map()
-  for (let fuel of fuelCategories.get("chemical")) {
-    fuels.set(fuel.key, fuel)
-  }
-  return fuels
+  return new FuelCollection(fuelCategories)
 }
 
 // -----------------------------------------------------------------------------
