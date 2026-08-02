@@ -19,8 +19,13 @@ globalThis.d3 = {
   }),
 }
 
-const { bytesToBinaryString, serializeAutomaticBuildings, serializeBuildingOverrides, serializeModuleSettings } =
-  await import(pathToFileURL(resolve(build, "url-state.js")).href)
+const {
+  bytesToBinaryString,
+  serializeAutomaticBuildings,
+  serializeBuildingOverrides,
+  serializeModuleSettings,
+  serializeRecipeProductivityLevels,
+} = await import(pathToFileURL(resolve(build, "url-state.js")).href)
 
 function module(key) {
   return { shortName: () => key }
@@ -126,4 +131,24 @@ test("URL automatic-machine settings preserve multiple selections", () => {
   }
 
   assert.deepEqual(serializeAutomaticBuildings(factorySpec), ["assembling-machine-3", "electromagnetic-plant"])
+})
+
+test("URL recipe productivity levels are stable and omit defaults or unknown research", () => {
+  const factorySpec = {
+    recipeProductivityResearch: new Map([
+      ["steel-plate-productivity", {}],
+      ["processing-unit-productivity", {}],
+    ]),
+    recipeProductivityLevels: new Map([
+      ["steel-plate-productivity", 12],
+      ["unknown-productivity", 99],
+      ["processing-unit-productivity", 3],
+      ["plastic-bar-productivity", 0],
+    ]),
+  }
+
+  assert.deepEqual(serializeRecipeProductivityLevels(factorySpec), [
+    "processing-unit-productivity:3",
+    "steel-plate-productivity:12",
+  ])
 })

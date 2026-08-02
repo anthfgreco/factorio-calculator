@@ -128,6 +128,13 @@ export function serializeAutomaticBuildings(factorySpec) {
   return buildings
 }
 
+export function serializeRecipeProductivityLevels(factorySpec) {
+  return [...factorySpec.recipeProductivityLevels.entries()]
+    .filter(([researchKey, level]) => level > 0 && factorySpec.recipeProductivityResearch.has(researchKey))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([researchKey, level]) => `${researchKey}:${level}`)
+}
+
 /** Convert compressed bytes to a browser-safe binary string in bounded chunks. */
 export function bytesToBinaryString(bytes: Uint8Array) {
   const chunkSize = 0x8000
@@ -170,6 +177,10 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
     let hundred = Rational.from_float(100)
     let mprod = spec.miningProd.mul(hundred).toString()
     settings += "mprod=" + mprod + "&"
+  }
+  let recipeProductivityLevels = serializeRecipeProductivityLevels(spec)
+  if (recipeProductivityLevels.length > 0) {
+    settings += "rprod=" + recipeProductivityLevels.join(",") + "&"
   }
   let buildings = serializeAutomaticBuildings(spec)
   if (buildings.length > 0) {

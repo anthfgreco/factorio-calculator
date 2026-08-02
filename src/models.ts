@@ -29,6 +29,34 @@ export function usesLegacyCalculation(): boolean {
 }
 
 // -----------------------------------------------------------------------------
+// Recipe productivity research
+// -----------------------------------------------------------------------------
+
+export function getRecipeProductivityResearch(data, recipes) {
+  let result = new Map<string, any>()
+  for (let entry of data.recipe_productivity_research ?? []) {
+    let effects = new Map<any, Rational>()
+    for (let effect of entry.effects) {
+      let recipe = recipes.get(effect.recipe)
+      if (recipe !== undefined) {
+        effects.set(recipe, Rational.from_float_approximate(effect.change))
+      }
+    }
+    let research = {
+      key: entry.key,
+      name: entry.localized_name.en,
+      icon_col: entry.icon_col,
+      icon_row: entry.icon_row,
+      effects,
+      icon: null as Icon | null,
+    }
+    research.icon = new Icon(research)
+    result.set(entry.key, research)
+  }
+  return result
+}
+
+// -----------------------------------------------------------------------------
 // Item groups
 // -----------------------------------------------------------------------------
 

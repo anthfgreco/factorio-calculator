@@ -23,8 +23,17 @@ globalThis.d3 = {
 const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
 
 const { getItems, getRecipes } = await loadModule("recipes")
-const { ModuleSpec, getBelts, getBuildings, getFuel, getItemGroups, getModules, getPlanets, configureModelRuntime } =
-  await loadModule("models")
+const {
+  ModuleSpec,
+  getBelts,
+  getBuildings,
+  getFuel,
+  getItemGroups,
+  getModules,
+  getPlanets,
+  getRecipeProductivityResearch,
+  configureModelRuntime,
+} = await loadModule("models")
 const factory = await loadModule("factory")
 const { itemMatchesSearch, formatLocationList, getUnavailableLocationInfo } = await loadModule("data")
 const { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled } = factory
@@ -104,8 +113,9 @@ try {
     const fuels = getFuel(data, items)
     const planets = getPlanets(data, recipes, buildings)
     const groups = getItemGroups(items, data)
+    const recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
 
-    factory.spec.setData(items, recipes, planets, modules, buildings, belts, fuels, groups)
+    factory.spec.setData(items, recipes, planets, modules, buildings, belts, fuels, groups, recipeProductivityResearch)
     for (const building of buildings) {
       if (building.fuel !== null && factory.spec.getFuelForBuilding(building) === null) {
         throw new Error(`${filename}: no item available for ${building.fuel} fuel`)

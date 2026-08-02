@@ -15,10 +15,11 @@
     ],
     "planets": 6,
     "plants": 3,
+    "recipe_productivity_research": 8,
     "recipes": 623,
     "resources": 12,
     "source": "Factorio built-in exports",
-    "sprite_hash": "cb4f8fdb17dd032c600560394ef39e94",
+    "sprite_hash": "ad2ed179f24c9b7ded5835325fa435ca",
     "sprite_height": 896,
     "sprite_width": 832,
     "version": "2.1.12"

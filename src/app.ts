@@ -9,6 +9,7 @@ import {
   getItemGroups,
   getModules,
   getPlanets,
+  getRecipeProductivityResearch,
 } from "./models.js"
 import { getSprites, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
@@ -211,9 +212,10 @@ function loadData(modName, settings) {
     let modules = getModules(data, items)
     let belts = getBelts(data)
     let fuel = getFuel(data, items)
+    let recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
     getSprites(data)
     let itemGroups = getItemGroups(items, data)
-    spec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
+    spec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups, recipeProductivityResearch)
 
     fixLegacySettings(settings)
     renderSettings(settings)

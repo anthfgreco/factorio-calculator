@@ -39,3 +39,15 @@ test("progression presets keep Settings controls synchronized", async () => {
   assert.ok(state.includes("input.value === spec.belt?.key"))
   assert.ok(state.includes('document.getElementById("default_beacon_count")'))
 })
+
+test("recipe productivity settings use the official icons and independent level inputs", async () => {
+  const html = await readFile(resolve(root, "calc.html"), "utf8")
+  const settings = await readFile(resolve(root, "src/settings.ts"), "utf8")
+
+  assert.ok(html.includes('id="recipe_productivity_row"'))
+  assert.ok(html.includes('id="recipe_productivity_settings"'))
+  assert.ok(settings.includes("spec.recipeProductivityResearch.values()"))
+  assert.ok(settings.includes("entry.icon.make(24, true)"))
+  assert.ok(settings.includes('attr("aria-label", (entry) => `${entry.name} level`)'))
+  assert.ok(settings.includes("spec.setRecipeProductivityLevel(entry.key, Number(this.value))"))
+})

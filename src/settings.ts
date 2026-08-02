@@ -596,6 +596,66 @@ function renderMiningProd(settings) {
   spec.miningProd = Rational.from_string(mprod).div(Rational.from_float(100))
 }
 
+function recipeProductivityBonusLabel(research, level: number): string {
+  let bonuses = new Set<string>()
+  for (let change of research.effects.values()) {
+    bonuses.add(change.mul(Rational.from_integer(level)).mul(Rational.from_integer(100)).toDecimal())
+  }
+  if (bonuses.size !== 1) {
+    return "Varies"
+  }
+  return `+${bonuses.values().next().value}%`
+}
+
+function renderRecipeProductivityResearch(settings) {
+  spec.recipeProductivityLevels.clear()
+  if (settings.has("rprod")) {
+    for (let entry of settings.get("rprod").split(",")) {
+      let separator = entry.lastIndexOf(":")
+      if (separator === -1) continue
+      let researchKey = entry.slice(0, separator)
+      let level = Number(entry.slice(separator + 1))
+      if (Number.isInteger(level) && level >= 0) {
+        spec.setRecipeProductivityLevel(researchKey, level)
+      }
+    }
+  }
+
+  let research = sorted(spec.recipeProductivityResearch.values(), (entry) => entry.name)
+  let row = document.getElementById("recipe_productivity_row") as HTMLTableRowElement
+  row.hidden = research.length === 0
+
+  let container = d3.select("#recipe_productivity_settings")
+  container.selectAll("*").remove()
+  let settingsRows = container
+    .selectAll("label")
+    .data(research)
+    .join("label")
+    .classed("recipe-productivity-setting", true)
+  settingsRows.append((entry) => entry.icon.make(24, true)).classed("recipe-productivity-icon", true)
+  settingsRows.append("span").text((entry) => entry.name)
+  settingsRows
+    .append("input")
+    .attr("type", "number")
+    .attr("min", 0)
+    .attr("step", 1)
+    .attr("aria-label", (entry) => `${entry.name} level`)
+    .property("value", (entry) => spec.getRecipeProductivityLevel(entry.key))
+    .on("change", function (this: HTMLInputElement, _event, entry) {
+      spec.setRecipeProductivityLevel(entry.key, Number(this.value))
+      let level = spec.getRecipeProductivityLevel(entry.key)
+      this.value = String(level)
+      d3.select(this.parentElement)
+        .select(".recipe-productivity-bonus")
+        .text(recipeProductivityBonusLabel(entry, level))
+      spec.updateSolution()
+    })
+  settingsRows
+    .append("span")
+    .classed("recipe-productivity-bonus", true)
+    .text((entry) => recipeProductivityBonusLabel(entry, spec.getRecipeProductivityLevel(entry.key)))
+}
+
 // color scheme
 export const DEFAULT_COLOR_SCHEME = "default"
 
@@ -1030,6 +1090,7 @@ export function renderSettings(settings) {
   renderPrecisions(settings)
   renderValueFormat(settings)
   renderMiningProd(settings)
+  renderRecipeProductivityResearch(settings)
   renderColorScheme(settings)
   renderBuildings(settings)
   renderBelts(settings)

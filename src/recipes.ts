@@ -111,12 +111,14 @@ class Recipe {
     ingredients,
     products,
     conditions = [],
+    maximumProductivity = null,
   ) {
     this.key = key
     this.name = name
     this.order = order
     this.allow_productivity = allow_prod
     this.allow_quality = allow_quality !== false
+    this.maximumProductivity = maximumProductivity
     if (categories === undefined || categories === null) {
       categories = []
     } else if (!Array.isArray(categories)) {
@@ -383,6 +385,7 @@ function makeRecipe(data, items, d) {
     ingredients,
     products,
     conditions,
+    Rational.from_float_approximate(d.maximum_productivity ?? 3),
   )
 }
 

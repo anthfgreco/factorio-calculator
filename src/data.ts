@@ -59,9 +59,21 @@ export interface RecipeData extends SpriteReference {
   results: RecipeAmountData[]
   allow_productivity: boolean
   allow_quality?: boolean
+  maximum_productivity?: number
   order: string
   subgroup: string
   surface_conditions?: SurfaceCondition[]
+}
+
+export interface RecipeProductivityEffectData {
+  recipe: string
+  change: number
+}
+
+export interface RecipeProductivityResearchData extends SpriteReference {
+  key: string
+  localized_name: LocalizedName
+  effects: RecipeProductivityEffectData[]
 }
 
 export interface MachineData extends SpriteReference {
@@ -162,6 +174,7 @@ export interface CalculatorData {
   belts: BeltData[]
   fuel: FuelData[]
   modules: ModuleData[]
+  recipe_productivity_research?: RecipeProductivityResearchData[]
   resources: ResourceData[]
   planets?: PlanetData[]
   sprites: SpriteSheetData
@@ -207,6 +220,13 @@ function requireString(value: unknown, path: string): string {
   return value
 }
 
+function requireNonnegativeNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new DatasetValidationError(path, "expected a nonnegative finite number")
+  }
+  return value
+}
+
 function validateKeyedEntries(value: unknown, path: string): void {
   for (let [index, entry] of requireArray(value, path).entries()) {
     let record = requireRecord(entry, `${path}[${index}]`)
@@ -229,6 +249,27 @@ function validateRecipes(value: unknown): void {
     }
     if (recipe.allow_quality !== undefined && typeof recipe.allow_quality !== "boolean") {
       throw new DatasetValidationError(`${path}.allow_quality`, "expected a boolean")
+    }
+    if (recipe.maximum_productivity !== undefined) {
+      requireNonnegativeNumber(recipe.maximum_productivity, `${path}.maximum_productivity`)
+    }
+  }
+}
+
+function validateRecipeProductivityResearch(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "recipe_productivity_research").entries()) {
+    let path = `recipe_productivity_research[${index}]`
+    let research = requireRecord(entry, path)
+    requireString(research.key, `${path}.key`)
+    let localizedName = requireRecord(research.localized_name, `${path}.localized_name`)
+    requireString(localizedName.en, `${path}.localized_name.en`)
+    requireNonnegativeNumber(research.icon_col, `${path}.icon_col`)
+    requireNonnegativeNumber(research.icon_row, `${path}.icon_row`)
+    for (let [effectIndex, entryEffect] of requireArray(research.effects, `${path}.effects`).entries()) {
+      let effectPath = `${path}.effects[${effectIndex}]`
+      let effect = requireRecord(entryEffect, effectPath)
+      requireString(effect.recipe, `${effectPath}.recipe`)
+      requireNonnegativeNumber(effect.change, `${effectPath}.change`)
     }
   }
 }
@@ -266,6 +307,9 @@ export function parseCalculatorData(value: unknown): CalculatorData {
   validateKeyedEntries(data.belts, "belts")
   requireArray(data.fuel, "fuel")
   validateModules(data.modules)
+  if (data.recipe_productivity_research !== undefined) {
+    validateRecipeProductivityResearch(data.recipe_productivity_research)
+  }
   requireArray(data.resources, "resources")
   requireRecord(data.groups, "groups")
   requireRecord(data.sprites, "sprites")

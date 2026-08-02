@@ -284,6 +284,8 @@ class SpriteBuilder:
                 self.dump_dir / "space-location" / f"{ref.key}.png",
                 self.dump_dir / "surface" / f"{ref.key}.png",
             ]
+        elif ref.context == "technology":
+            candidates = [self.dump_dir / "technology" / f"{ref.key}.png"]
         else:
             raise ExportError(f"Unknown icon context: {ref.context}")
 
@@ -507,6 +509,28 @@ class DatasetBuilder:
                 }),
             })
         return modules
+
+    def build_recipe_productivity_research(self) -> list[dict[str, Any]]:
+        research = []
+        for key, raw in sorted(self.raw.get("technology", {}).items()):
+            effects = [
+                {
+                    "recipe": effect["recipe"],
+                    "change": effect["change"],
+                }
+                for effect in normalize_sequence(raw.get("effects"))
+                if effect.get("type") == "change-recipe-productivity"
+            ]
+            if not effects:
+                continue
+            entry = {
+                "key": key,
+                "localized_name": {"en": self.locale.get(key, "technology")},
+                "effects": effects,
+            }
+            self.sprite.register(entry, "technology", key)
+            research.append(entry)
+        return research
 
     def build_belts(self) -> list[dict[str, Any]]:
         belts = []
@@ -764,6 +788,7 @@ class DatasetBuilder:
             "localized_name": {"en": self._recipe_name(key, main_product)},
             "allow_productivity": bool(raw.get("allow_productivity", False)),
             "allow_quality": bool(raw.get("allow_quality", True)),
+            "maximum_productivity": raw.get("maximum_productivity", 3.0),
             "categories": categories,
             "energy_required": raw.get("energy_required", 0.5),
             "ingredients": ingredients,
@@ -788,6 +813,7 @@ class DatasetBuilder:
         items, fuel, spoilage = self.build_items()
         fluids = self.build_fluids()
         modules = self.build_modules()
+        recipe_productivity_research = self.build_recipe_productivity_research()
         belts = self.build_belts()
         crafters = self.build_crafting_machines()
         drills = self.build_mining_drills()
@@ -815,6 +841,7 @@ class DatasetBuilder:
             "spoilage": spoilage,
             "belts": belts,
             "modules": modules,
+            "recipe_productivity_research": recipe_productivity_research,
             "resources": resources,
             "plants": plants,
             "boilers": boilers,
@@ -864,6 +891,25 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
             require(entry["name"] in item_keys, f"Recipe {recipe['key']} references missing item {entry['name']}")
         for result in recipe["results"]:
             require(expected_result_amount(result) >= 0, f"Recipe {recipe['key']} has negative expected output")
+        require(recipe["maximum_productivity"] >= 0, f"Recipe {recipe['key']} has negative maximum productivity")
+
+    raw_productivity_effects = {
+        (technology_key, effect["recipe"], effect["change"])
+        for technology_key, technology in raw.get("technology", {}).items()
+        for effect in normalize_sequence(technology.get("effects"))
+        if effect.get("type") == "change-recipe-productivity"
+    }
+    exported_productivity_effects = {
+        (technology["key"], effect["recipe"], effect["change"])
+        for technology in dataset["recipe_productivity_research"]
+        for effect in technology["effects"]
+    }
+    require(
+        exported_productivity_effects == raw_productivity_effects,
+        "Recipe productivity research effects do not match the Factorio technology prototypes",
+    )
+    for _, recipe_key, _ in exported_productivity_effects:
+        require(recipe_key in recipe_map, f"Recipe productivity research references missing recipe {recipe_key}")
 
     machine_categories = set()
     for machine in dataset["crafting_machines"] + dataset["rocket_silo"]:
@@ -906,6 +952,7 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
     icon_sections = (
         "items",
         "belts",
+        "recipe_productivity_research",
         "crafting_machines",
         "mining_drills",
         "resources",
@@ -930,6 +977,7 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
     return {
         "items": len(dataset["items"]),
         "recipes": len(dataset["recipes"]),
+        "recipe_productivity_research": len(dataset["recipe_productivity_research"]),
         "crafting_machines": len(dataset["crafting_machines"]),
         "resources": len(dataset["resources"]),
         "plants": len(dataset["plants"]),
@@ -961,10 +1009,12 @@ def main() -> None:
         dump_dir / "factorio-version.txt",
         dump_dir / "mod-list.json",
         dump_dir / "recipe-locale.json",
+        dump_dir / "technology-locale.json",
         dump_dir / "item-locale.json",
         dump_dir / "recipe",
         dump_dir / "item",
         dump_dir / "entity",
+        dump_dir / "technology",
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:

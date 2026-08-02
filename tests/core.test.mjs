@@ -23,8 +23,17 @@ const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 const { DatasetValidationError, parseCalculatorData } = await load("data")
 const { Matrix, powerRepresentation, Rational, one, zero } = await load("math")
 const { itemMatchesSearch } = await load("data")
-const { ModuleSpec, configureModelRuntime, getBuildings, getModules, getPlanets, getBelts, getFuel, getItemGroups } =
-  await load("models")
+const {
+  ModuleSpec,
+  configureModelRuntime,
+  getBuildings,
+  getModules,
+  getPlanets,
+  getBelts,
+  getFuel,
+  getItemGroups,
+  getRecipeProductivityResearch,
+} = await load("models")
 const { getExpectedResultAmount, getItems, getRecipes } = await load("recipes")
 const { FactorySpecification } = await load("factory")
 const { getFactorySummary } = await load("results")
@@ -58,27 +67,71 @@ async function createTestRuntime() {
   const belts = getBelts(data)
   const fuel = getFuel(data, items)
   const itemGroups = getItemGroups(items, data)
-  return { items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
+  const recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
+  return { items, recipes, buildings, planets, modules, belts, fuel, itemGroups, recipeProductivityResearch }
 }
 
 async function setupTestFactory() {
-  const { items, recipes, buildings, planets, modules, belts, fuel, itemGroups } = await createTestRuntime()
+  const { items, recipes, buildings, planets, modules, belts, fuel, itemGroups, recipeProductivityResearch } =
+    await createTestRuntime()
 
   const factorySpec = new FactorySpecification()
   configureModelRuntime({
     getSpecification: () => factorySpec,
     useLegacyCalculation: () => false,
   })
-  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups)
+  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups, recipeProductivityResearch)
   factorySpec.setDefaultPriority()
 
-  return { factorySpec, items, recipes, buildings, planets, modules, belts, fuel, itemGroups }
+  return {
+    factorySpec,
+    items,
+    recipes,
+    buildings,
+    planets,
+    modules,
+    belts,
+    fuel,
+    itemGroups,
+    recipeProductivityResearch,
+  }
 }
 
 test("dataset parser accepts the generated Space Age dataset", async () => {
   const data = await getParsedTestData()
   assert.equal(data.game_version, "2.1.12")
   assert.ok(data.recipes.length > 600)
+})
+
+test("generated Space Age data includes every official recipe productivity research effect", async () => {
+  const data = await getParsedTestData()
+  const actual = Object.fromEntries(
+    data.recipe_productivity_research.map((research) => [
+      research.key,
+      research.effects.map((effect) => `${effect.recipe}:${effect.change}`).sort(),
+    ]),
+  )
+  assert.deepEqual(actual, {
+    "asteroid-productivity": [
+      "advanced-carbonic-asteroid-crushing:0.1",
+      "advanced-metallic-asteroid-crushing:0.1",
+      "advanced-oxide-asteroid-crushing:0.1",
+      "carbonic-asteroid-crushing:0.1",
+      "metallic-asteroid-crushing:0.1",
+      "oxide-asteroid-crushing:0.1",
+    ],
+    "low-density-structure-productivity": ["casting-low-density-structure:0.1", "low-density-structure:0.1"],
+    "plastic-bar-productivity": ["bioplastic:0.1", "plastic-bar:0.1"],
+    "processing-unit-productivity": ["processing-unit:0.1"],
+    "rocket-fuel-productivity": ["ammonia-rocket-fuel:0.1", "rocket-fuel-from-jelly:0.1", "rocket-fuel:0.1"],
+    "rocket-part-productivity": ["rocket-part:0.1"],
+    "scrap-recycling-productivity": ["scrap-recycling:0.1"],
+    "steel-plate-productivity": ["casting-steel:0.1", "steel-plate:0.1"],
+  })
+  assert.equal(
+    data.recipes.every((recipe) => recipe.maximum_productivity === 3),
+    true,
+  )
 })
 
 test("dataset parser reports the failing path", () => {
@@ -94,6 +147,16 @@ test("dataset parser rejects malformed machine effect lists", async () => {
   assert.throws(
     () => parseCalculatorData(raw),
     (error) => error instanceof DatasetValidationError && error.path === "crafting_machines[0].allowed_effects",
+  )
+})
+
+test("dataset parser rejects malformed recipe productivity research", async () => {
+  const raw = structuredClone(await getParsedTestData())
+  raw.recipe_productivity_research[0].effects[0].change = -0.1
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) =>
+      error instanceof DatasetValidationError && error.path === "recipe_productivity_research[0].effects[0].change",
   )
 })
 
@@ -589,6 +652,39 @@ test("factorySpec.getCount updates building count when machine crafting speed ch
   const count3 = factorySpec.getCount(recipe, rate)
 
   assert.ok(count3.less(count1), `Expected count3 (${count3}) to be less than count1 (${count1})`)
+})
+
+test("recipe productivity researches are independent and apply to every exported recipe", async () => {
+  const { factorySpec, recipes, recipeProductivityResearch } = await setupTestFactory()
+  const unrelatedRecipe = recipes.get("copper-cable")
+
+  let level = 1
+  for (let research of recipeProductivityResearch.values()) {
+    assert.equal(factorySpec.setRecipeProductivityLevel(research.key, level), true)
+    for (let [recipe, change] of research.effects) {
+      assert.equal(factorySpec.getRecipeProductivityBonus(recipe).equal(change.mul(Rational.from_integer(level))), true)
+    }
+    assert.equal(factorySpec.getRecipeProductivityBonus(unrelatedRecipe).isZero(), true)
+    factorySpec.setRecipeProductivityLevel(research.key, 0)
+    level += 1
+  }
+
+  assert.equal(factorySpec.setRecipeProductivityLevel("unknown-productivity", 10), false)
+  factorySpec.setRecipeProductivityLevel("steel-plate-productivity", 2.9)
+  assert.equal(factorySpec.getRecipeProductivityLevel("steel-plate-productivity"), 2)
+  factorySpec.setRecipeProductivityLevel("steel-plate-productivity", -1)
+  assert.equal(factorySpec.getRecipeProductivityLevel("steel-plate-productivity"), 0)
+})
+
+test("recipe productivity respects the recipe cap while mining productivity remains uncapped", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const processingUnit = recipes.get("processing-unit")
+  factorySpec.setRecipeProductivityLevel("processing-unit-productivity", 31)
+  assert.equal(factorySpec.getProdEffect(processingUnit).equal(Rational.from_integer(4)), true)
+
+  const ironOre = recipes.get("iron-ore")
+  factorySpec.miningProd = Rational.from_integer(4)
+  assert.equal(factorySpec.getProdEffect(ironOre).equal(Rational.from_integer(5)), true)
 })
 
 test(

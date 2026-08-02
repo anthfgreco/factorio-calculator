@@ -310,6 +310,9 @@ export class FactorySpecification {
   belt: any
   fuel: Fuel | null
   miningProd: Rational | null
+  recipeProductivityResearch: Map<string, any>
+  recipeProductivityLevels: Map<string, number>
+  recipeProductivityEffects: Map<any, { researchKey: string; change: Rational }[]>
   minerSettings: Map<any, { miner: any; purity: any }>
   ignore: Set<any>
   disable: Set<any>
@@ -355,6 +358,9 @@ export class FactorySpecification {
     this.fuel = null
 
     this.miningProd = null
+    this.recipeProductivityResearch = new Map()
+    this.recipeProductivityLevels = new Map()
+    this.recipeProductivityEffects = new Map()
     this.minerSettings = new Map()
 
     this.ignore = new Set()
@@ -377,7 +383,17 @@ export class FactorySpecification {
 
     this.debug = false
   }
-  setData(items, recipes, planets, modules, buildings, belts, fuels, itemGroups) {
+  setData(
+    items,
+    recipes,
+    planets,
+    modules,
+    buildings,
+    belts,
+    fuels,
+    itemGroups,
+    recipeProductivityResearch = new Map(),
+  ) {
     this.items = items
     this.recipes = recipes
     this.planets = planets
@@ -392,6 +408,19 @@ export class FactorySpecification {
     this.fuels = fuels
     this.fuel = fuels.get(DEFAULT_FUEL)
     this.miningProd = zero
+    this.recipeProductivityResearch = recipeProductivityResearch
+    this.recipeProductivityLevels.clear()
+    this.recipeProductivityEffects.clear()
+    for (let research of recipeProductivityResearch.values()) {
+      for (let [recipe, change] of research.effects) {
+        let effects = this.recipeProductivityEffects.get(recipe)
+        if (effects === undefined) {
+          effects = []
+          this.recipeProductivityEffects.set(recipe, effects)
+        }
+        effects.push({ researchKey: research.key, change })
+      }
+    }
     this.itemGroups = itemGroups
     this.defaultPriority = this.getDefaultPriorityArray()
     this.priority = null
@@ -575,10 +604,35 @@ export class FactorySpecification {
   }
   getProdEffect(recipe) {
     let m = this.getModuleSpec(recipe)
-    if (m === undefined) {
-      return one
+    let effect = m === undefined ? one : m.prodEffect(this)
+    let bonus = effect.sub(one).add(this.getRecipeProductivityBonus(recipe))
+    if (recipe.maximumProductivity != null) {
+      bonus = Rational.min(bonus, recipe.maximumProductivity)
     }
-    return this.getModuleSpec(recipe).prodEffect(this)
+    return one.add(bonus)
+  }
+  getRecipeProductivityLevel(researchKey: string): number {
+    return this.recipeProductivityLevels.get(researchKey) ?? 0
+  }
+  setRecipeProductivityLevel(researchKey: string, level: number): boolean {
+    if (!this.recipeProductivityResearch.has(researchKey)) {
+      return false
+    }
+    let normalizedLevel = Number.isFinite(level) ? Math.max(0, Math.floor(level)) : 0
+    if (normalizedLevel === 0) {
+      this.recipeProductivityLevels.delete(researchKey)
+    } else {
+      this.recipeProductivityLevels.set(researchKey, normalizedLevel)
+    }
+    return true
+  }
+  getRecipeProductivityBonus(recipe): Rational {
+    let bonus = zero
+    for (let effect of this.recipeProductivityEffects.get(recipe) ?? []) {
+      let level = this.getRecipeProductivityLevel(effect.researchKey)
+      bonus = bonus.add(effect.change.mul(Rational.from_integer(level)))
+    }
+    return bonus
   }
   setDefaultModule(module) {
     for (let [recipe, moduleSpec] of this.spec) {
