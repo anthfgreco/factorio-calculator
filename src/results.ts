@@ -187,6 +187,53 @@ export function makeRecipeSelector(row) {
   return details.node()
 }
 
+let machineSelectorCount = 0
+
+function makeMachineSelector(row) {
+  let automaticBuilding = spec.getAutomaticBuilding(row.recipe)
+  let override = spec.getBuildingOverride(row.recipe)
+  let options = [
+    {
+      building: null,
+      displayBuilding: automaticBuilding,
+      label: `Automatic (${automaticBuilding.name})`,
+    },
+    ...spec.getCompatibleBuildings(row.recipe).map((building) => ({
+      building,
+      displayBuilding: building,
+      label: building.name,
+    })),
+  ]
+
+  let root = d3
+    .create("span")
+    .classed("machine-selector", true)
+    .attr("title", `Choose a machine for ${row.recipe.name}`)
+  let choices = makeDropdown(root)
+    .classed("machine-dropdown", true)
+    .selectAll("div")
+    .data(options)
+    .join("div")
+    .classed("machine-option", true)
+  let labels = addInputs(
+    choices,
+    `machine-selector-${machineSelectorCount++}`,
+    (option) => option.building === override,
+    (option) => {
+      if (spec.setBuildingOverride(row.recipe, option.building)) {
+        spec.updateSolution()
+      }
+    },
+  )
+  labels
+    .append(function (this: HTMLElement, option) {
+      return option.displayBuilding.icon.make(32, false, this.parentNode.parentNode.parentNode)
+    })
+    .attr("aria-hidden", "true")
+  labels.append("span").classed("machine-option-name", true).text((option) => option.label)
+  return root.node()
+}
+
 // -----------------------------------------------------------------------------
 // Results table
 // -----------------------------------------------------------------------------
@@ -1033,7 +1080,7 @@ export function displayItems(spec, totals) {
 
   let buildingRow = row.filter((d) => d.building !== null)
   let buildingCell = buildingRow.selectAll("td.building-icon")
-  buildingCell.append((d) => d.building.icon.make(32))
+  buildingCell.append((d) => makeMachineSelector(d))
   buildingCell.append("span").text(" \u00d7")
   buildingRow
     .selectAll("tt.building-count")

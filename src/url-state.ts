@@ -95,6 +95,28 @@ export function serializeModuleSettings(factorySpec) {
   return settings.sort()
 }
 
+export function serializeBuildingOverrides(factorySpec) {
+  return [...factorySpec.buildingOverrides]
+    .map(([recipe, building]: [any, any]) => `${recipe.key}:${building.key}`)
+    .sort()
+}
+
+export function serializeAutomaticBuildings(factorySpec) {
+  let buildings = []
+  let groupSet = new Set<any>(factorySpec.buildings.values())
+  for (let group of groupSet) {
+    let defaultBuilding = group.getDefault()
+    if (group.selectedBuildings.size !== 1 || !group.selectedBuildings.has(defaultBuilding)) {
+      for (let building of group.buildings) {
+        if (group.selectedBuildings.has(building)) {
+          buildings.push(building.key)
+        }
+      }
+    }
+  }
+  return buildings
+}
+
 /** Convert compressed bytes to a browser-safe binary string in bounded chunks. */
 export function bytesToBinaryString(bytes: Uint8Array) {
   const chunkSize = 0x8000
@@ -138,15 +160,13 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
     let mprod = spec.miningProd.mul(hundred).toString()
     settings += "mprod=" + mprod + "&"
   }
-  let buildings = []
-  let groupSet = new Set<any>(spec.buildings.values())
-  for (let group of groupSet) {
-    if (group.building !== group.getDefault()) {
-      buildings.push(group.building.key)
-    }
-  }
+  let buildings = serializeAutomaticBuildings(spec)
   if (buildings.length > 0) {
     settings += "buildings=" + buildings.join(",") + "&"
+  }
+  let machineSettings = serializeBuildingOverrides(spec)
+  if (machineSettings.length > 0) {
+    settings += "machines=" + machineSettings.join(",") + "&"
   }
   if (spec.belt.key !== DEFAULT_BELT) {
     settings += "belt=" + spec.belt.key + "&"

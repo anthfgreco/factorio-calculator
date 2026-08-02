@@ -611,6 +611,67 @@ test("custom minimum building update synchronizes all recipes in crafting catego
   assert.equal(factorySpec.getBuilding(rGear).key, "assembling-machine-1")
 })
 
+test("recipe building override stays exact when the automatic machine tier changes", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  const recipe = recipes.get("processing-unit")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const emPlant = factorySpec.buildingKeys.get("electromagnetic-plant")
+
+  factorySpec.selectOnePlanet(planets.get("fulgora"))
+  factorySpec.setMinimumBuilding(am2)
+
+  assert.equal(factorySpec.setBuildingOverride(recipe, emPlant), true)
+  assert.equal(factorySpec.getBuildingOverride(recipe), emPlant)
+  assert.equal(factorySpec.getBuilding(recipe), emPlant)
+  assert.equal(factorySpec.getModuleSpec(recipe).building, emPlant)
+
+  factorySpec.setMinimumBuilding(am3)
+  assert.equal(factorySpec.getBuilding(recipe), emPlant)
+  assert.equal(factorySpec.getModuleSpec(recipe).building, emPlant)
+
+  factorySpec.setBuildingOverride(recipe, null)
+  assert.equal(factorySpec.getBuildingOverride(recipe), null)
+  assert.equal(factorySpec.getBuilding(recipe), am3)
+  assert.equal(factorySpec.getModuleSpec(recipe).building, am3)
+})
+
+test("automatic machines support explicit multiple selections without selecting lower tiers", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  const recipe = recipes.get("processing-unit")
+  const am1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const am2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const am3 = factorySpec.buildingKeys.get("assembling-machine-3")
+  const emPlant = factorySpec.buildingKeys.get("electromagnetic-plant")
+
+  factorySpec.selectOnePlanet(planets.get("fulgora"))
+  factorySpec.setMinimumBuilding(am2)
+  assert.equal(factorySpec.setAutomaticBuildingEnabled(emPlant, true), true)
+
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(am1), false)
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(am2), true)
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(am3), false)
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(emPlant), true)
+  assert.equal(factorySpec.getAutomaticBuilding(recipe), emPlant)
+
+  assert.equal(factorySpec.setAutomaticBuildingEnabled(emPlant, false), true)
+  assert.equal(factorySpec.getAutomaticBuilding(recipe), am2)
+  assert.equal(factorySpec.setAutomaticBuildingEnabled(am2, false), false)
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(am2), true)
+})
+
+test("recipe building overrides reject incompatible machines", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  const recipe = recipes.get("processing-unit")
+  const emPlant = factorySpec.buildingKeys.get("electromagnetic-plant")
+  const electricFurnace = factorySpec.buildingKeys.get("electric-furnace")
+
+  factorySpec.selectOnePlanet(planets.get("fulgora"))
+  assert.equal(factorySpec.setBuildingOverride(recipe, electricFurnace), false)
+  assert.equal(factorySpec.setBuildingOverride(recipe, emPlant), true)
+  assert.equal(factorySpec.getBuildingOverride(recipe), emPlant)
+})
+
 test("selecting Fulgora makes Electromagnetic Plant available for compatible electronics recipes", async () => {
   const { factorySpec, recipes, planets } = await setupTestFactory()
   const fulgora = planets.get("fulgora")

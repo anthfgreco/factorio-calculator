@@ -114,6 +114,7 @@ class BuildingGroup {
     this.buildings = [...buildingSet]
     buildingSort(this.buildings)
     this.building = this.getDefault()
+    this.selectedBuildings = new Set([this.building])
   }
 
   getDefault() {
@@ -124,16 +125,17 @@ class BuildingGroup {
   }
 
   getBuilding(recipe, available: (building: any) => boolean = () => true) {
-    let candidate = null
+    let fallback = null
+    let selected = null
     for (let building of this.buildings) {
       if (buildingCanCraft(building, recipe) && available(building)) {
-        candidate = building
-        if (building === this.building || this.building.less(building)) {
-          return building
+        fallback = building
+        if (this.selectedBuildings.has(building)) {
+          selected = building
         }
       }
     }
-    return candidate
+    return selected ?? fallback
   }
 }
 
@@ -288,6 +290,7 @@ export class FactorySpecification {
   planets: Map<string, any> | null
   buildings: Map<string, any> | null
   buildingKeys: Map<string, any> | null
+  buildingOverrides: Map<any, any>
   belts: Map<string, any> | null
   fuels: FuelCollection | null
   itemGroups: any
@@ -325,6 +328,7 @@ export class FactorySpecification {
     this.planets = null
     this.buildings = null
     this.buildingKeys = null
+    this.buildingOverrides = new Map()
     this.belts = null
     this.fuels = null
 
@@ -450,7 +454,19 @@ export class FactorySpecification {
     }
     return false
   }
-  getBuilding(recipe) {
+  getCompatibleBuildings(recipe, availableOnly = true) {
+    for (let category of getCategories(recipe)) {
+      let group = this.buildings.get(category)
+      if (group !== undefined) {
+        return group.buildings.filter(
+          (building) =>
+            buildingCanCraft(building, recipe) && (!availableOnly || this.isBuildingAvailable(building, recipe)),
+        )
+      }
+    }
+    return []
+  }
+  getAutomaticBuilding(recipe) {
     for (let category of getCategories(recipe)) {
       let group = this.buildings.get(category)
       if (group !== undefined) {
@@ -459,6 +475,33 @@ export class FactorySpecification {
     }
     return null
   }
+  getBuildingOverride(recipe) {
+    return this.buildingOverrides.get(recipe) ?? null
+  }
+  getBuilding(recipe) {
+    return this.getBuildingOverride(recipe) ?? this.getAutomaticBuilding(recipe)
+  }
+  setBuildingOverride(recipe, building) {
+    if (
+      building !== null &&
+      (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))
+    ) {
+      return false
+    }
+
+    if (building === null) {
+      this.buildingOverrides.delete(recipe)
+    } else {
+      this.buildingOverrides.set(recipe, building)
+    }
+
+    let moduleSpec = this.spec.get(recipe)
+    let selectedBuilding = this.getBuilding(recipe)
+    if (moduleSpec !== undefined && selectedBuilding !== null && moduleSpec.building !== selectedBuilding) {
+      moduleSpec.setBuilding(selectedBuilding, this)
+    }
+    return true
+  }
   getBuildingGroup(building) {
     const category = String(Array.from(building.categories)[0])
     return this.buildings.get(category)
@@ -466,6 +509,25 @@ export class FactorySpecification {
   setMinimumBuilding(building) {
     let group = this.getBuildingGroup(building)
     group.building = building
+    group.selectedBuildings = new Set([building])
+    this.updateBuildingGroup(group)
+  }
+  setAutomaticBuildingEnabled(building, enabled) {
+    let group = this.getBuildingGroup(building)
+    if (enabled) {
+      group.selectedBuildings.add(building)
+    } else if (group.selectedBuildings.size === 1) {
+      return false
+    } else {
+      group.selectedBuildings.delete(building)
+    }
+    this.updateBuildingGroup(group)
+    return true
+  }
+  isAutomaticBuildingEnabled(building) {
+    return this.getBuildingGroup(building).selectedBuildings.has(building)
+  }
+  updateBuildingGroup(group) {
     for (let [recipe, moduleSpec] of this.spec) {
       let g = null
       for (let category of getCategories(recipe)) {
@@ -474,7 +536,7 @@ export class FactorySpecification {
           break
         }
       }
-      if (group === g) {
+      if (group === g && !this.buildingOverrides.has(recipe)) {
         let b = this.getBuilding(recipe)
         if (b !== null) {
           moduleSpec.setBuilding(b, this)

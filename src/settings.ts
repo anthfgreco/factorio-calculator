@@ -605,17 +605,28 @@ function renderBuildings(settings) {
     }
   }
   for (let group of groupSet) {
-    group.building = group.getDefault()
+    spec.setMinimumBuilding(group.getDefault())
   }
   if (settings.has("buildings")) {
     let buildingKeys = settings.get("buildings").split(",")
+    let selections = new Map<any, any[]>()
     for (let key of buildingKeys) {
       let building = spec.buildingKeys.get(key)
       if (building === undefined) {
         console.log("unknown building:", key)
         continue
       }
-      spec.setMinimumBuilding(building)
+      let group = spec.getBuildingGroup(building)
+      if (!selections.has(group)) {
+        selections.set(group, [])
+      }
+      selections.get(group).push(building)
+    }
+    for (let selectedBuildings of selections.values()) {
+      spec.setMinimumBuilding(selectedBuildings[0])
+      for (let building of selectedBuildings.slice(1)) {
+        spec.setAutomaticBuildingEnabled(building, true)
+      }
     }
   }
 
@@ -630,17 +641,44 @@ function renderBuildings(settings) {
   }
   let div = d3.select("#building_selector")
   div.selectAll("*").remove()
-  let set = div.selectAll("div").data(groups).join("div").classed("radio-setting", true)
-  radioSetting(
-    set,
-    (d) => `building_selector_${groupIndex.get(d)}`,
-    (d) => d.buildings,
-    (d) => d === spec.getBuildingGroup(d).building,
-    (event, d) => {
-      spec.setMinimumBuilding(d)
+  let set = div.selectAll("div").data(groups).join("div").classed("machine-setting", true)
+  let options = set.selectAll("span").data((group) => group.buildings).join("span")
+  options
+    .append("input")
+    .attr("id", (building) => `building-input-${groupIndex.get(building)}-${building.key}`)
+    .attr("type", "checkbox")
+    .property("checked", (building) => spec.isAutomaticBuildingEnabled(building))
+    .on("change", function (this: HTMLInputElement, event, building) {
+      if (!spec.setAutomaticBuildingEnabled(building, event.target.checked)) {
+        d3.select(this).property("checked", true)
+        return
+      }
       spec.updateSolution()
-    },
-  )
+    })
+  options
+    .append("label")
+    .attr("for", (building) => `building-input-${groupIndex.get(building)}-${building.key}`)
+    .append((building) => building.icon.make(32))
+}
+
+function renderBuildingOverrides(settings) {
+  for (let recipe of [...spec.buildingOverrides.keys()]) {
+    spec.setBuildingOverride(recipe, null)
+  }
+
+  let machineString = settings.get("machines")
+  if (machineString === undefined || machineString === "") {
+    return
+  }
+
+  for (let machineSetting of machineString.split(",")) {
+    let [recipeKey, buildingKey] = machineSetting.split(":")
+    let recipe = spec.recipes.get(recipeKey)
+    let building = spec.buildingKeys.get(buildingKey)
+    if (recipe === undefined || building === undefined || !spec.setBuildingOverride(recipe, building)) {
+      console.log("unknown or unavailable recipe machine:", machineSetting)
+    }
+  }
 }
 
 // belt
@@ -963,6 +1001,7 @@ export function renderSettings(settings) {
   renderDefaultBeacon(settings)
   renderResourcePriorities(settings)
   renderRecipeAndLocationSettings(settings)
+  renderBuildingOverrides(settings)
   renderTargets(settings)
   renderModules(settings)
   renderDebugCheckbox(settings)

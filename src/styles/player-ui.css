@@ -691,3 +691,25 @@ svg.sankey g.edgePathHighlight path.highlighter {
 #totals td.building-icon span {
   margin-left: 0.15rem;
 }
+#totals td.building-icon .machine-selector,
+#totals td.building-icon .machine-selector span {
+  margin-left: 0;
+}
+.machine-selector .machine-option-name {
+  display: none;
+}
+.machine-selector .dropdownWrapper.open .machine-dropdown {
+  min-width: 13rem;
+  text-align: left;
+}
+.machine-selector .dropdownWrapper.open .machine-option label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-right: 0.5rem;
+}
+.machine-selector .dropdownWrapper.open .machine-option-name {
+  display: inline;
+  color: var(--foreground);
+  font-size: 0.8rem;
+}

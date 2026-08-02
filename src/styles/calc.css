@@ -186,10 +186,12 @@ input.prec,
 input.mprod {
   width: 4em;
 }
-.radio-setting input[type="radio"] {
+.radio-setting input[type="radio"],
+.machine-setting input[type="checkbox"] {
   display: none;
 }
-.radio-setting input[type="radio"] + label {
+.radio-setting input[type="radio"] + label,
+.machine-setting input[type="checkbox"] + label {
   cursor: pointer;
   background: var(--light);
   border-radius: 4px;
@@ -197,10 +199,12 @@ input.mprod {
   margin: 2px;
   padding: 2px;
 }
-.radio-setting input[type="radio"] + label:hover {
+.radio-setting input[type="radio"] + label:hover,
+.machine-setting input[type="checkbox"] + label:hover {
   background: var(--bright);
 }
-.radio-setting input[type="radio"]:checked + label {
+.radio-setting input[type="radio"]:checked + label,
+.machine-setting input[type="checkbox"]:checked + label {
   background: var(--accent);
 }
 .toggle-list .toggle {

@@ -304,9 +304,12 @@
 
         <tr class="setting-row">
           <td class="setting-label top-icon">
-            <div><span>Buildings:</span></div>
+            <div><span>Machines:</span></div>
           </td>
-          <td><span id="building_selector"></span></td>
+          <td>
+            <span id="building_selector"></span>
+            <div class="setting-help">Select one or more preferred machines. Automatic uses the fastest compatible selection; click a Factory-row machine for an exact override.</div>
+          </td>
         </tr>
 
         <tr class="setting-row">
@@ -398,6 +401,19 @@
         <section id="help-changelog" class="help-section">
           <h2 class="help-section-title">Changelog</h2>
           <div class="changelog-timeline">
+            <article class="changelog-entry">
+              <div class="changelog-meta">
+                <time datetime="2026-08-02">2026-08-02</time>
+              </div>
+              <div class="changelog-details">
+                <h3>Machine Selection</h3>
+                <ul>
+                  <li>Added exact machine selection directly to each recipe row, with an option to return to automatic selection.</li>
+                  <li>Made automatic machine preferences multi-selectable and preserved machine choices in shared plan links.</li>
+                </ul>
+              </div>
+            </article>
+
             <article class="changelog-entry">
               <div class="changelog-meta">
                 <time datetime="2026-07-31">2026-07-31</time>

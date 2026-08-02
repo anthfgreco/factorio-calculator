@@ -19,7 +19,7 @@ globalThis.d3 = {
   }),
 }
 
-const { bytesToBinaryString, serializeModuleSettings } = await import(
+const { bytesToBinaryString, serializeAutomaticBuildings, serializeBuildingOverrides, serializeModuleSettings } = await import(
   pathToFileURL(resolve(build, "url-state.js")).href
 )
 
@@ -94,4 +94,41 @@ test("URL compression handles calculator states larger than the argument limit",
   assert.equal(binary.charCodeAt(0), 0)
   assert.equal(binary.charCodeAt(32_768), 0)
   assert.equal(binary.charCodeAt(99_999), 159)
+})
+
+test("URL building overrides are stable and recipe-specific", () => {
+  const recipeA = { key: "a-recipe" }
+  const recipeB = { key: "b-recipe" }
+  const buildingA = { key: "assembling-machine-2" }
+  const buildingB = { key: "electromagnetic-plant" }
+  const factorySpec = {
+    buildingOverrides: new Map([
+      [recipeB, buildingB],
+      [recipeA, buildingA],
+    ]),
+  }
+
+  assert.deepEqual(serializeBuildingOverrides(factorySpec), [
+    "a-recipe:assembling-machine-2",
+    "b-recipe:electromagnetic-plant",
+  ])
+})
+
+test("URL automatic-machine settings preserve multiple selections", () => {
+  const assemblingMachine1 = { key: "assembling-machine-1" }
+  const assemblingMachine3 = { key: "assembling-machine-3" }
+  const electromagneticPlant = { key: "electromagnetic-plant" }
+  const group = {
+    buildings: [assemblingMachine1, assemblingMachine3, electromagneticPlant],
+    getDefault: () => assemblingMachine1,
+    selectedBuildings: new Set([assemblingMachine3, electromagneticPlant]),
+  }
+  const factorySpec = {
+    buildings: new Map([
+      ["crafting", group],
+      ["electromagnetics", group],
+    ]),
+  }
+
+  assert.deepEqual(serializeAutomaticBuildings(factorySpec), ["assembling-machine-3", "electromagnetic-plant"])
 })
