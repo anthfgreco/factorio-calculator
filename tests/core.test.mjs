@@ -139,6 +139,36 @@ test("search handles aliases and spaced names", () => {
   assert.equal(zero.toString(), "0")
 })
 
+test("search handles common Factorio item names", () => {
+  assert.equal(itemMatchesSearch({ key: "electronic-circuit", name: "Electronic circuit" }, "green chip"), true)
+  assert.equal(itemMatchesSearch({ key: "advanced-circuit", name: "Advanced circuit" }, "red chips"), true)
+  assert.equal(itemMatchesSearch({ key: "processing-unit", name: "Processing unit" }, "blue chip"), true)
+  assert.equal(itemMatchesSearch({ key: "processing-unit", name: "Processing unit" }, "chip"), true)
+  assert.equal(itemMatchesSearch({ key: "iron-plate", name: "Iron plate" }, "chip"), false)
+
+  assert.equal(itemMatchesSearch({ key: "firearm-magazine", name: "Firearm magazine" }, "yellow magazine"), true)
+  assert.equal(
+    itemMatchesSearch({ key: "piercing-rounds-magazine", name: "Piercing rounds magazine" }, "red magazines"),
+    true,
+  )
+  assert.equal(
+    itemMatchesSearch({ key: "uranium-rounds-magazine", name: "Uranium rounds magazine" }, "green magazine"),
+    true,
+  )
+
+  assert.equal(itemMatchesSearch({ key: "fast-transport-belt", name: "Fast transport belt" }, "red belt"), true)
+  assert.equal(
+    itemMatchesSearch({ key: "express-underground-belt", name: "Express underground belt" }, "blue underground belts"),
+    true,
+  )
+  assert.equal(itemMatchesSearch({ key: "turbo-splitter", name: "Turbo splitter" }, "green splitters"), true)
+
+  assert.equal(itemMatchesSearch({ key: "low-density-structure", name: "Low density structure" }, "LDS"), true)
+  assert.equal(itemMatchesSearch({ key: "construction-robot", name: "Construction robot" }, "construction bots"), true)
+  assert.equal(itemMatchesSearch({ key: "copper-cable", name: "Copper cable" }, "copper wire"), true)
+  assert.equal(itemMatchesSearch({ key: "iron-gear-wheel", name: "Iron gear wheel" }, "gears"), true)
+})
+
 test("solver reports a missing production path", () => {
   const item = {
     key: "unproducible-item",

@@ -1,7 +1,15 @@
 import { parseCalculatorData } from "./data.js"
 import type { FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"
-import { configureModelRuntime, getBelts, getBuildings, getFuel, getItemGroups, getModules, getPlanets } from "./models.js"
+import {
+  configureModelRuntime,
+  getBelts,
+  getBuildings,
+  getFuel,
+  getItemGroups,
+  getModules,
+  getPlanets,
+} from "./models.js"
 import { getSprites, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"

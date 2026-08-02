@@ -299,6 +299,14 @@ export function sorted(collection: Iterable<any> | readonly any[], key?: (value:
 // -----------------------------------------------------------------------------
 
 const ITEM_SEARCH_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  "electronic-circuit": ["green circuit", "green circuits", "green chip", "green chips"],
+  "advanced-circuit": ["red circuit", "red circuits", "red chip", "red chips"],
+  "processing-unit": ["blue circuit", "blue circuits", "blue chip", "blue chips"],
+
+  "firearm-magazine": ["yellow magazine", "yellow magazines"],
+  "piercing-rounds-magazine": ["red magazine", "red magazines"],
+  "uranium-rounds-magazine": ["green magazine", "green magazines"],
+
   "automation-science-pack": ["red"],
   "logistic-science-pack": ["green"],
   "military-science-pack": ["grey", "gray", "black"],
@@ -311,6 +319,25 @@ const ITEM_SEARCH_ALIASES: Readonly<Record<string, readonly string[]>> = {
   "agricultural-science-pack": ["lime", "light green"],
   "cryogenic-science-pack": ["cyan", "light blue", "blue"],
   "promethium-science-pack": ["black", "dark blue", "dark purple"],
+
+  "transport-belt": ["yellow belt", "yellow belts"],
+  "fast-transport-belt": ["red belt", "red belts"],
+  "express-transport-belt": ["blue belt", "blue belts"],
+  "turbo-transport-belt": ["green belt", "green belts"],
+  "underground-belt": ["yellow underground", "yellow underground belt", "yellow underground belts"],
+  "fast-underground-belt": ["red underground", "red underground belt", "red underground belts"],
+  "express-underground-belt": ["blue underground", "blue underground belt", "blue underground belts"],
+  "turbo-underground-belt": ["green underground", "green underground belt", "green underground belts"],
+  splitter: ["yellow splitter", "yellow splitters"],
+  "fast-splitter": ["red splitter", "red splitters"],
+  "express-splitter": ["blue splitter", "blue splitters"],
+  "turbo-splitter": ["green splitter", "green splitters"],
+
+  "low-density-structure": ["lds"],
+  "construction-robot": ["construction bot", "construction bots", "conbot", "conbots"],
+  "logistic-robot": ["logistic bot", "logistic bots", "logistics bot", "logistics bots", "logibot", "logibots"],
+  "copper-cable": ["copper wire", "copper wires"],
+  "iron-gear-wheel": ["gears"],
 }
 
 interface SearchableItem {
@@ -325,7 +352,11 @@ interface SearchableItem {
  * "undergroundbelt".
  */
 export function normalizeSearchText(value: string) {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ")
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
 }
 
 function compactSearchText(value: string) {
@@ -392,11 +423,7 @@ function locationName(location: LocationLike, indefinite = false) {
   return location.name
 }
 
-export function formatLocationList(
-  locations: Iterable<LocationLike>,
-  conjunction = "or",
-  indefinite = false,
-): string {
+export function formatLocationList(locations: Iterable<LocationLike>, conjunction = "or", indefinite = false): string {
   const names = [...locations].map((location) => locationName(location, indefinite))
   if (names.length === 0) {
     return ""

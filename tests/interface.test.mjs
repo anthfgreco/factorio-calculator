@@ -26,13 +26,12 @@ test("player-facing controls stay close to the evidence they affect", async () =
   assert.ok(results.includes('classed("align-left"'))
   assert.ok(results.includes('classed("align-center"'))
   assert.ok(results.includes('classed("align-right"'))
-  assert.ok(results.includes('if (x.isZero())'))
+  assert.ok(results.includes("if (x.isZero())"))
   assert.ok(results.includes('classed("target-output"'))
   assert.ok(results.includes("compatibleBuildings.length <= 1"))
   assert.ok(results.includes("option.displayBuilding.icon.make(32, true)"))
   assert.ok(results.includes('attr("aria-label", `Choose a machine for ${row.recipe.name}`)'))
 })
-
 
 test("progression presets keep Settings controls synchronized", async () => {
   const state = await readFile(resolve(root, "src/state.ts"), "utf8")

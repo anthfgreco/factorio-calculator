@@ -42,9 +42,7 @@ globalThis.document = {
   querySelectorAll: () => inputs,
 }
 
-const { changeFactoryDensity, initializeFactoryDensity } = await import(
-  pathToFileURL(resolve(build, "state.js")).href
-)
+const { changeFactoryDensity, initializeFactoryDensity } = await import(pathToFileURL(resolve(build, "state.js")).href)
 
 test("Factory table density restores and persists the local display preference", () => {
   initializeFactoryDensity()

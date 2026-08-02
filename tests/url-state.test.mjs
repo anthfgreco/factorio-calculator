@@ -19,9 +19,8 @@ globalThis.d3 = {
   }),
 }
 
-const { bytesToBinaryString, serializeAutomaticBuildings, serializeBuildingOverrides, serializeModuleSettings } = await import(
-  pathToFileURL(resolve(build, "url-state.js")).href
-)
+const { bytesToBinaryString, serializeAutomaticBuildings, serializeBuildingOverrides, serializeModuleSettings } =
+  await import(pathToFileURL(resolve(build, "url-state.js")).href)
 
 function module(key) {
   return { shortName: () => key }
@@ -79,11 +78,7 @@ test("URL module settings preserve slot positions, inactive customizations, and 
     ]),
   }
 
-  assert.deepEqual(serializeModuleSettings(factorySpec), [
-    "a-recipe:prod",
-    "b-recipe::speed",
-    "c-recipe:;speed:null:8",
-  ])
+  assert.deepEqual(serializeModuleSettings(factorySpec), ["a-recipe:prod", "b-recipe::speed", "c-recipe:;speed:null:8"])
 })
 
 test("URL compression handles calculator states larger than the argument limit", () => {

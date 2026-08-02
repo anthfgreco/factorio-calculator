@@ -125,7 +125,9 @@ export class PriorityList implements Iterable<PriorityLevel> {
   }
 
   equalArray(levels: Map<any, Rational>[]) {
-    return levels.length === this.priorities.length && levels.every((level, index) => this.priorities[index].equalMap(level))
+    return (
+      levels.length === this.priorities.length && levels.every((level, index) => this.priorities[index].equalMap(level))
+    )
   }
 
   addPriorityBefore(level: PriorityLevel | null) {
@@ -435,7 +437,10 @@ function installDropTarget(element: any, targetLevel: () => PriorityLevel | null
       let level = targetLevel()
       if (level === null) {
         level = mountedPriority.addPriorityBefore(null)
-      } else if (element.classed("middle") || element.classed("bookend") && level === mountedPriority.getFirstLevel()) {
+      } else if (
+        element.classed("middle") ||
+        (element.classed("bookend") && level === mountedPriority.getFirstLevel())
+      ) {
         level = mountedPriority.addPriorityBefore(level)
       }
       mountedPriority.setPriority(draggedResource, level)

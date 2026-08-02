@@ -48,7 +48,9 @@
       </div>
       <ul id="targets">
         <li id="plusButton">
-          <button class="add-target-button ui" title="Add another production target." onclick="handlers.plusHandler()">+ Add target</button>
+          <button class="add-target-button ui" title="Add another production target." onclick="handlers.plusHandler()">
+            + Add target
+          </button>
         </li>
       </ul>
     </section>
@@ -120,27 +122,71 @@
         <div class="visualization-control">
           <span class="visualization-label">View</span>
           <form id="graph_type" class="segmented-control">
-            <input id="sankey_type" type="radio" name="type" value="sankey" checked autocomplete="off" onchange="handlers.changeVisType(event)" />
+            <input
+              id="sankey_type"
+              type="radio"
+              name="type"
+              value="sankey"
+              checked
+              autocomplete="off"
+              onchange="handlers.changeVisType(event)"
+            />
             <label for="sankey_type">Flow</label>
-            <input id="boxline_type" type="radio" name="type" value="boxline" autocomplete="off" onchange="handlers.changeVisType(event)" />
+            <input
+              id="boxline_type"
+              type="radio"
+              name="type"
+              value="boxline"
+              autocomplete="off"
+              onchange="handlers.changeVisType(event)"
+            />
             <label for="boxline_type">Recipe graph</label>
           </form>
         </div>
         <div class="visualization-control">
           <span class="visualization-label">Viewport</span>
           <form id="graph_render" class="segmented-control">
-            <input id="zoom_render" type="radio" name="render" value="zoom" checked autocomplete="off" onchange="handlers.changeVisRender(event)" />
+            <input
+              id="zoom_render"
+              type="radio"
+              name="render"
+              value="zoom"
+              checked
+              autocomplete="off"
+              onchange="handlers.changeVisRender(event)"
+            />
             <label for="zoom_render">Zoom &amp; pan</label>
-            <input id="fix_render" type="radio" name="render" value="fix" autocomplete="off" onchange="handlers.changeVisRender(event)" />
+            <input
+              id="fix_render"
+              type="radio"
+              name="render"
+              value="fix"
+              autocomplete="off"
+              onchange="handlers.changeVisRender(event)"
+            />
             <label for="fix_render">Fit</label>
           </form>
         </div>
         <div class="visualization-control">
           <span class="visualization-label">Direction</span>
           <form id="graph_direction" class="segmented-control">
-            <input id="right_direction" type="radio" name="direction" value="right" autocomplete="off" onchange="handlers.changeVisDir(event)" />
+            <input
+              id="right_direction"
+              type="radio"
+              name="direction"
+              value="right"
+              autocomplete="off"
+              onchange="handlers.changeVisDir(event)"
+            />
             <label for="right_direction">Left to right</label>
-            <input id="down_direction" type="radio" name="direction" value="down" autocomplete="off" onchange="handlers.changeVisDir(event)" />
+            <input
+              id="down_direction"
+              type="radio"
+              name="direction"
+              value="down"
+              autocomplete="off"
+              onchange="handlers.changeVisDir(event)"
+            />
             <label for="down_direction">Top to bottom</label>
           </form>
         </div>
@@ -308,7 +354,10 @@
           </td>
           <td>
             <span id="building_selector"></span>
-            <div class="setting-help">Select one or more preferred machines. Automatic uses the fastest compatible selection; click a Factory-row machine for an exact override.</div>
+            <div class="setting-help">
+              Select one or more preferred machines. Automatic uses the fastest compatible selection; click a
+              Factory-row machine for an exact override.
+            </div>
           </td>
         </tr>
 
@@ -342,7 +391,9 @@
     </div>
 
     <div id="resources_tab" class="tab">
-      <p class="resources-intro">Drag resources between tiers to tell the solver what to conserve. Higher tiers are treated as more valuable.</p>
+      <p class="resources-intro">
+        Drag resources between tiers to tell the solver what to conserve. Higher tiers are treated as more valuable.
+      </p>
       <div id="resource_settings"></div>
     </div>
 
@@ -356,11 +407,14 @@
               <span class="meta-separator">•</span>
               <span>Apache 2.0 Open Source</span>
               <span class="meta-separator">•</span>
-              <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noopener">GitHub Repository</a>
+              <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noopener"
+                >GitHub Repository</a
+              >
             </div>
           </header>
           <p class="help-summary">
-            Plan Factorio production chains from early game through Space Age. Calculates exact machine counts, item rates, electrical power, burner fuel, and belt requirements for any recipe target.
+            Plan Factorio production chains from early game through Space Age. Calculates exact machine counts, item
+            rates, electrical power, burner fuel, and belt requirements for any recipe target.
           </p>
         </section>
 
@@ -369,31 +423,52 @@
           <dl class="help-reference-list">
             <div class="help-reference-row">
               <dt>Imported Ingredients</dt>
-              <dd>Click any item icon in the Factory table to mark it as imported. Upstream production dependencies are removed; click again to restore internal production.</dd>
+              <dd>
+                Click any item icon in the Factory table to mark it as imported. Upstream production dependencies are
+                removed; click again to restore internal production.
+              </dd>
             </div>
             <div class="help-reference-row">
               <dt>Progression Presets</dt>
-              <dd>Presets quickly set standard locations, modules, beacons, belts, and mining productivity for key game stages without altering your production targets.</dd>
+              <dd>
+                Presets quickly set standard locations, modules, beacons, belts, and mining productivity for key game
+                stages without altering your production targets.
+              </dd>
             </div>
             <div class="help-reference-row">
               <dt>Production Locations</dt>
-              <dd>Select a single planet/surface, or Shift-click to combine multiple locations into a shared material pool. (Recipe assignment and interstellar transport costs are unmodeled).</dd>
+              <dd>
+                Select a single planet/surface, or Shift-click to combine multiple locations into a shared material
+                pool. (Recipe assignment and interstellar transport costs are unmodeled).
+              </dd>
             </div>
             <div class="help-reference-row">
               <dt>Quality &amp; Recycling</dt>
-              <dd>Module eligibility, speed and power effects, and speed-module quality penalties are preserved. Upcycling loops and multi-tier quality flows are not yet solved as separate item species.</dd>
+              <dd>
+                Module eligibility, speed and power effects, and speed-module quality penalties are preserved. Upcycling
+                loops and multi-tier quality flows are not yet solved as separate item species.
+              </dd>
             </div>
             <div class="help-reference-row">
               <dt>Factory Totals</dt>
-              <dd>Building counts show ceiling-rounded counts for physical placement. The summary separates electrical machine power from the required chemical fuel, nutrients, bioflux, or other burner consumables.</dd>
+              <dd>
+                Building counts show ceiling-rounded counts for physical placement. The summary separates electrical
+                machine power from the required chemical fuel, nutrients, bioflux, or other burner consumables.
+              </dd>
             </div>
             <div class="help-reference-row">
               <dt>Alternate Recipes &amp; Priorities</dt>
-              <dd>Override recipes per Factory row or globally in Settings. When multiple solution paths exist, the <strong>Resources</strong> priority hierarchy determines resource preference.</dd>
+              <dd>
+                Override recipes per Factory row or globally in Settings. When multiple solution paths exist, the
+                <strong>Resources</strong> priority hierarchy determines resource preference.
+              </dd>
             </div>
             <div class="help-reference-row">
               <dt>Plan Diagnostics</dt>
-              <dd>Infeasible plans (missing recipes, cyclic deadlocks, or unhandled outputs) trigger solver failure reports. Check location availability, enabled recipes, and imported items.</dd>
+              <dd>
+                Infeasible plans (missing recipes, cyclic deadlocks, or unhandled outputs) trigger solver failure
+                reports. Check location availability, enabled recipes, and imported items.
+              </dd>
             </div>
           </dl>
         </section>
@@ -406,10 +481,17 @@
                 <time datetime="2026-08-02">2026-08-02</time>
               </div>
               <div class="changelog-details">
-                <h3>Machine Selection</h3>
+                <h3>Machine Selection &amp; Search</h3>
                 <ul>
-                  <li>Added exact machine selection directly to each recipe row, with an option to return to automatic selection.</li>
-                  <li>Made automatic machine preferences multi-selectable and preserved machine choices in shared plan links.</li>
+                  <li>
+                    Added exact machine selection directly to each recipe row, with an option to return to automatic
+                    selection.
+                  </li>
+                  <li>
+                    Made automatic machine preferences multi-selectable and preserved machine choices in shared plan
+                    links.
+                  </li>
+                  <li>Expanded item search with common chip, circuit, magazine, belt, robot, and factory shorthand.</li>
                 </ul>
               </div>
             </article>
@@ -421,12 +503,30 @@
               <div class="changelog-details">
                 <h3>Architecture, UI &amp; Calculation Fixes</h3>
                 <ul>
-                  <li>Refactored repository architecture into consolidated, fully typed acyclic modules with automated boundary checks.</li>
-                  <li>Reworked UI and Help section applying Tufte visualization principles (high data-ink ratio, unbordered layouts, structured reference tables, and marginal dates).</li>
-                  <li>Added top-level planet/location selector, KPI factory summary cards, progression presets, direct item labels, and share-link copying.</li>
-                  <li>Corrected machine floor limits for negative speed multipliers, rate display calculations, beacon power warnings, and state synchronization.</li>
-                  <li>Corrected catalyst and coolant productivity, machine-specific burner fuel, and combined Factorio 2.1 product probabilities.</li>
-                  <li>Made shared links preserve exact module slots and inactive recipe customizations, including large compressed plans.</li>
+                  <li>
+                    Refactored repository architecture into consolidated, fully typed acyclic modules with automated
+                    boundary checks.
+                  </li>
+                  <li>
+                    Reworked UI and Help section applying Tufte visualization principles (high data-ink ratio,
+                    unbordered layouts, structured reference tables, and marginal dates).
+                  </li>
+                  <li>
+                    Added top-level planet/location selector, KPI factory summary cards, progression presets, direct
+                    item labels, and share-link copying.
+                  </li>
+                  <li>
+                    Corrected machine floor limits for negative speed multipliers, rate display calculations, beacon
+                    power warnings, and state synchronization.
+                  </li>
+                  <li>
+                    Corrected catalyst and coolant productivity, machine-specific burner fuel, and combined Factorio 2.1
+                    product probabilities.
+                  </li>
+                  <li>
+                    Made shared links preserve exact module slots and inactive recipe customizations, including large
+                    compressed plans.
+                  </li>
                 </ul>
               </div>
             </article>
@@ -439,8 +539,13 @@
                 <h3>Factorio 2.1.12 and Space Age</h3>
                 <ul>
                   <li>Added the experimental Space Age 2.1.12 dataset and made it the default.</li>
-                  <li>Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe selection.</li>
-                  <li>Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.</li>
+                  <li>
+                    Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe
+                    selection.
+                  </li>
+                  <li>
+                    Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.
+                  </li>
                 </ul>
               </div>
             </article>

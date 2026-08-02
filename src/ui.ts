@@ -160,7 +160,10 @@ export class BuildTarget {
     let itemLabel = addInputs(items, `target-${targetCount}`, (d) => d === item, itemHandler(this))
 
     itemLabel.append((d) => d.icon.make(32, false, dropdown.node()))
-    itemLabel.append("span").classed("target-item-name", true).text((d) => d.name)
+    itemLabel
+      .append("span")
+      .classed("target-item-name", true)
+      .text((d) => d.name)
 
     targetCount++
 

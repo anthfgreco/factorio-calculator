@@ -164,7 +164,10 @@ export function makeRecipeSelector(row) {
     .data(getRecipeSelectorGroups(recipes, row.recipe), (entry) => entry.key)
     .join("section")
     .classed("recipe-selector-group", true)
-  groups.append("div").classed("recipe-selector-group-title", true).text((entry) => entry.name)
+  groups
+    .append("div")
+    .classed("recipe-selector-group-title", true)
+    .text((entry) => entry.name)
   let options = groups
     .selectAll("label")
     .data((entry) => entry.recipes)
@@ -225,13 +228,15 @@ function makeMachineSelector(row, compatibleBuildings) {
       }
     },
   )
+  labels.append(function (this: HTMLElement, option) {
+    let icon = option.displayBuilding.icon.make(32, true)
+    icon.removeAttribute("title")
+    return icon
+  })
   labels
-    .append(function (this: HTMLElement, option) {
-      let icon = option.displayBuilding.icon.make(32, true)
-      icon.removeAttribute("title")
-      return icon
-    })
-  labels.append("span").classed("machine-option-name", true).text((option) => option.label)
+    .append("span")
+    .classed("machine-option-name", true)
+    .text((option) => option.label)
   return root.node()
 }
 
@@ -469,10 +474,7 @@ class BeaconCell {
     for (let row of moduleRows) {
       let inputRow = []
       for (let module of row) {
-        if (
-          module === null ||
-          (module.canBeacon() && module.canUse(moduleSpec.recipe, moduleSpec.building))
-        ) {
+        if (module === null || (module.canBeacon() && module.canUse(moduleSpec.recipe, moduleSpec.building))) {
           inputRow.push(new BeaconInput(this, module))
         }
       }

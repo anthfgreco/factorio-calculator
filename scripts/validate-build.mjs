@@ -53,7 +53,7 @@ if (tabsStart === -1 || graphTabStart === -1 || factoryToolsIndex < tabsStart ||
 if (calculatorHtml.includes("factory-view-toolbar") || calculatorHtml.includes("Table density")) {
   throw new Error("calc.html still contains the old separate Factory density toolbar")
 }
-if (!calculatorHtml.includes("id=\"location_toolbar\"")) {
+if (!calculatorHtml.includes('id="location_toolbar"')) {
   throw new Error("calc.html is missing the top-level production-location control")
 }
 if (

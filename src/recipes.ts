@@ -952,9 +952,7 @@ export function getEnabledUses(specification, item) {
 }
 
 export function isItemDisabled(specification, item): boolean {
-  return !item.recipes.some(
-    (recipe) => !specification.disable.has(recipe) && recipe.isNetProducer(item),
-  )
+  return !item.recipes.some((recipe) => !specification.disable.has(recipe) && recipe.isNetProducer(item))
 }
 
 export function getEnabledRecipes(specification, item) {
@@ -989,7 +987,5 @@ export function getRecipeGraph(specification, items): Set<any> {
 }
 
 export function isFactoryTarget(specification, recipe): boolean {
-  return specification.buildTargets.some(
-    (target) => target.recipe === recipe && target.changedBuilding,
-  )
+  return specification.buildTargets.some((target) => target.recipe === recipe && target.changedBuilding)
 }

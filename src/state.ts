@@ -53,7 +53,6 @@ export function changeFactoryDensity(event: Event) {
   }
 }
 
-
 export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age" | "megabase"
 
 type PresetDefinition = {
@@ -66,11 +65,46 @@ type PresetDefinition = {
 }
 
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
-  early: { planets: ["nauvis"], miningProductivity: 0, belt: "transport-belt", module: null, beaconModule: null, beaconCount: 0 },
-  "pre-rocket": { planets: ["nauvis"], miningProductivity: 20, belt: "fast-transport-belt", module: "productivity-module", beaconModule: null, beaconCount: 0 },
-  "first-planets": { planets: ["nauvis", "vulcanus", "fulgora", "gleba"], miningProductivity: 50, belt: "express-transport-belt", module: "productivity-module-2", beaconModule: "speed-module-2", beaconCount: 4 },
-  "late-space-age": { planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"], miningProductivity: 100, belt: "turbo-transport-belt", module: "productivity-module-3", beaconModule: "speed-module-3", beaconCount: 8 },
-  megabase: { planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"], miningProductivity: 300, belt: "turbo-transport-belt", module: "productivity-module-3", beaconModule: "speed-module-3", beaconCount: 12 },
+  early: {
+    planets: ["nauvis"],
+    miningProductivity: 0,
+    belt: "transport-belt",
+    module: null,
+    beaconModule: null,
+    beaconCount: 0,
+  },
+  "pre-rocket": {
+    planets: ["nauvis"],
+    miningProductivity: 20,
+    belt: "fast-transport-belt",
+    module: "productivity-module",
+    beaconModule: null,
+    beaconCount: 0,
+  },
+  "first-planets": {
+    planets: ["nauvis", "vulcanus", "fulgora", "gleba"],
+    miningProductivity: 50,
+    belt: "express-transport-belt",
+    module: "productivity-module-2",
+    beaconModule: "speed-module-2",
+    beaconCount: 4,
+  },
+  "late-space-age": {
+    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
+    miningProductivity: 100,
+    belt: "turbo-transport-belt",
+    module: "productivity-module-3",
+    beaconModule: "speed-module-3",
+    beaconCount: 8,
+  },
+  megabase: {
+    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
+    miningProductivity: 300,
+    belt: "turbo-transport-belt",
+    module: "productivity-module-3",
+    beaconModule: "speed-module-3",
+    beaconCount: 12,
+  },
 }
 
 function getByKey(collection: Map<any, any> | null, key: string | null) {
@@ -78,18 +112,19 @@ function getByKey(collection: Map<any, any> | null, key: string | null) {
   return collection.get(key) ?? null
 }
 
-
 function syncProgressionPresetControls() {
   document.querySelectorAll<HTMLInputElement>('#belt_selector input[type="radio"]').forEach((input) => {
     input.checked = input.value === spec.belt?.key
   })
 
-  document.querySelectorAll<HTMLInputElement>(
-    '#default_module input[type="radio"], #secondary_module input[type="radio"], #default_beacon input[type="radio"]',
-  ).forEach((input) => {
-    let datum = (input as HTMLInputElement & { __data__?: { checked?: () => boolean } }).__data__
-    input.checked = datum?.checked?.() ?? false
-  })
+  document
+    .querySelectorAll<HTMLInputElement>(
+      '#default_module input[type="radio"], #secondary_module input[type="radio"], #default_beacon input[type="radio"]',
+    )
+    .forEach((input) => {
+      let datum = (input as HTMLInputElement & { __data__?: { checked?: () => boolean } }).__data__
+      input.checked = datum?.checked?.() ?? false
+    })
 
   let beaconCount = document.getElementById("default_beacon_count") as HTMLInputElement | null
   if (beaconCount !== null) beaconCount.value = spec.defaultBeaconCount.toDecimal()
@@ -314,7 +349,7 @@ export function configureDatasetChangeHandler(handler: () => void) {
 }
 
 function normalizeDataSetName(name: string | undefined) {
-  const updatedName = name === undefined ? undefined : modificationUpdates.get(name) ?? name
+  const updatedName = name === undefined ? undefined : (modificationUpdates.get(name) ?? name)
   return updatedName !== undefined && MODIFICATIONS.has(updatedName) ? updatedName : DEFAULT_MODIFICATION
 }
 

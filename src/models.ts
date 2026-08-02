@@ -560,7 +560,9 @@ export function getBuildings(data, items) {
   for (let d of data.offshore_pumps) {
     // Pumping speed is given in units/tick.
     let speed = Rational.from_float_approximate(d.pumping_speed).mul(Rational.from_float(60))
-    buildings.push(new OffshorePump(d.key, d.localized_name.en, d.icon_col, d.icon_row, speed, d.surface_conditions ?? []))
+    buildings.push(
+      new OffshorePump(d.key, d.localized_name.en, d.icon_col, d.icon_row, speed, d.surface_conditions ?? []),
+    )
   }
   for (let d of data.mining_drills) {
     if (d.key == "pumpjack") {

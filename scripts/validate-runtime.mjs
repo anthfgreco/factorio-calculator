@@ -304,10 +304,12 @@ try {
       ) {
         throw new Error("Recipe search did not match an ingredient")
       }
-      if (!recipeVisibleInSettings(factory.spec, recipes.get("space-science-pack"), {
-        searchText: "",
-        showUnavailable: false,
-      })) {
+      if (
+        !recipeVisibleInSettings(factory.spec, recipes.get("space-science-pack"), {
+          searchText: "",
+          showUnavailable: false,
+        })
+      ) {
         throw new Error("Recipe settings hid an available recipe")
       }
       const solidFuel = items.get("solid-fuel")
@@ -344,16 +346,20 @@ try {
         throw new Error(`Unexpected compatible production locations: ${compatible}`)
       }
       const cryogenicRecipe = recipes.get("cryogenic-science-pack")
-      if (recipeVisibleInSettings(factory.spec, cryogenicRecipe, {
-        searchText: "",
-        showUnavailable: false,
-      })) {
+      if (
+        recipeVisibleInSettings(factory.spec, cryogenicRecipe, {
+          searchText: "",
+          showUnavailable: false,
+        })
+      ) {
         throw new Error("Recipe settings showed an unavailable recipe by default")
       }
-      if (!recipeVisibleInSettings(factory.spec, cryogenicRecipe, {
-        searchText: "",
-        showUnavailable: true,
-      })) {
+      if (
+        !recipeVisibleInSettings(factory.spec, cryogenicRecipe, {
+          searchText: "",
+          showUnavailable: true,
+        })
+      ) {
         throw new Error("Recipe settings could not reveal unavailable recipes")
       }
 
@@ -400,7 +406,9 @@ try {
   await rm(resolve(root, ".tmp"), { recursive: true, force: true })
 }
 
-console.log(`Validated ${datasets.length} datasets and ${searchCases.length} search cases through the emitted TypeScript runtime.`)
+console.log(
+  `Validated ${datasets.length} datasets and ${searchCases.length} search cases through the emitted TypeScript runtime.`,
+)
 for (const summary of summaries) {
   console.log(`- ${summary}`)
 }

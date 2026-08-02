@@ -1,8 +1,21 @@
 import { Formatter, half, one, Rational, zero } from "./math.js"
 import { ModuleSpec, type Fuel, type FuelCollection } from "./models.js"
 import type { PriorityList } from "./priorities.js"
-import { applyPriorities, buildDefaultPriorityArray, restoreDefaultPriorities, isValidPriorityKey as validatePriorityKey } from "./priorities.js"
-import { getRecipeGraph as buildRecipeGraph, disableRecipe, enableRecipe, getEnabledRecipes, getEnabledUses, isItemDisabled as itemIsDisabled, isFactoryTarget as recipeIsFactoryTarget } from "./recipes.js"
+import {
+  applyPriorities,
+  buildDefaultPriorityArray,
+  restoreDefaultPriorities,
+  isValidPriorityKey as validatePriorityKey,
+} from "./priorities.js"
+import {
+  getRecipeGraph as buildRecipeGraph,
+  disableRecipe,
+  enableRecipe,
+  getEnabledRecipes,
+  getEnabledUses,
+  isItemDisabled as itemIsDisabled,
+  isFactoryTarget as recipeIsFactoryTarget,
+} from "./recipes.js"
 import { solve } from "./solver.js"
 
 // -----------------------------------------------------------------------------
@@ -13,11 +26,7 @@ export const DEFAULT_ITEM_KEY = "advanced-circuit"
 export const DEFAULT_PLANET = "nauvis"
 export const DEFAULT_BELT = "transport-belt"
 export const DEFAULT_FUEL = "coal"
-export const DEFAULT_BUILDING_KEYS = new Set([
-  "assembling-machine-1",
-  "electric-furnace",
-  "electric-mining-drill",
-])
+export const DEFAULT_BUILDING_KEYS = new Set(["assembling-machine-1", "electric-furnace", "electric-mining-drill"])
 
 // -----------------------------------------------------------------------------
 // Factory rendering port
@@ -118,10 +127,7 @@ class BuildingGroup {
   }
 
   getDefault() {
-    return (
-      this.buildings.find((building) => DEFAULT_BUILDING_KEYS.has(building.key)) ??
-      this.buildings.at(-1)
-    )
+    return this.buildings.find((building) => DEFAULT_BUILDING_KEYS.has(building.key)) ?? this.buildings.at(-1)
   }
 
   getBuilding(recipe, available: (building: any) => boolean = () => true) {
@@ -190,10 +196,12 @@ export function syncLocationDisabledRecipes(specification) {
   let unavailable =
     selected.length === 0
       ? new Set()
-      : selected.slice(1).reduce(
-          (intersection, location) => new Set([...intersection].filter((recipe) => location.disable.has(recipe))),
-          new Set(selected[0].disable),
-        )
+      : selected
+          .slice(1)
+          .reduce(
+            (intersection, location) => new Set([...intersection].filter((recipe) => location.disable.has(recipe))),
+            new Set(selected[0].disable),
+          )
 
   specification.planetaryBaseline = unavailable
   for (let recipe of [...specification.disable]) {
@@ -276,7 +284,6 @@ export function setRecipeEnabled(spec, recipe, enabled) {
     spec.setDisable(recipe)
   }
 }
-
 
 // -----------------------------------------------------------------------------
 // Factory specification
@@ -482,10 +489,7 @@ export class FactorySpecification {
     return this.getBuildingOverride(recipe) ?? this.getAutomaticBuilding(recipe)
   }
   setBuildingOverride(recipe, building) {
-    if (
-      building !== null &&
-      (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))
-    ) {
+    if (building !== null && (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))) {
       return false
     }
 

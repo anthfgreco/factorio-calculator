@@ -7,9 +7,5 @@
     "strictPropertyInitialization": true,
     "noImplicitThis": true
   },
-  "include": [
-    "src/data.ts",
-    "src/math.ts",
-    "src/solver.ts"
-  ]
+  "include": ["src/data.ts", "src/math.ts", "src/solver.ts"]
 }

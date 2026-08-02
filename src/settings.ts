@@ -2,11 +2,38 @@ import { normalizeSearchText, sorted } from "./data.js"
 import { buildingSort, DEFAULT_BELT, DEFAULT_FUEL, DEFAULT_PLANET, setRecipeEnabled, spec } from "./factory.js"
 import { colorSchemes } from "./graph.js"
 import type { DisplayFormat, DisplayRate } from "./math.js"
-import { DEFAULT_COUNT_PRECISION, DEFAULT_FORMAT, DEFAULT_RATE, DEFAULT_RATE_PRECISION, longRateNames, Rational, zero } from "./math.js"
+import {
+  DEFAULT_COUNT_PRECISION,
+  DEFAULT_FORMAT,
+  DEFAULT_RATE,
+  DEFAULT_RATE_PRECISION,
+  longRateNames,
+  Rational,
+  zero,
+} from "./math.js"
 import { moduleDropdown, moduleRows, shortModules } from "./models.js"
 import { renderResourcePriorityEditor } from "./priorities.js"
-import { getConfigurableRecipes, groupRecipesForSettings, isRecipeUnavailable, isRecyclingRecipe, recipeVisibleInSettings } from "./recipes.js"
-import { DEFAULT_RENDER, DEFAULT_TAB, DEFAULT_VISUALIZER, clickTab, getDefaultVisualizerDirection, setTitle, setVisualizerDirection, setVisualizerRender, setVisualizerType, visualizerDirection, visualizerRender, visualizerType } from "./state.js"
+import {
+  getConfigurableRecipes,
+  groupRecipesForSettings,
+  isRecipeUnavailable,
+  isRecyclingRecipe,
+  recipeVisibleInSettings,
+} from "./recipes.js"
+import {
+  DEFAULT_RENDER,
+  DEFAULT_TAB,
+  DEFAULT_VISUALIZER,
+  clickTab,
+  getDefaultVisualizerDirection,
+  setTitle,
+  setVisualizerDirection,
+  setVisualizerRender,
+  setVisualizerType,
+  visualizerDirection,
+  visualizerRender,
+  visualizerType,
+} from "./state.js"
 
 // -----------------------------------------------------------------------------
 // Recipe browser
@@ -71,7 +98,11 @@ function makeRecipeGroups(container: any, groups: any[], spec: any) {
     .classed("recipe-settings-category", true)
     .attr("data-category", (entry: any) => entry.category)
 
-  group.selectAll("h5").data((entry: any) => [entry]).join("h5").text((entry: any) => entry.name)
+  group
+    .selectAll("h5")
+    .data((entry: any) => [entry])
+    .join("h5")
+    .text((entry: any) => entry.name)
   group
     .selectAll("div.recipe-settings-toggle-row")
     .data((entry: any) => [entry])
@@ -202,7 +233,10 @@ export function refreshRecipeSettings(spec: any) {
   const recyclingRecipes = recycling.selectAll("button.recipe-setting-toggle").data()
   recycling
     .select("button.disable-recycling-recipes")
-    .property("disabled", recyclingRecipes.length === 0 || recyclingRecipes.every((recipe: any) => spec.disable.has(recipe)))
+    .property(
+      "disabled",
+      recyclingRecipes.length === 0 || recyclingRecipes.every((recipe: any) => spec.disable.has(recipe)),
+    )
 
   let helpText = "Orange recipes are enabled. Dimmed recipes are disabled. Click a recipe to change it."
   if (showUnavailable) {
@@ -231,9 +265,7 @@ function applyLocationSettings(settings): boolean {
     return false
   }
 
-  let keys = settings.has("planet")
-    ? settings.get("planet").split(",").filter(Boolean)
-    : [DEFAULT_PLANET]
+  let keys = settings.has("planet") ? settings.get("planet").split(",").filter(Boolean) : [DEFAULT_PLANET]
   for (let key of keys) {
     let location = spec.planets.get(key)
     if (location !== undefined) {
@@ -301,7 +333,10 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
 
   toggles.selectAll("*").remove()
   toggles.append((location) => location.icon.make(24))
-  toggles.append("span").classed("location-name", true).text((location) => location.name)
+  toggles
+    .append("span")
+    .classed("location-name", true)
+    .text((location) => location.name)
 }
 
 export function renderRecipeAndLocationSettings(settings): void {
@@ -642,7 +677,10 @@ function renderBuildings(settings) {
   let div = d3.select("#building_selector")
   div.selectAll("*").remove()
   let set = div.selectAll("div").data(groups).join("div").classed("machine-setting", true)
-  let options = set.selectAll("span").data((group) => group.buildings).join("span")
+  let options = set
+    .selectAll("span")
+    .data((group) => group.buildings)
+    .join("span")
   options
     .append("input")
     .attr("id", (building) => `building-input-${groupIndex.get(building)}-${building.key}`)

@@ -2,7 +2,18 @@ import { sorted } from "./data.js"
 import { DEFAULT_BELT, DEFAULT_FUEL, spec } from "./factory.js"
 import { DEFAULT_COUNT_PRECISION, DEFAULT_FORMAT, DEFAULT_RATE, DEFAULT_RATE_PRECISION, Rational } from "./math.js"
 import { colorScheme, DEFAULT_COLOR_SCHEME } from "./settings.js"
-import { currentMod, currentTab, DEFAULT_RENDER, DEFAULT_TAB, DEFAULT_TITLE, DEFAULT_VISUALIZER, isDefaultVisualizerDirection, visualizerDirection, visualizerRender, visualizerType } from "./state.js"
+import {
+  currentMod,
+  currentTab,
+  DEFAULT_RENDER,
+  DEFAULT_TAB,
+  DEFAULT_TITLE,
+  DEFAULT_VISUALIZER,
+  isDefaultVisualizerDirection,
+  visualizerDirection,
+  visualizerRender,
+  visualizerType,
+} from "./state.js"
 
 // -----------------------------------------------------------------------------
 // Browser URL history

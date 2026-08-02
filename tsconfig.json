@@ -5,11 +5,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "rootDir": "src",
-    "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
-    ],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "allowJs": true,
     "checkJs": false,
     "noEmit": true,
@@ -24,7 +20,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }
