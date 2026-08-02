@@ -189,7 +189,7 @@ export function makeRecipeSelector(row) {
 
 let machineSelectorCount = 0
 
-function makeMachineSelector(row) {
+function makeMachineSelector(row, compatibleBuildings) {
   let automaticBuilding = spec.getAutomaticBuilding(row.recipe)
   let override = spec.getBuildingOverride(row.recipe)
   let options = [
@@ -198,7 +198,7 @@ function makeMachineSelector(row) {
       displayBuilding: automaticBuilding,
       label: `Automatic (${automaticBuilding.name})`,
     },
-    ...spec.getCompatibleBuildings(row.recipe).map((building) => ({
+    ...compatibleBuildings.map((building) => ({
       building,
       displayBuilding: building,
       label: building.name,
@@ -208,7 +208,7 @@ function makeMachineSelector(row) {
   let root = d3
     .create("span")
     .classed("machine-selector", true)
-    .attr("title", `Choose a machine for ${row.recipe.name}`)
+    .attr("aria-label", `Choose a machine for ${row.recipe.name}`)
   let choices = makeDropdown(root)
     .classed("machine-dropdown", true)
     .selectAll("div")
@@ -227,9 +227,10 @@ function makeMachineSelector(row) {
   )
   labels
     .append(function (this: HTMLElement, option) {
-      return option.displayBuilding.icon.make(32, false, this.parentNode.parentNode.parentNode)
+      let icon = option.displayBuilding.icon.make(32, true)
+      icon.removeAttribute("title")
+      return icon
     })
-    .attr("aria-hidden", "true")
   labels.append("span").classed("machine-option-name", true).text((option) => option.label)
   return root.node()
 }
@@ -1080,7 +1081,13 @@ export function displayItems(spec, totals) {
 
   let buildingRow = row.filter((d) => d.building !== null)
   let buildingCell = buildingRow.selectAll("td.building-icon")
-  buildingCell.append((d) => makeMachineSelector(d))
+  buildingCell.append((d) => {
+    let compatibleBuildings = spec.getCompatibleBuildings(d.recipe)
+    if (compatibleBuildings.length <= 1) {
+      return d.building.icon.make(32)
+    }
+    return makeMachineSelector(d, compatibleBuildings)
+  })
   buildingCell.append("span").text(" \u00d7")
   buildingRow
     .selectAll("tt.building-count")
