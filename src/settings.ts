@@ -32,6 +32,7 @@ import {
   setVisualizerDirection,
   setVisualizerRender,
   setVisualizerType,
+  syncMiningProductivityControls,
   visualizerDirection,
   visualizerRender,
   visualizerType,
@@ -210,7 +211,10 @@ export function refreshRecipeSettings(spec: any) {
   let visibleCount = 0
 
   root.selectAll("button.recipe-setting-toggle").each(function (this: HTMLButtonElement, recipe: any) {
-    const visible = recipeVisibleInSettings(spec, recipe, { searchText, showUnavailable })
+    const visible = recipeVisibleInSettings(spec, recipe, {
+      searchText,
+      showUnavailable,
+    })
     this.hidden = !visible
     visibleCount += Number(visible)
     updateRecipeToggleState(spec, this, recipe)
@@ -593,9 +597,8 @@ function renderMiningProd(settings) {
   if (settings.has("mprod")) {
     mprod = settings.get("mprod")
   }
-  let mprodInput = document.getElementById("mprod") as HTMLInputElement
-  mprodInput.value = mprod
   spec.miningProd = Rational.from_string(mprod).div(Rational.from_float(100))
+  syncMiningProductivityControls()
 }
 
 function recipeProductivityBonusLabel(research, level: number): string {
@@ -624,16 +627,20 @@ function renderRecipeProductivityResearch(settings) {
   }
 
   let research = sorted(spec.recipeProductivityResearch.values(), (entry) => entry.name)
-  let row = document.getElementById("recipe_productivity_row") as HTMLTableRowElement
-  row.hidden = research.length === 0
-
   let container = d3.select("#recipe_productivity_settings")
-  container.selectAll("*").remove()
+  let miner = spec.items.get("electric-mining-drill") ?? spec.items.get("burner-mining-drill")
+  let miningIcon = container.select(".mining-productivity-icon")
+  miningIcon.selectAll("*").remove()
+  if (miner !== undefined) {
+    miningIcon.append(() => miner.icon.make(24, true))
+  }
+  container.selectAll("label.recipe-productivity-research-setting").remove()
   let settingsRows = container
-    .selectAll("label")
+    .selectAll("label.recipe-productivity-research-setting")
     .data(research)
     .join("label")
     .classed("recipe-productivity-setting", true)
+    .classed("recipe-productivity-research-setting", true)
   settingsRows.append((entry) => entry.icon.make(24, true)).classed("recipe-productivity-icon", true)
   settingsRows.append("span").text((entry) => entry.name)
   settingsRows

@@ -360,27 +360,28 @@
           </td>
         </tr>
 
-        <tr class="setting-row">
-          <td class="setting-label">Mining productivity bonus:</td>
+        <tr id="recipe_productivity_row" class="setting-row">
+          <td class="setting-label top">Productivity:</td>
           <td>
-            +<input
-              id="mprod"
-              class="mprod"
-              type="number"
-              step="10"
-              value="0"
-              min="0"
-              onchange="handlers.changeMprod(event)"
-            />%
-          </td>
-        </tr>
-
-        <tr id="recipe_productivity_row" class="setting-row" hidden>
-          <td class="setting-label top">Productivity research:</td>
-          <td>
-            <div id="recipe_productivity_settings"></div>
+            <div id="recipe_productivity_settings">
+              <label class="recipe-productivity-setting mining-productivity-setting">
+                <span class="recipe-productivity-icon mining-productivity-icon" aria-hidden="true"></span>
+                <span>Mining productivity</span>
+                <input
+                  id="mprod"
+                  class="mprod"
+                  type="number"
+                  step="10"
+                  value="0"
+                  min="0"
+                  aria-label="Mining productivity bonus"
+                  onchange="handlers.changeMprod(event)"
+                />
+                <span class="recipe-productivity-bonus mining-productivity-bonus">+0%</span>
+              </label>
+            </div>
             <div class="setting-help">
-              Enter each researched technology level. Every bonus is applied independently.
+              Enter the total mining bonus and each researched technology level. Every bonus is applied independently.
             </div>
           </td>
         </tr>
@@ -579,6 +580,8 @@
       <div id="debug_solution"></div>
     </div>
 
-    <div id="footer"><a href="https://github.com/anthfgreco/factorio-calculator">Source on GitHub</a></div>
+    <div id="footer">
+      <a href="https://github.com/anthfgreco/factorio-calculator">Source on GitHub</a>
+    </div>
   </body>
 </html>

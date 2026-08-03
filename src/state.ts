@@ -160,8 +160,7 @@ export function applyProgressionPreset(event: Event) {
     toggle.classList.toggle("selected", spec.selectedPlanets.has(location))
     toggle.setAttribute("aria-pressed", String(spec.selectedPlanets.has(location)))
   })
-  let miningInput = document.getElementById("mprod") as HTMLInputElement | null
-  if (miningInput !== null) miningInput.value = String(preset.miningProductivity)
+  syncMiningProductivityControls()
   syncProgressionPresetControls()
   spec.updateSolution()
 }
@@ -282,7 +281,16 @@ export function changeFormat(event) {
 
 export function changeMprod(event) {
   spec.miningProd = Rational.from_string(event.target.value).div(Rational.from_float(100))
+  syncMiningProductivityControls()
   spec.updateSolution()
+}
+
+export function syncMiningProductivityControls() {
+  let value = spec.miningProd.mul(Rational.from_integer(100)).toDecimal()
+  let input = document.getElementById("mprod") as HTMLInputElement | null
+  if (input !== null) input.value = value
+  let bonus = document.querySelector<HTMLElement>(".mining-productivity-bonus")
+  if (bonus !== null) bonus.textContent = `+${value}%`
 }
 
 // visualizer events
