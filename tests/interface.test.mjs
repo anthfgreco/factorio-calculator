@@ -33,6 +33,15 @@ test("player-facing controls stay close to the evidence they affect", async () =
   assert.ok(results.includes('attr("aria-label", `Choose a machine for ${row.recipe.name}`)'))
 })
 
+test("factory rerenders clear machine controls from every reused result row", async () => {
+  const results = await readFile(resolve(root, "src/results.ts"), "utf8")
+  const machineCleanup = 'row.selectAll("td.building-icon > :not(.recipe-selector)").remove()'
+  const buildingRows = "let buildingRow = row.filter((d) => d.building !== null)"
+
+  assert.ok(results.includes(machineCleanup))
+  assert.ok(results.indexOf(machineCleanup) < results.indexOf(buildingRows))
+})
+
 test("progression presets keep Settings controls synchronized", async () => {
   const state = await readFile(resolve(root, "src/state.ts"), "utf8")
   assert.ok(state.includes("syncProgressionPresetControls()"))

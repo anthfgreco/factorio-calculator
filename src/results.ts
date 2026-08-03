@@ -1081,6 +1081,8 @@ export function displayItems(spec, totals) {
     .filter((d) => getItemProductionRecipes(d.item).length > 0 && d.recipe !== null)
     .append((d) => makeRecipeSelector(d))
 
+  // Secondary recipe rows have no item, but their machine cells are still reused.
+  row.selectAll("td.building-icon > :not(.recipe-selector)").remove()
   let buildingRow = row.filter((d) => d.building !== null)
   let buildingCell = buildingRow.selectAll("td.building-icon")
   buildingCell.append((d) => {
