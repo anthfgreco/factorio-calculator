@@ -11,7 +11,7 @@ import {
   getPlanets,
   getRecipeProductivityResearch,
 } from "./models.js"
-import { getSprites, reapTooltips } from "./presentation.js"
+import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
 import { renderSettings } from "./settings.js"
@@ -227,6 +227,7 @@ function loadData(modName, settings) {
 
 export function init() {
   initializeFactoryDensity()
+  initializeTooltips()
   configureFactoryView(browserFactoryView)
   configureDatasetChangeHandler(changeMod)
   window.spec = spec

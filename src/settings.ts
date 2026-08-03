@@ -53,7 +53,7 @@ function updateRecipeToggleState(spec: any, element: HTMLButtonElement, recipe: 
 
   if (unavailable) {
     const status = "unavailable on the selected planets or compatible machines"
-    element.setAttribute("title", `${recipe.name} (${status})`)
+    element.setAttribute("data-tooltip", `${recipe.name} (${status})`)
     element.setAttribute("aria-label", `${recipe.name}: ${status}.`)
     element.setAttribute("aria-disabled", "true")
     element.removeAttribute("aria-pressed")
@@ -61,7 +61,7 @@ function updateRecipeToggleState(spec: any, element: HTMLButtonElement, recipe: 
   }
 
   const status = enabled ? "enabled" : "disabled"
-  element.setAttribute("title", `${recipe.name} (${status})`)
+  element.setAttribute("data-tooltip", `${recipe.name} (${status})`)
   element.setAttribute("aria-label", `${recipe.name}: ${status}. Click to ${enabled ? "disable" : "enable"}.`)
   element.setAttribute("aria-disabled", "false")
   element.setAttribute("aria-pressed", String(enabled))
@@ -160,7 +160,7 @@ export function renderRecipeSettings(spec: any) {
       refreshRecipeSettings(spec)
     })
   unavailableLabel
-    .attr("title", "Show recipes blocked by the selected planets or compatible machines.")
+    .attr("data-tooltip", "Show recipes blocked by the selected planets or compatible machines.")
     .append("span")
     .text("Show unavailable recipes")
 
@@ -312,7 +312,7 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
     .classed("toggle location-toggle", true)
     .classed("selected", (location) => spec.selectedPlanets.has(location))
     .attr("aria-pressed", (location) => String(spec.selectedPlanets.has(location)))
-    .attr("title", (location) => location.name)
+    .attr("data-tooltip", (location) => location.name)
     .on("click", function (event, location) {
       if (event.shiftKey) {
         event.preventDefault()

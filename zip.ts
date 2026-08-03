@@ -25,10 +25,14 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { $, argv, usePwsh } from "zx"
+import { $, argv, usePowerShell, usePwsh } from "zx"
 
 if (process.platform === "win32") {
-  usePwsh()
+  try {
+    usePwsh()
+  } catch {
+    usePowerShell()
+  }
 }
 
 if (process.platform !== "win32") {
@@ -73,7 +77,19 @@ try {
     cwd: repoRoot,
   })`git ls-files --cached --others --exclude-standard -z`
 
-  const workingTreePaths = [...new Set(parseNullSeparatedPaths(workingTreeOutput))]
+  const EXTRA_INCLUSIONS = [
+    "factorio-wiki.md",
+    "factorio-wiki.sqlite",
+    ".tmp/factorio-wiki.sqlite",
+    "factorio-2.1.12-space-age-dump.zip",
+  ]
+
+  const extraPaths = EXTRA_INCLUSIONS.filter((filePath) => {
+    const absolutePath = path.join(repoRoot, filePath)
+    return fs.existsSync(absolutePath) && !fs.lstatSync(absolutePath).isDirectory()
+  })
+
+  const workingTreePaths = [...new Set([...parseNullSeparatedPaths(workingTreeOutput), ...extraPaths])]
 
   const filePaths: string[] = []
   const deletedPaths: string[] = []

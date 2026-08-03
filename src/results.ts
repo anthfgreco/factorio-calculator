@@ -1,7 +1,7 @@
 import { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled, spec } from "./factory.js"
 import { one, powerRepresentation, Rational, zero } from "./math.js"
 import { moduleDropdown, moduleRows, type Fuel } from "./models.js"
-import { addInputs, Icon, makeDropdown } from "./presentation.js"
+import { addInputs, Icon, makeDropdown, makePopover } from "./presentation.js"
 import { getRecipeSelectorGroups } from "./recipes.js"
 import { refreshRecipeSettings } from "./settings.js"
 import { toggleIgnoreHandler, usesLegacyCalculation } from "./state.js"
@@ -104,12 +104,17 @@ export function getRecipeGroups(recipes) {
 
 let openItemKey: string | null = null
 let dismissHandlerInstalled = false
+let recipeSelectorInstances = new Set<any>()
 
-function closeAll(): void {
-  openItemKey = null
-  document.querySelectorAll<HTMLDetailsElement>("details.recipe-selector[open]").forEach((details) => {
-    details.open = false
-  })
+function closeAll(except = null): void {
+  if (except === null) {
+    openItemKey = null
+  }
+  for (let instance of recipeSelectorInstances) {
+    if (instance !== except) {
+      instance.hide()
+    }
+  }
 }
 
 function installDismissHandler(): void {
@@ -117,12 +122,6 @@ function installDismissHandler(): void {
     return
   }
   dismissHandlerInstalled = true
-  document.addEventListener("click", (event) => {
-    let target = event.target
-    if (!(target instanceof Element) || !target.closest("details.recipe-selector")) {
-      closeAll()
-    }
-  })
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeAll()
@@ -137,27 +136,17 @@ export function makeRecipeSelector(row) {
   }
 
   installDismissHandler()
-  let details = d3
-    .create("details")
-    .classed("recipe-selector", true)
-    .property("open", openItemKey === row.item.key)
-  details
+  let details = d3.create("details").classed("recipe-selector", true).property("open", false)
+  let summary = details
     .append("summary")
-    .attr("title", `Enable or disable recipes for ${row.item.name}.`)
+    .attr("data-tooltip", `Enable or disable recipes for ${row.item.name}.`)
     .attr("aria-label", `Enable or disable recipes for ${row.item.name}.`)
     .on("click", (event) => {
       event.preventDefault()
-      event.stopPropagation()
-      let shouldOpen = !details.property("open")
-      closeAll()
-      if (shouldOpen) {
-        openItemKey = row.item.key
-        details.property("open", true)
-      }
     })
-    .append(() => row.item.icon.make(32))
+  summary.append(() => row.item.icon.make(32, true))
 
-  let menu = details.append("div").classed("recipe-selector-menu", true)
+  let menu = d3.create("div").classed("recipe-selector-menu", true)
   menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
   let groups = menu
     .selectAll("section.recipe-selector-group")
@@ -187,6 +176,29 @@ export function makeRecipeSelector(row) {
     })
   options.append((recipe) => recipe.icon.make(32))
   options.append("span").text((recipe) => recipe.name)
+  let instance = makePopover(details.node(), menu.node(), {
+    appendTo: () => document.body,
+    arrow: false,
+    offset: [0, 8],
+    placement: "right-start",
+    showOnCreate: openItemKey === row.item.key,
+    theme: "factorio-menu",
+    onShow(instance) {
+      closeAll(instance)
+      openItemKey = row.item.key
+      details.property("open", true)
+    },
+    onHide() {
+      details.property("open", false)
+      if (document.body.contains(details.node()) && openItemKey === row.item.key) {
+        openItemKey = null
+      }
+    },
+    onDestroy(instance) {
+      recipeSelectorInstances.delete(instance)
+    },
+  })
+  recipeSelectorInstances.add(instance)
   return details.node()
 }
 
@@ -903,7 +915,7 @@ export function displayItems(spec, totals) {
     .classed("align-center", (d) => d.align === "center")
     .classed("align-right", (d) => d.align === "right")
     .attr("colspan", (d) => d.colspan)
-    .attr("title", (d) => d.title)
+    .attr("data-tooltip", (d) => d.title)
   headerCell.each(function (this: HTMLTableCellElement, header) {
     let cell = d3.select(this)
     cell.selectAll("*").remove()
@@ -997,7 +1009,7 @@ export function displayItems(spec, totals) {
         .classed("popout pad item", true)
         .append("a")
         .attr("target", "_blank")
-        .attr("title", "Open this item as a separate plan.")
+        .attr("data-tooltip", "Open this item as a separate plan.")
         .append("svg")
         .classed("popout", true)
         .attr("viewBox", "0 0 24 24")
@@ -1016,7 +1028,7 @@ export function displayItems(spec, totals) {
   row
     .selectAll("td.location-cell")
     .classed("hide", !showLocations)
-    .attr("title", (d) => {
+    .attr("data-tooltip", (d) => {
       if (d.recipe === null) {
         return null
       }
@@ -1030,7 +1042,7 @@ export function displayItems(spec, totals) {
   let itemToggle = itemRow
     .selectAll("button.item-import-toggle")
     .classed("imported", (d) => spec.ignore.has(d.item))
-    .attr("title", (d) =>
+    .attr("data-tooltip", (d) =>
       spec.ignore.has(d.item) ? `Produce ${d.item.name} in this plan` : `Treat ${d.item.name} as imported`,
     )
     .attr("aria-label", (d) =>
@@ -1066,13 +1078,13 @@ export function displayItems(spec, totals) {
   let beltRow = itemRow.filter((d) => d.item.phase === "solid")
   beltRow
     .selectAll("td.logistics-cell")
-    .attr("title", `Equivalent ${spec.belt.name} belts`)
+    .attr("data-tooltip", `Equivalent ${spec.belt.name} belts`)
     .selectAll("tt.belt-count")
     .text((d) => spec.format.alignCount(spec.getBeltCount(totals.items.get(d.item))))
   let pipeRow = itemRow.filter((d) => d.item.phase === "fluid")
   pipeRow
     .selectAll("td.logistics-cell")
-    .attr("title", usesLegacyCalculation() ? "Legacy maximum pipe length" : null)
+    .attr("data-tooltip", usesLegacyCalculation() ? "Legacy maximum pipe length" : null)
     .selectAll("tt.belt-count")
     .text((d) => pipeText(totals.items.get(d.item)))
   let itemBuildingCell = itemRow.selectAll("td.building-icon")

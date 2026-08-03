@@ -137,7 +137,7 @@ export class BuildTarget {
       .append("button")
       .classed("targetButton ui", true)
       .text("×")
-      .attr("title", "Remove this production target.")
+      .attr("data-tooltip", "Remove this production target.")
       .on("click", removeHandler(this))
     this.element = element.node()
 
@@ -192,7 +192,10 @@ export class BuildTarget {
       .attr("type", "text")
       .attr("value", "")
       .attr("size", 5)
-      .attr("title", "Enter a value to specify the rate. The number of buildings will be determined based on the rate.")
+      .attr(
+        "data-tooltip",
+        "Enter a value to specify the rate. The number of buildings will be determined based on the rate.",
+      )
       .node()
 
     this.locationWarning = element

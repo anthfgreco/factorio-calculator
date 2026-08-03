@@ -1,10 +1,52 @@
+import tippy, { delegate, hideAll } from "tippy.js"
+
 // -----------------------------------------------------------------------------
 // Tooltips
 // -----------------------------------------------------------------------------
 
-let currentTooltip = null
+let textTooltipDelegate = null
+let tooltipRegistry = new Set<any>()
 
-let tooltipRegistry = new Set()
+function tooltipProps() {
+  return {
+    appendTo: () => document.body,
+    delay: [100, 0] as [number, number],
+    duration: [120, 80] as [number, number],
+    maxWidth: 420,
+    theme: "factorio",
+  }
+}
+
+export function initializeTooltips() {
+  if (textTooltipDelegate !== null) {
+    return
+  }
+  textTooltipDelegate = delegate(document.body, {
+    ...tooltipProps(),
+    target: "[data-tooltip]",
+    content: (reference) => reference.getAttribute("data-tooltip") ?? "",
+    onTrigger(instance) {
+      instance.setContent(instance.reference.getAttribute("data-tooltip") ?? "")
+    },
+  })
+}
+
+export function makePopover(reference, content, props: any = {}) {
+  let { onShow, ...popoverProps } = props
+  let instance = tippy(reference, {
+    ...tooltipProps(),
+    content,
+    interactive: true,
+    trigger: "click",
+    ...popoverProps,
+    onShow(instance) {
+      hideAll({ exclude: instance })
+      return onShow?.(instance)
+    },
+  })
+  tooltipRegistry.add(instance)
+  return instance
+}
 
 export class Tooltip {
   [key: string]: any
@@ -13,94 +55,34 @@ export class Tooltip {
       target = reference
     }
     this.reference = reference
-    this.callback = callback
-    this.target = target
-    this.isOpen = false
-    this.node = null
-    this.popper = null
-    this.addEventListeners()
-  }
-  show() {
-    if (this.isOpen) {
-      return
-    }
-    if (currentTooltip) {
-      currentTooltip.hide()
-    }
-    this.isOpen = true
-    if (this.node) {
-      this.node.style.display = "block"
-      this.popper.setOptions((options) => ({
-        ...options,
-        modifiers: [...options.modifiers, { name: "eventListeners", enabled: true }],
-      }))
-      this.popper.update()
-      return
-    }
-    let node = this.create()
-    document.getElementById("tooltip_container").appendChild(node)
-    this.popper = Popper.createPopper(this.target, node, {
-      placement: "right",
-      modifiers: [
-        {
-          name: "offset",
-          options: {
-            offset: [0, 20],
-          },
-        },
-      ],
+    let content = null
+    this.instance = tippy(reference, {
+      ...tooltipProps(),
+      content: " ",
+      getReferenceClientRect: target === reference ? undefined : () => target.getBoundingClientRect(),
+      offset: [0, 12],
+      placement: "right-start",
+      onShow(instance) {
+        if (content === null) {
+          content = callback()
+          instance.setContent(content)
+        }
+      },
     })
-    this.node = node
-    tooltipRegistry.add(this)
-    currentTooltip = this
-  }
-  hide() {
-    if (!this.isOpen) {
-      return
-    }
-    this.isOpen = false
-    this.node.style.display = "none"
-    this.popper.setOptions((options) => ({
-      ...options,
-      modifiers: [...options.modifiers, { name: "eventListeners", enabled: false }],
-    }))
-    currentTooltip = null
-  }
-  create() {
-    let node = document.createElement("div")
-    node.classList.add("tooltip")
-    node.appendChild(this.callback())
-    return node
+    tooltipRegistry.add(this.instance)
   }
   remove() {
-    if (this.popper) {
-      this.popper.destroy()
-    }
-    if (this.node) {
-      d3.select(this.node).remove()
-    }
-  }
-  addEventListeners() {
-    let self = this
-    this.reference.addEventListener("mouseenter", function () {
-      self.show()
-    })
-    this.reference.addEventListener("mouseleave", function () {
-      self.hide()
-    })
+    tooltipRegistry.delete(this.instance)
+    this.instance.destroy()
   }
 }
 
 export function reapTooltips() {
-  let toReap = []
-  for (let tooltip of tooltipRegistry as Set<any>) {
-    if (!document.body.contains(tooltip.reference)) {
-      toReap.push(tooltip)
+  for (let instance of tooltipRegistry) {
+    if (!document.body.contains(instance.reference)) {
+      tooltipRegistry.delete(instance)
+      instance.destroy()
     }
-  }
-  for (let tooltip of toReap) {
-    tooltipRegistry.delete(tooltip)
-    tooltip.remove()
   }
 }
 
@@ -155,11 +137,13 @@ export class Icon {
       img.style("background-size", `${width}px ${height}px`)
     }
     img.style("background-position", `${x}px ${y}px`)
-    if (!suppressTooltip && this.obj.renderTooltip) {
-      let self = this
-      new Tooltip(img.node(), () => self.obj.renderTooltip(), target)
-    } else {
-      img.attr("title", this.obj.name)
+    if (!suppressTooltip) {
+      if (this.obj.renderTooltip) {
+        let self = this
+        new Tooltip(img.node(), () => self.obj.renderTooltip(), target)
+      } else {
+        img.attr("data-tooltip", this.obj.name)
+      }
     }
     img.attr("alt", this.name)
     return img.node()

@@ -1,3 +1,4 @@
+import "tippy.js/dist/tippy.css"
 import "./styles/dropdown.css"
 import "./styles/calc.css"
 import "./styles/player-ui.css"

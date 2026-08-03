@@ -4,7 +4,6 @@ declare global {
   const d3: any
   const dagre: any
   const pako: any
-  const Popper: any
   const spec: any
 
   interface CalculatorHandlers {

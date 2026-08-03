@@ -42,6 +42,39 @@ test("factory rerenders clear machine controls from every reused result row", as
   assert.ok(results.indexOf(machineCleanup) < results.indexOf(buildingRows))
 })
 
+test("tooltips use Tippy for rich and text content without the legacy Popper runtime", async () => {
+  const [html, globals, main, presentation, settings, results, ui, packageJson] = await Promise.all([
+    readFile(resolve(root, "calc.html"), "utf8"),
+    readFile(resolve(root, "src/globals.d.ts"), "utf8"),
+    readFile(resolve(root, "src/main.ts"), "utf8"),
+    readFile(resolve(root, "src/presentation.ts"), "utf8"),
+    readFile(resolve(root, "src/settings.ts"), "utf8"),
+    readFile(resolve(root, "src/results.ts"), "utf8"),
+    readFile(resolve(root, "src/ui.ts"), "utf8"),
+    readFile(resolve(root, "package.json"), "utf8"),
+  ])
+
+  assert.equal(JSON.parse(packageJson).dependencies["tippy.js"], "6.3.7")
+  assert.ok(main.includes('import "tippy.js/dist/tippy.css"'))
+  assert.ok(presentation.includes('import tippy, { delegate, hideAll } from "tippy.js"'))
+  assert.ok(presentation.includes('target: "[data-tooltip]"'))
+  assert.ok(presentation.includes("this.instance = tippy(reference"))
+  assert.ok(presentation.includes("export function makePopover"))
+  assert.ok(presentation.includes("if (!suppressTooltip)"))
+  assert.ok(results.includes("makePopover(details.node(), menu.node()"))
+  assert.ok(results.includes('placement: "right-start"'))
+  assert.ok(results.includes("row.item.icon.make(32, true)"))
+  assert.ok(!presentation.includes("Popper.createPopper"))
+  assert.ok(!globals.includes("const Popper"))
+  assert.ok(!html.includes("third_party/popper.min.js"))
+  assert.ok(!html.includes('id="tooltip_container"'))
+
+  const tooltipMarkup = [html, presentation, settings, results, ui].join("\n")
+  assert.ok(!tooltipMarkup.includes(' title="'))
+  assert.ok(!tooltipMarkup.includes('.attr("title"'))
+  assert.ok(!tooltipMarkup.includes('setAttribute("title"'))
+})
+
 test("progression presets keep Settings controls synchronized", async () => {
   const state = await readFile(resolve(root, "src/state.ts"), "utf8")
   assert.ok(state.includes("syncProgressionPresetControls()"))

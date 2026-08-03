@@ -36,7 +36,6 @@
     <script src="./third_party/d3.min.js"></script>
     <script src="./third_party/dagre.min.js"></script>
     <script src="./third_party/pako.min.js"></script>
-    <script src="./third_party/popper.min.js"></script>
     <script type="module" src="./src/main.ts"></script>
   </head>
 
@@ -48,7 +47,11 @@
       </div>
       <ul id="targets">
         <li id="plusButton">
-          <button class="add-target-button ui" title="Add another production target." onclick="handlers.plusHandler()">
+          <button
+            class="add-target-button ui"
+            data-tooltip="Add another production target."
+            onclick="handlers.plusHandler()"
+          >
             + Add target
           </button>
         </li>
@@ -506,6 +509,7 @@
                     Added independent recipe-productivity research levels for all eight Space Age technologies, with
                     official technology icons and share-link persistence.
                   </li>
+                  <li>Improved tooltip and recipe-menu visibility near screen edges.</li>
                 </ul>
               </div>
             </article>
@@ -580,7 +584,5 @@
     </div>
 
     <div id="footer"><a href="https://github.com/anthfgreco/factorio-calculator">Source on GitHub</a></div>
-
-    <div id="tooltip_container"></div>
   </body>
 </html>

@@ -1,8 +1,6 @@
 :root {
   /* main background, dropdown backgrounds */
   --dark: #171717;
-  /* tooltip background; should be same as dark, but with alpha channel */
-  --dark-overlay: rgba(23, 23, 23, 0.8);
   /* visualization node backgrounds, button backgrounds */
   --medium: #212427;
   /* background of main visual area */
@@ -68,32 +66,37 @@ img.icon {
   opacity: 0.3;
 }
 /* tooltips */
-div.tooltip {
-  opacity: 1;
-  z-index: 20;
+.tippy-box[data-theme~="factorio"] {
+  color: var(--foreground);
+  border: 1px solid var(--bright);
+  border-radius: 4px;
+  background-color: var(--dark);
+  box-shadow: 0 0.65rem 1.5rem rgba(0, 0, 0, 0.55);
+  font-size: 0.9rem;
 }
-div.tooltip .frame {
-  border: 2px solid var(--bright);
-  border-radius: 5px;
-  background-color: var(--dark-overlay);
-  padding: 0.4em;
+.tippy-box[data-theme~="factorio"] > .tippy-content {
+  padding: 0.45em 0.6em;
   text-align: left;
-  opacity: 1;
-  z-index: 20;
 }
-div.tooltip h3 {
+.tippy-box[data-theme~="factorio"] > .tippy-arrow {
+  color: var(--dark);
+}
+.tippy-box[data-theme~="factorio"] .frame {
+  text-align: left;
+}
+.tippy-box[data-theme~="factorio"] h3 {
   margin: 0;
 }
-div.tooltip h3:not(:last-child) {
+.tippy-box[data-theme~="factorio"] h3:not(:last-child) {
   margin-bottom: 0.5em;
 }
-div.tooltip div.product {
+.tippy-box[data-theme~="factorio"] div.product {
   position: relative;
   display: inline-block;
   background-color: var(--light);
   margin-top: 5px;
 }
-div.tooltip div.product span.count {
+.tippy-box[data-theme~="factorio"] div.product span.count {
   position: absolute;
   right: 1px;
   bottom: 1px;
@@ -106,8 +109,17 @@ div.tooltip div.product span.count {
     1px -1px 0px var(--dark),
     1px 1px 0px var(--dark);
 }
-div.tooltip img.ingredient {
+.tippy-box[data-theme~="factorio"] img.ingredient {
   background-color: var(--light);
+}
+.tippy-box[data-theme~="factorio-menu"] {
+  color: var(--foreground);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.tippy-box[data-theme~="factorio-menu"] > .tippy-content {
+  padding: 0;
 }
 /* build targets */
 .targetButton {
@@ -669,10 +681,6 @@ details.recipe-selector[open] > summary {
   border-color: var(--accent);
 }
 .recipe-selector-menu {
-  position: absolute;
-  z-index: 15;
-  top: calc(100% + 0.25em);
-  left: 0;
   min-width: 18em;
   max-width: 28em;
   max-height: 22em;
