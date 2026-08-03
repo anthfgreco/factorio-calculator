@@ -41,7 +41,9 @@ export function getQualityTargetMultiplier(specification, recipe, qualityLevel: 
   const probability = qualityProbability(chance, qualityLevel, specification.maxQualityLevel)
   if (probability.isZero()) {
     const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
-    throw new Error(`${recipe.name} cannot produce ${tier} output with the configured quality modules and progression.`)
+    throw new Error(
+      `${recipe.name} cannot produce ${tier} output with the current quality settings. Choose a lower tier or add quality modules.`,
+    )
   }
   return probability.reciprocate()
 }

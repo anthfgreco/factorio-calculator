@@ -915,16 +915,16 @@ function renderFactorySummary(specification, totals) {
           `${flow.item.name}: ${flow.from.name} → ${flow.to.name} (${specification.format.rate(flow.rate)}/${specification.format.rateName})`,
       )
       .join("; ")
-    warnings.push(`Inter-location transport: ${preview}${summary.planning.transport.length > 4 ? "; …" : ""}`)
+    warnings.push(`Transfers between locations: ${preview}${summary.planning.transport.length > 4 ? "; …" : ""}`)
   }
   for (let target of summary.planning.qualityTargets) {
     warnings.push(
-      `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% direct yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total output produces the requested ${specification.format.rate(target.requested)}/${specification.format.rateName}, with ${specification.format.rate(target.otherQualityByproduct)}/${specification.format.rateName} output at other quality tiers.`,
+      `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% chance. Producing ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} gives ${specification.format.rate(target.requested)}/${specification.format.rateName} at the requested quality and ${specification.format.rate(target.otherQualityByproduct)}/${specification.format.rateName} at other quality tiers.`,
     )
   }
   if (summary.qualityRecipeCount > 0 && summary.planning.qualityTargets.length === 0) {
     warnings.push(
-      "Quality modules are configured. Select a target quality beside an output to calculate quality-qualified expected flows; automatic recycler-loop optimization is not performed.",
+      "Quality modules are selected. Choose a quality tier beside an output to include its production chance. Recycler and upcycling loops must be planned separately.",
     )
   }
   let expired = summary.planning.freshness.filter((row) => row.expired)
@@ -943,7 +943,7 @@ function renderFactorySummary(specification, totals) {
     )
   if ([...totals.rates.keys()].some((recipe) => recipe.processKind === "growth"))
     warnings.push(
-      "Agricultural tower counts use 47 practical growing plots. Tower electricity is a conservative active-load maximum because planting/harvesting duty timing is not exported.",
+      "Agricultural tower counts assume 47 growing plots per tower. Power shows the maximum while a tower is actively planting or harvesting.",
     )
   if (summary.selectedLocations.length > 1) {
     for (let location of summary.planning.perLocation) {
@@ -963,7 +963,7 @@ function renderFactorySummary(specification, totals) {
   }
   if (!summary.planning.aquiloHeat.isZero())
     warnings.push(
-      "Aquilo heating includes production machines and configured beacons. Belts, pipes, inserters, pumps, tanks, and other layout-dependent entities must be added separately.",
+      "Aquilo heating covers production machines and beacons only. Add heating for belts, pipes, inserters, pumps, tanks, and the rest of your build.",
     )
   if (summary.importedItems.length > 0) {
     warnings.push(`Imported: ${summary.importedItems.map((item) => item.name).join(", ")}.`)
@@ -979,18 +979,26 @@ function renderFactorySummary(specification, totals) {
 
 export function displayCalculationError(_specification, error) {
   let code = error && typeof error === "object" ? error.code : null
-  let message = error instanceof Error ? error.message : String(error)
+  let rawMessage = error instanceof Error ? error.message : String(error)
+  let message = "The current settings could not produce a complete factory."
   let title = "Unable to calculate this factory"
   let guidance = "Check the target values, selected recipes, machines, locations, and resource priorities."
 
   if (code === "missing-recipe") {
+    message = rawMessage
     guidance =
       "Choose a compatible production location above, enable a recipe in Settings, choose another recipe, or click the item icon in the Factory table to treat that item as imported."
   } else if (code === "infeasible") {
+    message = "This combination of recipes and resource priorities cannot produce every requested output."
     guidance =
       "Review alternate recipes and resource priorities. A cyclic or multi-output chain may require at least one additional recipe or imported input."
-  } else if (/integer|number|denominator|divide|invalid/i.test(message)) {
+  } else if (
+    /cannot produce .* output with the current quality settings|No recipe is available to produce/i.test(rawMessage)
+  ) {
+    message = rawMessage
+  } else if (/integer|number|denominator|divide|invalid/i.test(rawMessage)) {
     title = "Invalid numeric value"
+    message = "One of the entered values is not a valid number."
     guidance = "Use a whole number, decimal, or fraction such as 60, 2.5, or 1/3."
   }
 

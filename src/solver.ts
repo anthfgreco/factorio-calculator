@@ -558,11 +558,10 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
   spec.lastMetadata = { items, recipes: recipeArray, targets: partialSolution.targets }
   try {
     simplex(tableau)
-  } catch (error) {
-    let detail = error instanceof Error ? error.message : String(error)
+  } catch {
     throw new SolverFailure(
       "infeasible",
-      `The selected recipes and priorities do not form a feasible production plan. ${detail}`,
+      "This combination of recipes and resource priorities cannot produce every requested output.",
     )
   }
   spec.lastSolution = tableau

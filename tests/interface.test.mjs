@@ -33,6 +33,26 @@ test("player-facing controls stay close to the evidence they affect", async () =
   assert.ok(results.includes('attr("aria-label", `Choose a machine for ${row.recipe.name}`)'))
 })
 
+test("player-facing copy describes Factorio behavior instead of implementation details", async () => {
+  const sources = await Promise.all(
+    ["calc.html", "public/docs/changelog.html", "src/results.ts", "src/ui.ts", "src/planning.ts"].map((file) =>
+      readFile(resolve(root, file), "utf8"),
+    ),
+  )
+  const playerCopy = sources.join("\n").toLowerCase()
+
+  for (const implementationPhrase of [
+    "is not exported",
+    "synthetic solver",
+    "dataset validation",
+    "transport pseudo-recipes",
+    "quality-qualified",
+    "internal production",
+  ]) {
+    assert.ok(!playerCopy.includes(implementationPhrase), `Found implementation phrase: ${implementationPhrase}`)
+  }
+})
+
 test("factory rerenders clear machine controls from every reused result row", async () => {
   const results = await readFile(resolve(root, "src/results.ts"), "utf8")
   const machineCleanup = 'row.selectAll("td.building-icon > :not(.recipe-selector)").remove()'

@@ -585,7 +585,7 @@
 
     <div id="resources_tab" class="tab">
       <p class="resources-intro">
-        Drag resources between tiers to tell the solver what to conserve. Higher tiers are treated as more valuable.
+        Drag resources between tiers to choose what your factory should conserve. Higher tiers are preferred.
       </p>
       <div id="resource_settings"></div>
     </div>
@@ -617,8 +617,8 @@
             <div class="help-reference-row">
               <dt>Imported Ingredients</dt>
               <dd>
-                Click any item icon in the Factory table to mark it as imported. Upstream production dependencies are
-                removed; click again to restore internal production.
+                Click any item icon in the Factory table to mark it as imported. The calculator treats it as supplied
+                from elsewhere; click again to include its production chain.
               </dd>
             </div>
             <div class="help-reference-row">
@@ -632,14 +632,14 @@
               <dt>Production Locations</dt>
               <dd>
                 Select a single planet/surface, or Shift-click to combine multiple locations into a shared material
-                pool. (Recipe assignment and interstellar transport costs are unmodeled).
+                pool. Assign individual recipes in the Factory table; required transfers appear in the factory summary.
               </dd>
             </div>
             <div class="help-reference-row">
               <dt>Quality &amp; Recycling</dt>
               <dd>
-                Module eligibility, speed and power effects, and speed-module quality penalties are preserved. Upcycling
-                loops and multi-tier quality flows are not yet solved as separate item species.
+                Choose a quality tier beside an output to include its production chance. Recycler and upcycling loops
+                must still be planned separately.
               </dd>
             </div>
             <div class="help-reference-row">
@@ -657,10 +657,10 @@
               </dd>
             </div>
             <div class="help-reference-row">
-              <dt>Plan Diagnostics</dt>
+              <dt>Calculation Help</dt>
               <dd>
-                Infeasible plans (missing recipes, cyclic deadlocks, or unhandled outputs) trigger solver failure
-                reports. Check location availability, enabled recipes, and imported items.
+                If a factory cannot be calculated, check its enabled recipes, production locations, imported
+                ingredients, and resource priorities.
               </dd>
             </div>
           </dl>
@@ -677,41 +677,33 @@
                 <h3>Advanced Space Age Planning &amp; Correctness</h3>
                 <ul>
                   <li>
-                    Added real Gleba plant growth times, agricultural-tower sizing, seed flows, spoilage timing,
-                    remaining freshness, effective agricultural-science throughput, and spores.
+                    Added accurate Gleba crop growth, agricultural-tower sizing, seed returns, spoilage and freshness,
+                    agricultural science freshness, and spores.
                   </li>
                   <li>
-                    Added exact-quality targets using direct production probabilities, selected-recipe scaling, quality
-                    progression limits, and combined reporting for output at other quality tiers.
+                    Added exact quality targets, quality progression limits, and reporting for output at other quality
+                    tiers.
                   </li>
                   <li>
-                    Added recipe-level location assignment, deterministic automatic placement, cross-location material
-                    flows, and multi-location machine, power, pollution, spores, and heat summaries.
+                    Added per-recipe planet and platform assignments, required material transfers, and per-location
+                    totals for machines, power, pollution, spores, and heat.
                   </li>
                   <li>
-                    Added configurable fluid-resource yields, asteroid collection limits, belt stacking, logistics
-                    buffers, cargo-wagon loads, beacon-equivalent electricity, pollution, and Aquilo production heat.
+                    Added fluid-resource yields, asteroid collection limits, belt stacking, storage buffers, cargo-wagon
+                    loads, beacon power, pollution, and Aquilo production heat.
+                  </li>
+                  <li>Moved fluid yields and asteroid collection limits into a compact Resource assumptions panel.</li>
+                  <li>
+                    Fixed incorrect location warnings for requested and imported items, and prevented Gleba crops from
+                    growing on Space platforms.
                   </li>
                   <li>
-                    Consolidated fluid yields and asteroid collection limits into a compact, responsive advanced
-                    settings panel.
-                  </li>
-                  <li>Prevented synthetic solver output and imported-item recipes from entering location checks.</li>
-                  <li>
-                    Restored Gleba plants as location-restricted resources so they can no longer grow on Space
-                    platforms.
+                    Fixed exact-quality totals when a specific recipe is selected and clarified output produced at other
+                    quality tiers.
                   </li>
                   <li>
-                    Corrected quality reporting from “lower-quality” to “other quality tiers,” which also covers output
-                    above the requested tier.
-                  </li>
-                  <li>
-                    Removed inactive technology gating, dead rocket-load reporting, misleading power-infrastructure
-                    estimates, the duplicate pumpjack-yield control, and the added mutable beacon-power global.
-                  </li>
-                  <li>
-                    Strengthened advanced-planning dataset validation, reduced summary noise, and added regressions for
-                    transport pseudo-recipes, plant location restrictions, and exact-quality scaling.
+                    Removed unreliable rocket-load and power-infrastructure estimates, and reduced factory-summary
+                    clutter.
                   </li>
                 </ul>
               </div>
@@ -735,7 +727,7 @@
                   <li>Expanded item search with common chip, circuit, magazine, belt, robot, and factory shorthand.</li>
                   <li>
                     Added independent recipe-productivity research levels for all eight Space Age technologies, with
-                    official technology icons and share-link persistence.
+                    official technology icons and support in shared plan links.
                   </li>
                   <li>Improved tooltip and recipe-menu visibility near screen edges.</li>
                 </ul>
@@ -747,31 +739,23 @@
                 <time datetime="2026-07-31">2026-07-31</time>
               </div>
               <div class="changelog-details">
-                <h3>Architecture, UI &amp; Calculation Fixes</h3>
+                <h3>Factory Planning &amp; Calculation Fixes</h3>
                 <ul>
+                  <li>Added clearer factory summaries, calculation errors, location controls, and Help pages.</li>
                   <li>
-                    Refactored repository architecture into consolidated, fully typed acyclic modules with automated
-                    boundary checks.
-                  </li>
-                  <li>
-                    Reworked UI and Help section applying Tufte visualization principles (high data-ink ratio,
-                    unbordered layouts, structured reference tables, and marginal dates).
-                  </li>
-                  <li>
-                    Added top-level planet/location selector, KPI factory summary cards, progression presets, direct
-                    item labels, and share-link copying.
+                    Added top-level planet/location selector, factory summary cards, progression presets, direct item
+                    labels, and share-link copying.
                   </li>
                   <li>
                     Corrected machine floor limits for negative speed multipliers, rate display calculations, beacon
-                    power warnings, and state synchronization.
+                    power warnings, and settings that could fall out of sync as plans changed.
                   </li>
                   <li>
                     Corrected catalyst and coolant productivity, machine-specific burner fuel, and combined Factorio 2.1
                     product probabilities.
                   </li>
                   <li>
-                    Made shared links preserve exact module slots and inactive recipe customizations, including large
-                    compressed plans.
+                    Made shared plans preserve module positions and recipe choices, including very large factories.
                   </li>
                 </ul>
               </div>
@@ -784,7 +768,7 @@
               <div class="changelog-details">
                 <h3>Factorio 2.1.12 and Space Age</h3>
                 <ul>
-                  <li>Added the experimental Space Age 2.1.12 dataset and made it the default.</li>
+                  <li>Added experimental Factorio 2.1.12 Space Age support and made it the default.</li>
                   <li>
                     Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe
                     selection.

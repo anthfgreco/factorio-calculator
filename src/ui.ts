@@ -180,7 +180,7 @@ export class BuildTarget {
       .classed("target-quality", true)
       .attr(
         "data-tooltip",
-        "Target an exact quality tier. Higher tiers use expected direct-production probabilities from the configured quality modules.",
+        "Choose the quality tier you want. The calculator accounts for the chance from the selected quality modules.",
       )
       .on("change", (event) => {
         this.qualityLevel = Number(event.target.value)
