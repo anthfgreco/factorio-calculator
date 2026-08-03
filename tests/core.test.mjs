@@ -18,6 +18,7 @@ const { itemMatchesSearch } = await load("data")
 const {
   ModuleSpec,
   configureModelRuntime,
+  getBeaconPower: getConfiguredBeaconPower,
   getBuildings,
   getModules,
   getPlanets,
@@ -31,6 +32,15 @@ const { FactorySpecification } = await load("factory")
 const { getFactorySummary } = await load("results")
 const { PriorityList } = await load("priorities")
 const { Ingredient, solve, SolverFailure } = await load("solver")
+const {
+  getAquiloHeat,
+  getAsteroidConstraintReport,
+  getBeaconPower,
+  getFreshnessReport,
+  getPollution,
+  getTransportFlows,
+  qualityProbability,
+} = await load("planning")
 
 // Keep real-dataset solves location-scoped; unrestricted Space Age graphs include recycling cycles and can take minutes.
 const DATASET_SOLVER_TIMEOUT_MS = 10_000
@@ -60,19 +70,52 @@ async function createTestRuntime() {
   const fuel = getFuel(data, items)
   const itemGroups = getItemGroups(items, data)
   const recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
-  return { items, recipes, buildings, planets, modules, belts, fuel, itemGroups, recipeProductivityResearch }
+  const beaconPower = getConfiguredBeaconPower(data)
+  return {
+    items,
+    recipes,
+    buildings,
+    planets,
+    modules,
+    belts,
+    fuel,
+    itemGroups,
+    recipeProductivityResearch,
+    beaconPower,
+  }
 }
 
 async function setupTestFactory() {
-  const { items, recipes, buildings, planets, modules, belts, fuel, itemGroups, recipeProductivityResearch } =
-    await createTestRuntime()
+  const {
+    items,
+    recipes,
+    buildings,
+    planets,
+    modules,
+    belts,
+    fuel,
+    itemGroups,
+    recipeProductivityResearch,
+    beaconPower,
+  } = await createTestRuntime()
 
   const factorySpec = new FactorySpecification()
   configureModelRuntime({
     getSpecification: () => factorySpec,
     useLegacyCalculation: () => false,
   })
-  factorySpec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups, recipeProductivityResearch)
+  factorySpec.setData(
+    items,
+    recipes,
+    planets,
+    modules,
+    buildings,
+    belts,
+    fuel,
+    itemGroups,
+    recipeProductivityResearch,
+    beaconPower,
+  )
   factorySpec.setDefaultPriority()
 
   return {
@@ -149,6 +192,24 @@ test("dataset parser rejects malformed recipe productivity research", async () =
     () => parseCalculatorData(raw),
     (error) =>
       error instanceof DatasetValidationError && error.path === "recipe_productivity_research[0].effects[0].change",
+  )
+})
+
+test("dataset parser validates advanced planning metadata", async () => {
+  const raw = structuredClone(await getParsedTestData())
+  raw.plants[0].growth_ticks = "five minutes"
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "plants[0].growth_ticks",
+  )
+
+  raw.plants[0].growth_ticks = 18_000
+  raw.agricultural_tower[0].energy_source.emissions_per_minute.spores = "four"
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) =>
+      error instanceof DatasetValidationError &&
+      error.path === "agricultural_tower[0].energy_source.emissions_per_minute.spores",
   )
 })
 
@@ -951,3 +1012,150 @@ test(
     )
   },
 )
+
+test("Gleba plants use five-minute growth and a 47-plot agricultural tower", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("gleba"))
+  const recipe = recipes.get("yumako-tree")
+  const tower = factorySpec.getBuilding(recipe)
+  assert.equal(recipe.time.toString(), "300")
+  assert.equal(tower.key, "agricultural-tower")
+  assert.equal(factorySpec.getRecipeRate(recipe).toString(), "47/300")
+  assert.equal(factorySpec.getCount(recipe, Rational.from_floats(47, 300)).toString(), "1")
+  assert.equal(getPollution(factorySpec, recipe, Rational.from_floats(47, 300), "spores").toString(), "4")
+  assert.equal(planets.get("space-platform").allowsRecipe(recipe), false)
+})
+
+test("spoilage metadata calculates remaining agricultural science freshness", async () => {
+  const { factorySpec, items } = await setupTestFactory()
+  factorySpec.freshnessDelayMinutes = Rational.from_float(30)
+  const science = items.get("agricultural-science-pack")
+  const totals = { items: new Map([[science, Rational.from_float(1)]]) }
+  const row = getFreshnessReport(factorySpec, totals)[0]
+  assert.equal(science.spoilTime.toString(), "3600")
+  assert.equal(row.remaining.toString(), "1/2")
+  assert.equal(row.effectiveRate.toString(), "1/2")
+})
+
+test("pumpjack field yield scales fluid resource capacity", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const crudeOil = recipes.get("crude-oil")
+  assert.equal(factorySpec.getBuilding(crudeOil).key, "pumpjack")
+  const baseRate = factorySpec.getRecipeRate(crudeOil)
+  factorySpec.setResourceYield(crudeOil, Rational.from_float(2))
+  assert.equal(factorySpec.getRecipeRate(crudeOil).toString(), baseRate.mul(Rational.from_float(2)).toString())
+})
+
+test("belt stacking changes throughput capacity without changing item rate", async () => {
+  const { factorySpec } = await setupTestFactory()
+  factorySpec.beltStackSize = Rational.from_float(4)
+  assert.equal(factorySpec.getBeltCount(Rational.from_float(45)).toString(), "3/4")
+})
+
+test("quality probability collapses repeated upgrades into the highest unlocked tier", () => {
+  const chance = Rational.from_floats(1, 4)
+  assert.equal(qualityProbability(chance, 1, 4).toString(), "9/40")
+  assert.equal(qualityProbability(chance, 4, 4).toString(), "1/4000")
+  assert.equal(qualityProbability(chance, 2, 2).toString(), "1/40")
+})
+
+test("exact-quality targets scale the selected recipe by its direct yield", async () => {
+  const { factorySpec, recipes, items, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const item = items.get("electronic-circuit")
+  const recipe = recipes.get("electronic-circuit")
+  factorySpec.setBuildingOverride(recipe, factorySpec.buildingKeys.get("assembling-machine-3"))
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  const qualityModule = modules.get("quality-module-3")
+  for (let index = 0; index < moduleSpec.modules.length; index++) {
+    moduleSpec.setModule(index, qualityModule)
+  }
+  const chance = qualityModule.quality.mul(Rational.from_integer(moduleSpec.modules.length))
+  const probability = qualityProbability(chance, 1, 4)
+  factorySpec.buildTargets = [
+    {
+      item,
+      recipe,
+      qualityLevel: 1,
+      changedBuilding: false,
+      getRate: () => one,
+    },
+  ]
+
+  const totals = factorySpec.solve()
+  assert.equal(totals.products.get(item).toString(), probability.reciprocate().toString())
+  assert.ok(totals.rates.has(recipe))
+})
+
+test("recipe location pins produce explicit interplanetary transport flows", async () => {
+  const { factorySpec, recipes, items, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  factorySpec.selectPlanet(planets.get("fulgora"))
+  const cable = recipes.get("copper-cable")
+  const circuits = recipes.get("electronic-circuit")
+  factorySpec.setRecipeLocation(cable, planets.get("fulgora"))
+  factorySpec.setRecipeLocation(circuits, planets.get("nauvis"))
+  const copperCable = items.get("copper-cable")
+  const totals = {
+    proportionate: [{ item: copperCable, from: cable, to: circuits, rate: Rational.from_float(6), fuel: false }],
+  }
+  const flows = getTransportFlows(factorySpec, totals)
+  assert.equal(flows.length, 1)
+  assert.equal(flows[0].from.key, "fulgora")
+  assert.equal(flows[0].to.key, "nauvis")
+  assert.equal(flows[0].rate.toString(), "6")
+})
+
+test("transport planning ignores solver output recipes", async () => {
+  const { factorySpec, items, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const totals = solve(factorySpec, [{ item: items.get("copper-cable"), rate: one, recipe: null }])
+  assert.ok(totals.proportionate.some((link) => !link.to.isReal()))
+  factorySpec.populateModuleSpec(totals)
+  assert.deepEqual(getFactorySummary(factorySpec, totals).planning.transport, [])
+})
+
+test("Aquilo production machines expose their heating requirement", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("aquilo"))
+  const recipe = recipes.get("cryogenic-science-pack")
+  const oneMachineRate = factorySpec.getRecipeRate(recipe)
+  assert.equal(getAquiloHeat(factorySpec, recipe, oneMachineRate).toString(), "100000")
+})
+
+test("pollution scales with energy consumption and direct pollution effects", async () => {
+  const { factorySpec, recipes, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("iron-ore")
+  const rate = Rational.from_integer(10)
+  const base = getPollution(factorySpec, recipe, rate)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  const efficiency3 = modules.get("efficiency-module-3")
+  for (let index = 0; index < moduleSpec.modules.length; index++) moduleSpec.setModule(index, efficiency3)
+  const reduced = getPollution(factorySpec, recipe, rate)
+  assert.ok(reduced.less(base), `Expected ${reduced} to be less than ${base}`)
+})
+
+test("agricultural towers report spores and configured beacons report power", async () => {
+  const { factorySpec, recipes, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("gleba"))
+  const plant = recipes.get("yumako-tree")
+  assert.ok(zero.less(getPollution(factorySpec, plant, Rational.from_floats(47, 300), "spores")))
+
+  const bioflux = recipes.get("bioflux")
+  const moduleSpec = factorySpec.getModuleSpec(bioflux)
+  moduleSpec.setBeaconModule(modules.get("speed-module-3"), 0)
+  moduleSpec.setBeaconCount(Rational.from_integer(4))
+  factorySpec.beaconPower = Rational.from_integer(480000)
+  assert.ok(zero.less(getBeaconPower(factorySpec, bioflux, one)))
+})
+
+test("asteroid collection caps identify an over-capacity plan", async () => {
+  const { factorySpec, items } = await setupTestFactory()
+  const chunk = items.get("metallic-asteroid-chunk")
+  factorySpec.asteroidLimits.set(chunk.key, Rational.from_integer(5))
+  const report = getAsteroidConstraintReport(factorySpec, { items: new Map([[chunk, Rational.from_integer(6)]]) })
+  assert.equal(report.length, 1)
+  assert.equal(report[0].exceeded, true)
+})

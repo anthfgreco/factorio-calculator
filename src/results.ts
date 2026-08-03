@@ -8,6 +8,12 @@ import { getRecipeSelectorGroups } from "./recipes.js"
 import { refreshRecipeSettings } from "./settings.js"
 import { toggleIgnoreHandler, usesLegacyCalculation } from "./state.js"
 import { formatSettings } from "./url-state.js"
+import {
+  getAssignedLocation,
+  getCompatibleLocations as getPlanningLocations,
+  getLogistics,
+  getPlanningSummary,
+} from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Result grouping
@@ -177,7 +183,15 @@ export function makeRecipeSelector(row) {
       spec.updateSolution()
     })
   options.append((recipe) => recipe.icon.make(32))
-  options.append("span").text((recipe) => recipe.name)
+  options.append("span").text((recipe) => {
+    let details = []
+    if (recipe.time && !recipe.time.isZero()) details.push(`${recipe.time.toDecimal()} s`)
+    if (spec.selectedPlanets?.size) {
+      let count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
+      details.push(`${count} selected location${count === 1 ? "" : "s"}`)
+    }
+    return details.length > 0 ? `${recipe.name} — ${details.join(", ")}` : recipe.name
+  })
   let instance = makePopover(details.node(), menu.node(), {
     appendTo: () => document.body,
     arrow: false,
@@ -209,16 +223,23 @@ let machineSelectorCount = 0
 function makeMachineSelector(row, compatibleBuildings) {
   let automaticBuilding = spec.getAutomaticBuilding(row.recipe)
   let override = spec.getBuildingOverride(row.recipe)
+  let label = (building) => {
+    let speed = building.speed ?? building.miningSpeed
+    let details = []
+    if (speed && !speed.isZero()) details.push(`speed ${speed.toDecimal()}`)
+    details.push(`${building.moduleSlots} module slot${building.moduleSlots === 1 ? "" : "s"}`)
+    return `${building.name} — ${details.join(", ")}`
+  }
   let options = [
     {
       building: null,
       displayBuilding: automaticBuilding,
-      label: `Automatic (${automaticBuilding.name})`,
+      label: `Automatic (${label(automaticBuilding)})`,
     },
     ...compatibleBuildings.map((building) => ({
       building,
       displayBuilding: building,
-      label: building.name,
+      label: label(building),
     })),
   ]
 
@@ -707,6 +728,37 @@ class PipeIcon {
   }
 }
 
+function makeLocationSelector(row) {
+  let building = row.building
+  let compatible = getPlanningLocations(spec, row.recipe, building)
+  let configured = spec.recipeLocations.get(row.recipe) ?? null
+  let assigned = compatible.includes(configured) ? configured : null
+  let automatic = getAssignedLocation(spec, row.recipe, building)
+  let select = d3
+    .create("select")
+    .classed("recipe-location-selector", true)
+    .attr("aria-label", `Choose production location for ${row.recipe.name}`)
+    .on("change", (event) => {
+      let key = event.target.value
+      spec.setRecipeLocation(row.recipe, key === "" ? null : spec.planets.get(key))
+      spec.updateSolution()
+    })
+  select
+    .append("option")
+    .attr("value", "")
+    .property("selected", assigned === null)
+    .text(`Automatic (${automatic?.name ?? "unavailable"})`)
+  select
+    .selectAll("option.location")
+    .data(compatible)
+    .join("option")
+    .classed("location", true)
+    .attr("value", (location) => location.key)
+    .property("selected", (location) => location === assigned)
+    .text((location) => location.name)
+  return select.node()
+}
+
 function formatLocationNames(locations) {
   return locations.map((location) => location.name).join(" / ")
 }
@@ -786,6 +838,7 @@ export function getFactorySummary(specification, totals) {
   let importedItems = [...specification.ignore]
     .filter((item) => totals.items.has(item))
     .sort((a, b) => a.name.localeCompare(b.name))
+  let planning = getPlanningSummary(specification, totals)
 
   return {
     exactMachines,
@@ -798,18 +851,37 @@ export function getFactorySummary(specification, totals) {
     beaconedRecipeCount,
     selectedLocations,
     importedItems,
+    planning,
   }
 }
 
 function renderFactorySummary(specification, totals) {
   let summary = getFactorySummary(specification, totals)
   let root = d3.select("#factory_summary").property("hidden", false)
-  let { power, suffix } = powerRepresentation(summary.electricalPower)
+  let totalPower = summary.electricalPower.add(summary.planning.beaconPower)
+  let { power, suffix } = powerRepresentation(totalPower)
   let cards = [
     { label: "Active recipes", value: String(summary.recipeCount) },
     { label: "Machines to place", value: summary.placedMachines.toDecimal(0) },
-    { label: "Machine power", value: `${specification.format.count(power)} ${suffix}` },
+    { label: "Electric + beacon power", value: `${specification.format.count(power)} ${suffix}` },
   ]
+  if (!summary.planning.pollution.isZero())
+    cards.push({ label: "Pollution / min", value: specification.format.count(summary.planning.pollution) })
+  if (!summary.planning.spores.isZero())
+    cards.push({ label: "Spores / min", value: specification.format.count(summary.planning.spores) })
+  if (!summary.planning.aquiloHeat.isZero()) {
+    let heat = powerRepresentation(summary.planning.aquiloHeat)
+    cards.push({ label: "Aquilo heat", value: `${specification.format.count(heat.power)} ${heat.suffix}` })
+  }
+  if (summary.planning.transport.length > 0)
+    cards.push({ label: "Transport flows", value: String(summary.planning.transport.length) })
+  if (summary.planning.freshness.length > 0) {
+    let lowest = summary.planning.freshness[0]
+    cards.push({
+      label: "Lowest freshness",
+      value: `${(lowest.remaining.toFloat() * 100).toFixed(1)}% · ${lowest.item.name}`,
+    })
+  }
   for (let [fuel, rate] of [...summary.fuelRates].sort(([fuelA], [fuelB]) => fuelA.name.localeCompare(fuelB.name))) {
     cards.push({
       label: `${fuel.name} / ${specification.format.rateName}`,
@@ -835,16 +907,64 @@ function renderFactorySummary(specification, totals) {
     .text((entry) => entry.label)
 
   let warnings = []
+  if (summary.planning.transport.length > 0) {
+    let preview = summary.planning.transport
+      .slice(0, 4)
+      .map(
+        (flow) =>
+          `${flow.item.name}: ${flow.from.name} → ${flow.to.name} (${specification.format.rate(flow.rate)}/${specification.format.rateName})`,
+      )
+      .join("; ")
+    warnings.push(`Inter-location transport: ${preview}${summary.planning.transport.length > 4 ? "; …" : ""}`)
+  }
+  for (let target of summary.planning.qualityTargets) {
+    warnings.push(
+      `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% direct yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total output produces the requested ${specification.format.rate(target.requested)}/${specification.format.rateName}, with ${specification.format.rate(target.otherQualityByproduct)}/${specification.format.rateName} output at other quality tiers.`,
+    )
+  }
+  if (summary.qualityRecipeCount > 0 && summary.planning.qualityTargets.length === 0) {
+    warnings.push(
+      "Quality modules are configured. Select a target quality beside an output to calculate quality-qualified expected flows; automatic recycler-loop optimization is not performed.",
+    )
+  }
+  let expired = summary.planning.freshness.filter((row) => row.expired)
+  if (expired.length > 0)
+    warnings.push(`Freshness delay fully spoils: ${expired.map((row) => row.item.name).join(", ")}.`)
+  let agriculturalScience = summary.planning.freshness.find((row) => row.item.key === "agricultural-science-pack")
+  if (agriculturalScience && !specification.freshnessDelayMinutes.isZero()) {
+    warnings.push(
+      `Agricultural science after ${specification.freshnessDelayMinutes.toDecimal()} minutes: ${specification.format.rate(agriculturalScience.effectiveRate)}/${specification.format.rateName} effective at ${(agriculturalScience.remaining.toFloat() * 100).toFixed(1)}% freshness.`,
+    )
+  }
+  let constrained = summary.planning.asteroidConstraints.filter((row) => row.exceeded)
+  for (let row of constrained)
+    warnings.push(
+      `${row.item.name} collection cap exceeded: ${specification.format.rate(row.required)} required vs ${specification.format.rate(row.limit)} available per ${specification.format.rateName}.`,
+    )
+  if ([...totals.rates.keys()].some((recipe) => recipe.processKind === "growth"))
+    warnings.push(
+      "Agricultural tower counts use 47 practical growing plots. Tower electricity is a conservative active-load maximum because planting/harvesting duty timing is not exported.",
+    )
   if (summary.selectedLocations.length > 1) {
-    let ambiguity =
-      summary.ambiguousRecipeCount === 0
-        ? ""
-        : ` ${summary.ambiguousRecipeCount} recipe${summary.ambiguousRecipeCount === 1 ? " has" : "s have"} multiple possible locations.`
-    warnings.push(`Shared materials; transport is not modeled.${ambiguity}`)
+    for (let location of summary.planning.perLocation) {
+      let locationPower = location.electricPower.add(location.beaconPower)
+      let displayPower = powerRepresentation(locationPower)
+      let emissions = []
+      if (!location.pollution.isZero()) {
+        emissions.push(`${specification.format.count(location.pollution)} pollution/min`)
+      }
+      if (!location.spores.isZero()) {
+        emissions.push(`${specification.format.count(location.spores)} spores/min`)
+      }
+      warnings.push(
+        `${location.location.name}: ${location.machines.toDecimal(0)} machines, ${specification.format.count(displayPower.power)} ${displayPower.suffix} electric load${location.heat.isZero() ? "" : `, ${specification.format.count(powerRepresentation(location.heat).power)} ${powerRepresentation(location.heat).suffix} heating`}${emissions.length === 0 ? "" : `, ${emissions.join(", ")}`}.`,
+      )
+    }
   }
-  if (summary.qualityRecipeCount > 0) {
-    warnings.push("Quality modules affect machines, but quality-tier yields and upcycling are not calculated.")
-  }
+  if (!summary.planning.aquiloHeat.isZero())
+    warnings.push(
+      "Aquilo heating includes production machines and configured beacons. Belts, pipes, inserters, pumps, tanks, and other layout-dependent entities must be added separately.",
+    )
   if (summary.importedItems.length > 0) {
     warnings.push(`Imported: ${summary.importedItems.map((item) => item.name).join(", ")}.`)
   }
@@ -1027,16 +1147,11 @@ export function displayItems(spec, totals) {
     .classed("noitem", (d) => d.item === null)
     .classed("target-output", (d) => d.item !== null && spec.buildTargets.some((target) => target.item === d.item))
     .classed("imported-output", (d) => d.item !== null && spec.ignore.has(d.item))
-  row
-    .selectAll("td.location-cell")
-    .classed("hide", !showLocations)
-    .attr("data-tooltip", (d) => {
-      if (d.recipe === null) {
-        return null
-      }
-      let locations = getRecipeLocations(spec, d.recipe, d.building)
-      return locations.length === 0 ? "Unavailable on selected locations" : formatLocationNames(locations)
-    })
+  let locationCell = row.selectAll("td.location-cell").classed("hide", !showLocations)
+  locationCell.selectAll("*").remove()
+  locationCell.filter((d) => d.recipe !== null && d.recipe.isReal?.()).append((d) => makeLocationSelector(d))
+  locationCell
+    .filter((d) => d.recipe === null || !d.recipe.isReal?.())
     .text((d) => getLocationCellText(spec, d.recipe, d.building))
 
   // Update row data.
@@ -1080,7 +1195,11 @@ export function displayItems(spec, totals) {
   let beltRow = itemRow.filter((d) => d.item.phase === "solid")
   beltRow
     .selectAll("td.logistics-cell")
-    .attr("data-tooltip", `Equivalent ${spec.belt.name} belts`)
+    .attr("data-tooltip", (d) => {
+      let rate = totals.items.get(d.item)
+      let logistics = getLogistics(d.item, rate, spec)
+      return `Equivalent ${spec.belt.name} belts at stack height ${spec.beltStackSize.toDecimal()}. ${spec.format.rate(logistics.stackRate)} stacks/${spec.format.rateName}; ${logistics.bufferSlots.toDecimal(0)} slots for a ${spec.bufferMinutes.toDecimal()} minute buffer; ${spec.format.count(logistics.wagonLoads)} cargo wagons/${spec.format.rateName}.`
+    })
     .selectAll("tt.belt-count")
     .text((d) => spec.format.alignCount(spec.getBeltCount(totals.items.get(d.item))))
   let pipeRow = itemRow.filter((d) => d.item.phase === "fluid")

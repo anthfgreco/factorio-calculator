@@ -15,97 +15,42 @@ The highest-value remaining work is not a framework rewrite. It is extending the
 
 ## Completed in this pass
 
-- Added typed failures for missing production paths and infeasible recipe systems, with actionable Factory-tab guidance.
-- Enforced recipe, machine, and beacon allowed effects when selecting modules.
-- Preserved exported quality-module probabilities and recipe `allow_quality` rules in the 2.1.12 dataset.
-- Added a compact factory summary for active recipes, rounded machine counts, machine electrical power, and imported inputs.
-- Added per-recipe production-location visibility for plans using multiple selected locations.
-- Added concise notes for shared-material multi-location plans, ambiguous recipe placement, quality-tier aggregation, and imported inputs.
-- Added a one-click copyable plan link without changing the existing URL format.
-- Added relaxed and compact Factory row density controls as a local display preference and placed them beside the Factory tab.
-- Added progression presets, direct item labels, visible target/import state, and a clearer evidence-first Factory and visualization interface.
-- Consolidated About, FAQ, and recent changelog information into one Help tab.
-- Added runtime coverage for quality modules, machine/beacon compatibility, production locations, and missing-recipe failures.
-- Corrected simplex productivity so returned catalysts, coolant, and other `ignored_by_productivity` outputs are not multiplied by productivity bonuses.
-- Modeled burner fuel by machine category, including biochamber nutrients and captive-spawner bioflux, with module consumption effects included in fuel rates.
-- Combined Factorio 2.1 independent and shared product probabilities in both runtime parsing and dataset generation.
-- Made recipe-specific module URL state slot-safe, deterministic, persistent even when a recipe is temporarily inactive, and safe for large compressed plans.
-- Added regression coverage for 500-step graphs, infeasible cycles, probability combinations, burner fuels, catalyst productivity, and URL persistence.
+- Added real plant growth durations and agricultural-tower sizing around 47 practical plots, including seed flows.
+- Added spoil-time metadata, configurable elapsed delay, remaining freshness, and freshness-adjusted agricultural science throughput.
+- Added exact target-quality tiers using direct quality probabilities and non-target-quality byproduct reporting.
+- Added explicit recipe location pinning, deterministic automatic assignment, cross-location transport flows, and per-location summaries.
+- Added configurable pumpjack/resource yield for basic fluids and asteroid collection capacity diagnostics.
+- Included configured beacon-equivalent electricity, pollution, spores, and Aquilo production heat.
+- Added belt stacking, stacks per interval, configurable buffers, and cargo-wagon loads.
+- Added recipe and machine comparison details directly to selectors.
+- Preserved existing performance architecture because the 500-step exact solve and current UI remain responsive; worker/caching/virtualization work remains benchmark-driven.
+- Retained all earlier correctness, usability, persistence, dataset, and regression improvements.
 
-## Priority 0: calculation fidelity
+## Remaining priority 0 work
 
-### Quality-qualified production flows
+### Generalized quality and recycling optimization
 
-Represent a material as `(item, quality)` rather than only `item` when quality planning is enabled. Keep the current scalar path as the fast default. A quality-aware layer should:
+The current exact-quality target mode correctly scales direct production by the configured quality probability and reports all non-target output together. A future solver can promote materials to `(item, quality)` nodes to optimize recycler/upcycling loops, mixed-quality ingredients, and reusable byproducts by tier.
 
-- calculate output-quality probability distributions
-- apply module and machine quality effects
-- model recycler returns by input and output quality
-- support a target such as “10 legendary quality module 3 per minute”
-- expose expected value and the assumptions behind probabilistic results
+### Capacity-aware interplanetary optimization
 
-Do not approximate all quality output as normal items. That produces confident but misleading upcycling plans.
+Location assignment and transport accounting are explicit, but transport capacity is not yet part of the simplex. A future extension can constrain rocket payload, platform cargo throughput, route time, and transit spoilage while allowing the solver to choose among alternative production locations.
 
-### Per-location factory assignment
+### Agricultural duty-cycle fidelity
 
-Extend solver nodes with a location dimension, then add explicit transport edges. A useful first release can be intentionally simple:
+Tower area sizing and growth are modeled. Exact average tower electricity and spores require exported planting/harvesting operation timing rather than the current conservative active-load assumption.
 
-- let players pin recipes or whole item chains to a planet/platform
-- treat unpinned compatible recipes as solver choices
-- show imports and exports per location
-- model rocket-stack throughput and platform cargo as configurable capacities
-- make transit spoilage optional and explicit
+## Remaining priority 1 work
 
-Keep location assignment out of the DOM renderer; it belongs in the deterministic solver/factory boundary.
+- Full lightning, heating-tower, fusion, and arbitrary nuclear-layout power planning.
+- Layout-aware Aquilo heating for belts, pipes, inserters, pumps, and tanks.
+- Inserter, pump, train-frequency, and platform-belt capacity analysis.
+- Rich side-by-side recipe comparison including complete raw-resource cost and byproduct deltas.
+- Regeneration of all bundled datasets with recipe unlock and item cargo metadata.
 
-### Better infeasibility explanations
+## Performance policy
 
-The current typed error is a safer UI boundary. The next step is a diagnostic trace that identifies the smallest useful cause:
-
-- target item with no enabled compatible recipe
-- recipe disabled by selected location
-- selected machine unavailable on every compatible surface
-- forced alternate recipe that cannot satisfy the requested output
-- cyclic or multi-output component missing an external source/sink
-
-## Priority 1: faster player workflows
-
-### Recipe and machine decision support
-
-For an item with alternatives, show a small comparison before selection:
-
-- raw-resource cost
-- machine count
-- power
-- productivity eligibility
-- compatible locations
-- important by-products
-
-This would make oil, casting, asteroid crushing, biochamber, and recycling choices easier to reason about.
-
-### Factory summaries by location and section
-
-Once recipe assignment exists, expand the current summary into:
-
-- machines and power per planet/platform
-- imports and exports per location
-- rocket launches or cargo stacks per minute
-- belts/pipes/rails needed for major flows
-- grouped production blocks that can be copied as a checklist
-
-## Priority 2: megabase performance
-
-Measure before changing algorithms. Add representative 1k, 10k, and multi-output science plans to a benchmark script, then address the measured bottleneck.
-
-Likely high-value changes are:
-
-- cache recipe graphs and strongly connected components until recipe/location settings change
-- move solve work into a Web Worker with cancellation for rapid input edits
-- debounce text-driven recalculation while keeping direct controls immediate
-- virtualize or progressively render very large result tables
-- avoid rebuilding breakdown DOM and full graph layouts when only formatting changes
-
-Preserve exact arithmetic; only introduce an approximate mode as an explicit opt-in with visible error bounds.
+Measure before changing algorithms. The current 500-step regression remains fast, so no Web Worker, graph cache, or virtualization was added. Introduce those only after representative 1k, 10k, and large multi-output browser benchmarks identify a real bottleneck.
 
 ## Validation expectations
 

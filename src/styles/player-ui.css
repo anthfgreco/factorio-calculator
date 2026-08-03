@@ -1007,3 +1007,105 @@ svg.sankey g.edgePathHighlight path.highlighter {
   color: var(--foreground);
   font-size: 0.8rem;
 }
+
+/* Advanced planning controls */
+.target-quality,
+.recipe-location-selector {
+  margin: 0 0.35rem;
+  max-width: 12rem;
+}
+
+.planning-details {
+  width: min(38rem, 100%);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+}
+
+.planning-details > summary {
+  padding: 0.42rem 0.55rem;
+  color: var(--foreground);
+  cursor: pointer;
+  user-select: none;
+}
+
+.planning-details > summary:hover,
+.planning-details > summary:focus-visible {
+  color: var(--bright);
+}
+
+.planning-details[open] > summary {
+  border-bottom: 1px solid var(--rule);
+}
+
+.planning-details-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.65rem;
+}
+
+.planning-group + .planning-group {
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--rule);
+}
+
+.planning-group h4 {
+  margin: 0;
+  color: var(--bright);
+  font-size: 0.84rem;
+}
+
+.planning-group p {
+  margin: 0.15rem 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.planning-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(9rem, 1fr));
+  gap: 0.5rem 0.75rem;
+  max-width: 30rem;
+}
+
+.planning-field {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.planning-field > span:first-child {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.planning-field input {
+  width: 100%;
+  min-width: 0;
+}
+
+.planning-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.planning-control > span:last-child {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 760px) {
+  .planning-details {
+    width: 100%;
+  }
+
+  .planning-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.machine-option label span:last-child,
+.recipe-selector-option span:last-child {
+  line-height: 1.25;
+}

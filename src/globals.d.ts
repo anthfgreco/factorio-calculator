@@ -13,6 +13,7 @@ declare global {
     changeCountPrecision: (event: Event) => void
     changeFormat: (event: Event) => void
     changeMprod: (event: Event) => void
+    changePlanningSetting: (event: Event) => void
     changeVisType: (event: Event) => void
     changeVisRender: (event: Event) => void
     changeVisDir: (event: Event) => void

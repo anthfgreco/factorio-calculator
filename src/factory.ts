@@ -17,6 +17,7 @@ import {
   isFactoryTarget as recipeIsFactoryTarget,
 } from "./recipes.js"
 import { solve } from "./solver.js"
+import { getQualityTargetMultiplier } from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Calculator defaults
@@ -320,6 +321,14 @@ export class FactorySpecification {
   planetaryBaseline: Set<any> | null
   priority: PriorityList | null
   defaultPriority: Map<any, Rational>[] | null
+  beltStackSize: Rational
+  bufferMinutes: Rational
+  freshnessDelayMinutes: Rational
+  resourceYields: Map<any, Rational>
+  asteroidLimits: Map<string, Rational>
+  recipeLocations: Map<any, any>
+  beaconPower: Rational
+  maxQualityLevel: number
   format: Formatter
   lastTotals: any
   lastError: unknown
@@ -371,6 +380,15 @@ export class FactorySpecification {
     this.priority = null
     this.defaultPriority = null
 
+    this.beltStackSize = one
+    this.bufferMinutes = one
+    this.freshnessDelayMinutes = zero
+    this.resourceYields = new Map()
+    this.asteroidLimits = new Map()
+    this.recipeLocations = new Map()
+    this.beaconPower = zero
+    this.maxQualityLevel = 4
+
     this.format = new Formatter()
 
     this.lastTotals = null
@@ -393,6 +411,7 @@ export class FactorySpecification {
     fuels,
     itemGroups,
     recipeProductivityResearch = new Map(),
+    beaconPower = zero,
   ) {
     this.items = items
     this.recipes = recipes
@@ -422,6 +441,7 @@ export class FactorySpecification {
       }
     }
     this.itemGroups = itemGroups
+    this.beaconPower = beaconPower
     this.defaultPriority = this.getDefaultPriorityArray()
     this.priority = null
   }
@@ -721,8 +741,18 @@ export class FactorySpecification {
     }
     return building.getCount(this, recipe, rate)
   }
+  getResourceYield(recipe) {
+    return this.resourceYields.get(recipe) ?? one
+  }
+  setResourceYield(recipe, value) {
+    this.resourceYields.set(recipe, Rational.max(Rational.from_floats(1, 100), value))
+  }
+  setRecipeLocation(recipe, location) {
+    if (location === null) this.recipeLocations.delete(recipe)
+    else this.recipeLocations.set(recipe, location)
+  }
   getBeltCount(rate) {
-    return rate.div(this.belt.rate)
+    return rate.div(this.belt.rate.mul(this.beltStackSize))
   }
   getFuelForBuilding(building) {
     if (building === null || building.fuel === null || this.fuels === null) {
@@ -821,6 +851,14 @@ export class FactorySpecification {
         recipe = target.recipe
       } else {
         recipe = null
+      }
+      if (target.qualityLevel > 0) {
+        let qualityRecipe = target.recipe ?? this.getRecipes(item)[0]
+        if (qualityRecipe === undefined) {
+          throw new Error(`No recipe is available to produce ${item.name} at the selected quality.`)
+        }
+        rate = rate.mul(getQualityTargetMultiplier(this, qualityRecipe, target.qualityLevel))
+        recipe = qualityRecipe
       }
       outputs.push([item, rate, recipe])
     }

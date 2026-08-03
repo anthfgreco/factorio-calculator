@@ -268,6 +268,7 @@ class Building {
     fuel,
     conditions = [],
     allowedEffects = null,
+    emissions = null,
   ) {
     this.key = key
     this.name = name
@@ -278,6 +279,10 @@ class Building {
     this.power = power
     this.fuel = fuel
     this.conditions = conditions ?? []
+    this.emissions = {}
+    for (let [pollutant, value] of Object.entries(emissions ?? {})) {
+      this.emissions[pollutant] = Rational.from_float_approximate(value as number)
+    }
     if (allowedEffects === null || allowedEffects === undefined) {
       this.allowedEffects = null
     } else if (Array.isArray(allowedEffects)) {
@@ -378,8 +383,9 @@ class Miner extends Building {
     fuel,
     conditions = [],
     allowedEffects = null,
+    emissions = null,
   ) {
-    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions, allowedEffects)
+    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions, allowedEffects, emissions)
     this.miningSpeed = miningSpeed
   }
   less(other) {
@@ -396,7 +402,11 @@ class Miner extends Building {
     } else {
       speedEffect = one
     }
-    return this.miningSpeed.div(recipe.miningTime).mul(speedEffect)
+    let rate = this.miningSpeed.div(recipe.miningTime).mul(speedEffect)
+    if (recipe.categories.has("basic-fluid")) {
+      rate = rate.mul(spec.getResourceYield(recipe))
+    }
+    return rate
   }
   prodEffect(spec) {
     return spec.miningProd
@@ -566,6 +576,7 @@ export function getBuildings(data, items) {
         fuel,
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
+        d.energy_source?.emissions_per_minute ?? null,
       ),
     )
   }
@@ -584,6 +595,7 @@ export function getBuildings(data, items) {
         null,
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
+        d.energy_source?.emissions_per_minute ?? null,
       ),
     )
   }
@@ -595,9 +607,6 @@ export function getBuildings(data, items) {
     )
   }
   for (let d of data.mining_drills) {
-    if (d.key == "pumpjack") {
-      continue
-    }
     let fuel = null
     if (d.energy_source && d.energy_source.type === "burner") {
       fuel = d.energy_source.fuel_category
@@ -615,6 +624,26 @@ export function getBuildings(data, items) {
         fuel,
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
+        d.energy_source?.emissions_per_minute ?? null,
+      ),
+    )
+  }
+  for (let d of data.agricultural_tower ?? []) {
+    buildings.push(
+      new Building(
+        d.key,
+        d.localized_name.en,
+        d.icon_col,
+        d.icon_row,
+        ["agriculture"],
+        Rational.from_float(47),
+        zero,
+        0,
+        Rational.from_float_approximate(d.energy_usage ?? 0),
+        null,
+        d.surface_conditions ?? [],
+        d.allowed_effects ?? [],
+        d.energy_source?.emissions_per_minute ?? null,
       ),
     )
   }
@@ -790,6 +819,7 @@ export function moduleDropdown(selector, data) {
 
 const MIN_SPEED_EFFECT = Rational.from_floats(1, 5) // 20%
 const MIN_POWER_EFFECT = Rational.from_floats(1, 5) // 20%
+const MIN_POLLUTION_EFFECT = Rational.from_floats(1, 5) // 20%
 
 // ModuleSpec represents the set of modules (including beacons) configured for
 // a given recipe.
@@ -836,7 +866,9 @@ export class ModuleSpec {
       return false
     }
     let oldModule = this.modules[index]
-    let needRecalc = (oldModule && oldModule.hasProdEffect()) || (module && module.hasProdEffect())
+    let needRecalc =
+      (oldModule && (oldModule.hasProdEffect() || oldModule.hasQualityEffect())) ||
+      (module && (module.hasProdEffect() || module.hasQualityEffect()))
     this.modules[index] = module
     return needRecalc
   }
@@ -911,6 +943,25 @@ export class ModuleSpec {
     }
     return Rational.max(power, MIN_POWER_EFFECT)
   }
+  pollutionEffect() {
+    let pollution = one
+    for (let module of this.modules) {
+      if (module) pollution = pollution.add(module.pollution)
+    }
+    if (this.modules.length > 0) {
+      for (let module of this.beaconModules) {
+        if (module === null) continue
+        let beacon = module.pollution.mul(this.beaconCount).mul(beaconEffect)
+        if (!usesLegacyCalculation()) {
+          let i = this.beaconCount.ceil().toFloat() - 1
+          if (i >= beaconProfile.length) i = beaconProfile.length - 1
+          beacon = beacon.mul(beaconProfile[i])
+        }
+        pollution = pollution.add(beacon)
+      }
+    }
+    return Rational.max(pollution, MIN_POLLUTION_EFFECT)
+  }
 }
 
 export let moduleRows = null
@@ -919,6 +970,10 @@ export let shortModules = null
 let beaconProfile
 let beaconEffect
 let beaconAllowedEffects = new Set(["consumption", "speed", "pollution"])
+
+export function getBeaconPower(data): Rational {
+  return Rational.from_float_approximate(data.beacon.energy_usage ?? 0)
+}
 
 export function getModules(data, items) {
   let modules = new Map()
@@ -1075,7 +1130,7 @@ export function getPlanets(data, recipes, buildings) {
   for (let d of data.planets) {
     let resources = new Set()
     let roots = new Set()
-    for (let key of d.resources.resource.concat(d.resources.offshore).concat(d.resources.plants)) {
+    for (let key of (d.resources.resource ?? []).concat(d.resources.offshore ?? []).concat(d.resources.plants ?? [])) {
       let r = recipes.get(key)
       resources.add(r)
       if (RECYCLING_ROOT_KEYS.has(key)) {

@@ -194,6 +194,33 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
   if (spec.belt.key !== DEFAULT_BELT) {
     settings += "belt=" + spec.belt.key + "&"
   }
+  if (!spec.beltStackSize.equal(Rational.from_float(1))) settings += "bstack=" + spec.beltStackSize.toString() + "&"
+  if (!spec.bufferMinutes.equal(Rational.from_float(1))) settings += "buffer=" + spec.bufferMinutes.toString() + "&"
+  if (!spec.freshnessDelayMinutes.isZero()) settings += "fresh=" + spec.freshnessDelayMinutes.toString() + "&"
+  let resourceYields = [...spec.resourceYields]
+    .filter(([recipe, value]) => recipe.categories?.has("basic-fluid") && !value.equal(Rational.from_float(1)))
+    .sort(([a], [b]) => a.key.localeCompare(b.key))
+    .map(([recipe, value]) => `${recipe.key}:${value.mul(Rational.from_float(100)).toString()}`)
+  if (resourceYields.length > 0) settings += "ryield=" + resourceYields.join(",") + "&"
+  if (spec.maxQualityLevel !== 4) settings += "maxq=" + spec.maxQualityLevel + "&"
+  if (spec.asteroidLimits.size > 0) {
+    settings +=
+      "astcap=" +
+      [...spec.asteroidLimits]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => `${key}:${value.mul(spec.format.rateFactor).toString()}`)
+        .join(",") +
+      "&"
+  }
+  if (spec.recipeLocations.size > 0) {
+    settings +=
+      "rloc=" +
+      [...spec.recipeLocations]
+        .sort(([a], [b]) => a.key.localeCompare(b.key))
+        .map(([recipe, location]) => `${recipe.key}:${location.key}`)
+        .join(",") +
+      "&"
+  }
   if (spec.fuel.key !== DEFAULT_FUEL) {
     settings += "fuel=" + spec.fuel.key + "&"
   }
@@ -244,6 +271,7 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
       } else {
         targetString = `${target.itemKey}:r:${target.rate.mul(spec.format.rateFactor).toString()}`
       }
+      if (target.qualityLevel > 0) targetString += `:q${target.qualityLevel}`
       targetStrings.push(targetString)
     }
   }

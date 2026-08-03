@@ -7,19 +7,23 @@ This fork includes experimental **Factorio Space Age 2.1.12** data.
 ## Player-facing behavior
 
 - Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
-- Factorio 2.1 recipe categories, combined result probabilities, recycling recipes, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
-- Production-location filtering for Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, and Space platforms.
-- A compact factory summary with machines to place, electrical power, category-specific burner fuel rates, active recipes, imports, and modeling notes.
-- Directly labeled Factory rows, visible target/import state, in-row recipe selection, searchable recipe settings, slot-safe URL-persistent state, and a one-click plan link.
-- Relaxed and compact Factory row densities, stored as a local display preference.
-- Progression presets for early game through megabase planning, plus a consolidated Help tab.
-- Actionable calculation errors when a production path is unavailable or the selected recipe system is infeasible.
+- Factorio 2.1 recipe categories, combined result probabilities, recycling, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
+- Gleba growth-time and agricultural-tower sizing, seed flows, spoilage/freshness reporting, effective agricultural-science throughput, and spores.
+- Exact target-quality selection using direct quality probabilities and explicit non-target-quality byproduct reporting.
+- Recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or Space platforms, with per-location summaries and cross-location transport flows.
+- Configurable pumpjack/resource yield and asteroid-chunk collection capacities.
+- Machine plus configured beacon-equivalent electricity, pollution, and Aquilo production heat.
+- Belt stacking, stack throughput, configurable buffers, and cargo-wagon loads.
+- Progression presets that set the quality ceiling and belt-stacking research.
+- Directly labeled Factory rows, in-row recipe/building/location selection, searchable settings, persistent URL state, and a one-click plan link.
 
 ## Current model boundaries
 
-The calculator deliberately keeps one shared material pool when multiple locations are selected. It reports where each active recipe can run, but it does not yet assign every recipe to a specific planet or calculate rocket capacity, platform cargo throughput, travel time, or spoilage in transit.
+The exact simplex solver still balances scalar item rates. Quality targets use Factorio's direct expected-value probability chain, but automatic recycler-loop optimization and a fully generalized `(item, quality, location)` simplex are not included. Location assignments and transport are explicit accounting after solving rather than route-capacity constraints inside the LP.
 
-Quality modules are validated against recipe and machine capabilities, their quality probabilities and electricity modifiers are preserved, and they are excluded from beacons. Speed modules also retain their negative quality modifiers. The solver does not yet split outputs into normal/uncommon/rare/epic/legendary item tiers or optimize recycling-based upcycling loops. Factory totals report production-machine electricity plus burner consumption for chemical fuel, nutrients, bioflux, and other exported fuel categories; inserters, pumps, logistics, platform travel, and infrastructure power remain outside the model.
+Agricultural tower electricity and spores use conservative active-load values because planting/harvesting duty timing is absent from the export. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
+
+See [Advanced Space Age planning](docs/advanced-planning.md) for calculation details and limitations.
 
 ## Live site
 
@@ -63,6 +67,7 @@ The TypeScript source is intentionally consolidated into cohesive feature module
 - `src/math.ts` — exact rational/matrix arithmetic and numeric formatting
 - `src/solver.ts` — solver contracts, cycles, totals, and simplex orchestration
 - `src/factory.ts` — calculator state facade and factory policies
+- `src/planning.ts` — quality, freshness, transport, capacity, pollution, power, and heat calculations
 - `src/models.ts` — runtime buildings, modules, belts, fuel, planets, and groups
 - `src/recipes.ts` — item/recipe models and recipe policy/query logic
 - `src/priorities.ts` — resource-priority model, policy, and editor

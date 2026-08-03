@@ -1,4 +1,4 @@
-//import {max, min, sum} from "d3-array";
+import {max, sum} from "d3";
 import {justify} from "./align.js";
 import constant from "./constant.js";
 import {minFAS} from "./cycle.js";
@@ -158,8 +158,8 @@ export default function Sankey() {
   function computeNodeValues({nodes}) {
     for (const node of nodes) {
       node.value = Math.max(
-        d3.sum(node.sourceLinks, value),
-        d3.sum(node.targetLinks, value)
+        sum(node.sourceLinks, value),
+        sum(node.targetLinks, value)
       );
     }
   }
@@ -219,7 +219,7 @@ export default function Sankey() {
   }
 
   function computeNodeLayers({nodes}) {
-    const x = d3.max(nodes, d => d.depth) + 1;
+    const x = max(nodes, d => d.depth) + 1;
     const kx = dx + linkLength
     const columns = new Array(x);
     for (const node of nodes) {
@@ -237,10 +237,9 @@ export default function Sankey() {
   }
 
   function initializeNodeBreadths(columns) {
-    const maxValue = d3.max(columns, c => d3.max(c, value))
+    const maxValue = max(columns, c => max(c, value))
     const ky = maxHeight / maxValue
-    const y1 = d3.max(columns, c => (c.length - 1) * py + d3.sum(c, value) * ky)
-    //const ky = d3.min(columns, c => (y1 - y0 - (c.length - 1) * py) / d3.sum(c, value));
+    const y1 = max(columns, c => (c.length - 1) * py + sum(c, value) * ky)
     for (const nodes of columns) {
       let y = y0;
       for (const node of nodes) {

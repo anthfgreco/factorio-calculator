@@ -324,6 +324,186 @@
         </tr>
 
         <tr class="setting-row">
+          <td class="setting-label">Belt stacking:</td>
+          <td>
+            <select id="belt_stack_size" onchange="handlers.changePlanningSetting(event)">
+              <option value="1">1 item high</option>
+              <option value="2">2 items high</option>
+              <option value="3">3 items high</option>
+              <option value="4">4 items high</option>
+            </select>
+          </td>
+        </tr>
+
+        <tr class="setting-row">
+          <td class="setting-label">Logistics buffer:</td>
+          <td>
+            <input
+              id="buffer_minutes"
+              type="number"
+              min="0"
+              step="0.5"
+              value="1"
+              size="5"
+              onchange="handlers.changePlanningSetting(event)"
+            />
+            minutes
+          </td>
+        </tr>
+
+        <tr class="setting-row">
+          <td class="setting-label">Freshness delay:</td>
+          <td>
+            <input
+              id="freshness_delay"
+              type="number"
+              min="0"
+              step="0.5"
+              value="0"
+              size="5"
+              onchange="handlers.changePlanningSetting(event)"
+            />
+            minutes
+          </td>
+        </tr>
+
+        <tr class="setting-row">
+          <td class="setting-label">Quality progression:</td>
+          <td>
+            <select id="max_quality" onchange="handlers.changePlanningSetting(event)">
+              <option value="0">Normal only</option>
+              <option value="2">Rare unlocked</option>
+              <option value="3">Epic unlocked</option>
+              <option value="4" selected>Legendary unlocked</option>
+            </select>
+          </td>
+        </tr>
+
+        <tr class="setting-row planning-assumptions-row">
+          <td class="setting-label top">Resource assumptions:</td>
+          <td>
+            <details class="planning-details">
+              <summary>Fluid yields and asteroid limits</summary>
+              <div class="planning-details-body">
+                <section class="planning-group">
+                  <h4>Fluid resource yields</h4>
+                  <p>Adjust the output of each pumpjack resource relative to its nominal yield.</p>
+                  <div class="planning-grid">
+                    <label class="planning-field">
+                      <span>Crude oil</span>
+                      <span class="planning-control">
+                        <input
+                          data-resource-key="crude-oil"
+                          type="number"
+                          min="1"
+                          step="10"
+                          value="100"
+                          onchange="handlers.changePlanningSetting(event)"
+                        />
+                        <span>%</span>
+                      </span>
+                    </label>
+                    <label class="planning-field">
+                      <span>Sulfuric geyser</span>
+                      <span class="planning-control">
+                        <input
+                          data-resource-key="sulfuric-acid-geyser"
+                          type="number"
+                          min="1"
+                          step="10"
+                          value="100"
+                          onchange="handlers.changePlanningSetting(event)"
+                        />
+                        <span>%</span>
+                      </span>
+                    </label>
+                    <label class="planning-field">
+                      <span>Fluorine vent</span>
+                      <span class="planning-control">
+                        <input
+                          data-resource-key="fluorine-vent"
+                          type="number"
+                          min="1"
+                          step="10"
+                          value="100"
+                          onchange="handlers.changePlanningSetting(event)"
+                        />
+                        <span>%</span>
+                      </span>
+                    </label>
+                    <label class="planning-field">
+                      <span>Lithium brine</span>
+                      <span class="planning-control">
+                        <input
+                          data-resource-key="lithium-brine"
+                          type="number"
+                          min="1"
+                          step="10"
+                          value="100"
+                          onchange="handlers.changePlanningSetting(event)"
+                        />
+                        <span>%</span>
+                      </span>
+                    </label>
+                  </div>
+                </section>
+
+                <section class="planning-group">
+                  <h4>Asteroid collection limits</h4>
+                  <p>Leave a field blank for unlimited collection. Values use the selected display rate.</p>
+                  <div class="planning-grid">
+                    <label class="planning-field">
+                      <span>Metallic</span>
+                      <input
+                        id="asteroid_metallic"
+                        data-item-key="metallic-asteroid-chunk"
+                        type="number"
+                        min="0"
+                        placeholder="Unlimited"
+                        onchange="handlers.changePlanningSetting(event)"
+                      />
+                    </label>
+                    <label class="planning-field">
+                      <span>Carbonic</span>
+                      <input
+                        id="asteroid_carbonic"
+                        data-item-key="carbonic-asteroid-chunk"
+                        type="number"
+                        min="0"
+                        placeholder="Unlimited"
+                        onchange="handlers.changePlanningSetting(event)"
+                      />
+                    </label>
+                    <label class="planning-field">
+                      <span>Oxide</span>
+                      <input
+                        id="asteroid_oxide"
+                        data-item-key="oxide-asteroid-chunk"
+                        type="number"
+                        min="0"
+                        placeholder="Unlimited"
+                        onchange="handlers.changePlanningSetting(event)"
+                      />
+                    </label>
+                    <label class="planning-field">
+                      <span>Promethium</span>
+                      <input
+                        id="asteroid_promethium"
+                        data-item-key="promethium-asteroid-chunk"
+                        type="number"
+                        min="0"
+                        placeholder="Unlimited"
+                        onchange="handlers.changePlanningSetting(event)"
+                      />
+                    </label>
+                  </div>
+                </section>
+              </div>
+            </details>
+          </td>
+        </tr>
+
+        <tr class="setting-row">
           <td class="setting-label">Preferred fuel:</td>
           <td><span id="fuel_selector" class="radio-setting"></span></td>
         </tr>
@@ -489,6 +669,54 @@
         <section id="help-changelog" class="help-section">
           <h2 class="help-section-title">Changelog</h2>
           <div class="changelog-timeline">
+            <article class="changelog-entry">
+              <div class="changelog-meta">
+                <time datetime="2026-08-03">2026-08-03</time>
+              </div>
+              <div class="changelog-details">
+                <h3>Advanced Space Age Planning &amp; Correctness</h3>
+                <ul>
+                  <li>
+                    Added real Gleba plant growth times, agricultural-tower sizing, seed flows, spoilage timing,
+                    remaining freshness, effective agricultural-science throughput, and spores.
+                  </li>
+                  <li>
+                    Added exact-quality targets using direct production probabilities, selected-recipe scaling, quality
+                    progression limits, and combined reporting for output at other quality tiers.
+                  </li>
+                  <li>
+                    Added recipe-level location assignment, deterministic automatic placement, cross-location material
+                    flows, and multi-location machine, power, pollution, spores, and heat summaries.
+                  </li>
+                  <li>
+                    Added configurable fluid-resource yields, asteroid collection limits, belt stacking, logistics
+                    buffers, cargo-wagon loads, beacon-equivalent electricity, pollution, and Aquilo production heat.
+                  </li>
+                  <li>
+                    Consolidated fluid yields and asteroid collection limits into a compact, responsive advanced
+                    settings panel.
+                  </li>
+                  <li>Prevented synthetic solver output and imported-item recipes from entering location checks.</li>
+                  <li>
+                    Restored Gleba plants as location-restricted resources so they can no longer grow on Space
+                    platforms.
+                  </li>
+                  <li>
+                    Corrected quality reporting from “lower-quality” to “other quality tiers,” which also covers output
+                    above the requested tier.
+                  </li>
+                  <li>
+                    Removed inactive technology gating, dead rocket-load reporting, misleading power-infrastructure
+                    estimates, the duplicate pumpjack-yield control, and the added mutable beacon-power global.
+                  </li>
+                  <li>
+                    Strengthened advanced-planning dataset validation, reduced summary noise, and added regressions for
+                    transport pseudo-recipes, plant location restrictions, and exact-quality scaling.
+                  </li>
+                </ul>
+              </div>
+            </article>
+
             <article class="changelog-entry">
               <div class="changelog-meta">
                 <time datetime="2026-08-02">2026-08-02</time>

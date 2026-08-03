@@ -13,7 +13,7 @@ import { Ingredient, Totals } from "./solver.js"
 
 export class Item {
   [key: string]: any
-  constructor(key, name, col, row, phase, group, subgroup, order) {
+  constructor(key, name, col, row, phase, group, subgroup, order, stackSize = 1) {
     this.key = key
     this.name = name
     this.phase = phase
@@ -27,6 +27,9 @@ export class Item {
     this.group = group
     this.subgroup = subgroup
     this.order = order
+    this.stackSize = stackSize ?? 1
+    this.spoilTime = null
+    this.spoilResult = null
 
     this.disableRecipe = new DisabledRecipe(this)
   }
@@ -63,7 +66,20 @@ export function getItems(data) {
       continue
     }
     let phase = d.type === "fluid" ? "fluid" : "solid"
-    items.set(d.key, new Item(d.key, d.localized_name.en, d.icon_col, d.icon_row, phase, d.group, d.subgroup, d.order))
+    items.set(
+      d.key,
+      new Item(
+        d.key,
+        d.localized_name.en,
+        d.icon_col,
+        d.icon_row,
+        phase,
+        d.group,
+        d.subgroup,
+        d.order,
+        d.stack_size ?? 1,
+      ),
+    )
   }
   let cycleKey = "nuclear-reactor-cycle"
   let reactor = items.get("nuclear-reactor")
@@ -435,7 +451,7 @@ class ResourceRecipe extends Recipe {
 
 class SpoilageRecipe extends Recipe {
   [key: string]: any
-  constructor(from_item, to_item) {
+  constructor(from_item, to_item, spoilTime) {
     let key = `${from_item.key}-spoilage`
     let name = `${from_item.name} to ${to_item.name} (Spoilage)`
     super(
@@ -447,17 +463,18 @@ class SpoilageRecipe extends Recipe {
       false,
       true,
       null,
-      zero,
+      spoilTime,
       [new Ingredient(from_item, one)],
       [new Ingredient(to_item, one)],
       [],
     )
+    this.processKind = "spoilage"
   }
 }
 
 class PlantRecipe extends Recipe {
   [key: string]: any
-  constructor(key, name, order, col, row, seed, results, conditions) {
+  constructor(key, name, order, col, row, seed, results, conditions, growthTime) {
     super(
       key,
       name,
@@ -466,20 +483,18 @@ class PlantRecipe extends Recipe {
       row,
       false,
       true,
-      null,
-      zero,
+      "agriculture",
+      growthTime,
       [new Ingredient(seed, one)],
-      //[new Ingredient(item, quantity)],
       results,
       conditions,
     )
-    if (this.isResource()) {
-      this.defaultPriority = 1
-      this.defaultWeight = Rational.from_float(100)
-    }
+    this.processKind = "growth"
+    this.defaultPriority = 1
+    this.defaultWeight = Rational.from_float(100)
   }
   isResource() {
-    return this.conditions.length === 0
+    return true
   }
 }
 
@@ -492,19 +507,6 @@ class MiningRecipe extends Recipe {
     super(key, name, order, col, row, true, true, category, zero, ingredients, products, [])
     this.miningTime = miningTime
 
-    this.defaultPriority = 1
-    this.defaultWeight = Rational.from_float(100)
-  }
-  isResource() {
-    return true
-  }
-}
-
-// XXX: Still a hack.
-class PumpjackRecipe extends Recipe {
-  [key: string]: any
-  constructor(key, name, col, row, category, product) {
-    super(key, name, undefined, col, row, false, true, category, zero, [], [new Ingredient(product, one)], [])
     this.defaultPriority = 1
     this.defaultWeight = Rational.from_float(100)
   }
@@ -638,9 +640,24 @@ export function getRecipes(data, items) {
       category = "basic-solid"
     }
     if (category === "basic-fluid") {
-      // XXX: Do something about pumpjacks.
-      let item = items.get(d.results[0].name)
-      recipes.set(d.key, new PumpjackRecipe(d.key, d.localized_name.en, d.icon_col, d.icon_row, null, item))
+      let products = []
+      for (let result of d.results) {
+        products.push(new Ingredient(items.get(result.name), getExpectedResultAmount(result)))
+      }
+      recipes.set(
+        d.key,
+        new MiningRecipe(
+          d.key,
+          d.localized_name.en,
+          d.order,
+          d.icon_col,
+          d.icon_row,
+          category,
+          Rational.from_float_approximate(d.mining_time),
+          [],
+          products,
+        ),
+      )
       continue
     }
     let ingredients = null
@@ -706,6 +723,7 @@ export function getRecipes(data, items) {
         items.get(plant.seed),
         results,
         conditions,
+        Rational.from_float_approximate(plant.growth_ticks / 60),
       )
       recipes.set(plant.key, r)
     }
@@ -714,7 +732,10 @@ export function getRecipes(data, items) {
     for (let spoil of data.spoilage) {
       let from_item = items.get(spoil.from_item)
       let to_item = items.get(spoil.to_item)
-      let r = new SpoilageRecipe(from_item, to_item)
+      let spoilTime = Rational.from_float_approximate(spoil.time / 60)
+      from_item.spoilTime = spoilTime
+      from_item.spoilResult = to_item
+      let r = new SpoilageRecipe(from_item, to_item, spoilTime)
       recipes.set(r.key, r)
     }
   }

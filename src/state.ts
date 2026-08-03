@@ -64,6 +64,8 @@ type PresetDefinition = {
   module: string | null
   beaconModule: string | null
   beaconCount: number
+  beltStackSize: number
+  maxQualityLevel: number
 }
 
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
@@ -74,6 +76,8 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
     module: null,
     beaconModule: null,
     beaconCount: 0,
+    beltStackSize: 1,
+    maxQualityLevel: 0,
   },
   "pre-rocket": {
     planets: ["nauvis"],
@@ -82,6 +86,8 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
     module: "productivity-module",
     beaconModule: null,
     beaconCount: 0,
+    beltStackSize: 1,
+    maxQualityLevel: 0,
   },
   "first-planets": {
     planets: ["nauvis", "vulcanus", "fulgora", "gleba"],
@@ -90,6 +96,8 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
     module: "productivity-module-2",
     beaconModule: "speed-module-2",
     beaconCount: 4,
+    beltStackSize: 2,
+    maxQualityLevel: 2,
   },
   "late-space-age": {
     planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
@@ -98,6 +106,8 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
     module: "productivity-module-3",
     beaconModule: "speed-module-3",
     beaconCount: 8,
+    beltStackSize: 4,
+    maxQualityLevel: 4,
   },
   megabase: {
     planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
@@ -106,6 +116,8 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
     module: "productivity-module-3",
     beaconModule: "speed-module-3",
     beaconCount: 12,
+    beltStackSize: 4,
+    maxQualityLevel: 4,
   },
 }
 
@@ -130,6 +142,10 @@ function syncProgressionPresetControls() {
 
   let beaconCount = document.getElementById("default_beacon_count") as HTMLInputElement | null
   if (beaconCount !== null) beaconCount.value = spec.defaultBeaconCount.toDecimal()
+  let beltStack = document.getElementById("belt_stack_size") as HTMLSelectElement | null
+  if (beltStack !== null) beltStack.value = spec.beltStackSize.toString()
+  let maxQuality = document.getElementById("max_quality") as HTMLSelectElement | null
+  if (maxQuality !== null) maxQuality.value = String(spec.maxQualityLevel)
 }
 
 export function applyProgressionPreset(event: Event) {
@@ -153,6 +169,11 @@ export function applyProgressionPreset(event: Event) {
   spec.secondaryDefaultModule = null
   spec.defaultBeacon = [getByKey(spec.modules, preset.beaconModule), getByKey(spec.modules, preset.beaconModule)]
   spec.defaultBeaconCount = Rational.from_float(preset.beaconCount)
+  spec.beltStackSize = Rational.from_float(preset.beltStackSize)
+  spec.maxQualityLevel = preset.maxQualityLevel
+  for (let target of spec.buildTargets) {
+    target.setQuality(target.qualityLevel)
+  }
   spec.spec.clear()
 
   document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle: any) => {
@@ -162,6 +183,42 @@ export function applyProgressionPreset(event: Event) {
   })
   syncMiningProductivityControls()
   syncProgressionPresetControls()
+  spec.updateSolution()
+}
+
+export function changePlanningSetting(event: Event) {
+  let input = event.target
+  if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement)) return
+  switch (input.id) {
+    case "belt_stack_size":
+      spec.beltStackSize = Rational.from_string(input.value)
+      break
+    case "buffer_minutes":
+      spec.bufferMinutes = Rational.max(Rational.from_float(0), Rational.from_string(input.value || "0"))
+      break
+    case "freshness_delay":
+      spec.freshnessDelayMinutes = Rational.max(Rational.from_float(0), Rational.from_string(input.value || "0"))
+      break
+    case "max_quality":
+      spec.maxQualityLevel = Number(input.value)
+      for (let target of spec.buildTargets) {
+        target.setQuality(target.qualityLevel)
+      }
+      break
+    default: {
+      let resourceKey = input.dataset.resourceKey
+      if (resourceKey) {
+        let recipe = spec.recipes.get(resourceKey)
+        if (recipe)
+          spec.setResourceYield(recipe, Rational.from_string(input.value || "100").div(Rational.from_float(100)))
+        break
+      }
+      let itemKey = input.dataset.itemKey
+      if (!itemKey) return
+      if (input.value === "") spec.asteroidLimits.delete(itemKey)
+      else spec.asteroidLimits.set(itemKey, Rational.from_string(input.value).div(spec.format.rateFactor))
+    }
+  }
   spec.updateSolution()
 }
 

@@ -5,6 +5,7 @@ import { one, Rational, zero } from "./math.js"
 import { addInputs, makeDropdown } from "./presentation.js"
 import { formatLocationList, getUnavailableLocationInfo, itemMatchesSearch } from "./data.js"
 import { refreshRecipeSettings } from "./settings.js"
+import { getRecipeQualityChance, qualityProbability, QUALITY_TIERS } from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Build targets
@@ -133,6 +134,7 @@ export class BuildTarget {
     this.changedBuilding = true
     this.buildings = one
     this.rate = zero
+    this.qualityLevel = 0
 
     let element = d3.create("li").classed("target", true)
     element
@@ -172,6 +174,26 @@ export class BuildTarget {
     this.buildingLabel = element.append("label").classed(SELECTED_INPUT, true).text(" Machines ").node()
 
     this.recipeSelector = element.append("span")
+
+    this.qualitySelector = element
+      .append("select")
+      .classed("target-quality", true)
+      .attr(
+        "data-tooltip",
+        "Target an exact quality tier. Higher tiers use expected direct-production probabilities from the configured quality modules.",
+      )
+      .on("change", (event) => {
+        this.qualityLevel = Number(event.target.value)
+        spec.updateSolution()
+      })
+      .node()
+    d3.select(this.qualitySelector)
+      .selectAll("option")
+      .data(QUALITY_TIERS.map((name, level) => ({ name, level })))
+      .join("option")
+      .attr("value", (d) => d.level)
+      .text((d) => d.name)
+    this.setQuality(0)
 
     this.buildingInput = element
       .append("input")
@@ -312,13 +334,22 @@ export class BuildTarget {
         baseRate = baseRate.mul(recipe.gives(this.item))
       }
     }
+    let qualityRate = baseRate
+    if (baseRate !== null && recipe !== null && this.qualityLevel > 0) {
+      let probability = qualityProbability(
+        getRecipeQualityChance(spec, recipe),
+        this.qualityLevel,
+        spec.maxQualityLevel,
+      )
+      qualityRate = baseRate.mul(probability)
+    }
     if (this.changedBuilding) {
-      rate = baseRate.mul(this.buildings)
+      rate = qualityRate.mul(this.buildings)
       this.rateInput.value = spec.format.rate(rate)
     } else {
       rate = this.rate
-      if (baseRate !== null) {
-        let count = rate.div(baseRate)
+      if (qualityRate !== null && !qualityRate.isZero()) {
+        let count = rate.div(qualityRate)
         this.buildingInput.value = spec.format.count(count)
       } else {
         this.buildingInput.value = "N/A"
@@ -351,5 +382,13 @@ export class BuildTarget {
   setRate(rate) {
     this.rateInput.value = rate
     this.rateChanged()
+  }
+  setQuality(level) {
+    let maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))
+    d3.select(this.qualitySelector)
+      .selectAll("option")
+      .property("disabled", (option: any) => option.level > maxLevel)
+    this.qualityLevel = Math.max(0, Math.min(maxLevel, Number(level) || 0))
+    this.qualitySelector.value = String(this.qualityLevel)
   }
 }

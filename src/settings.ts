@@ -10,6 +10,7 @@ import {
   DEFAULT_RATE,
   DEFAULT_RATE_PRECISION,
   longRateNames,
+  one,
   Rational,
   zero,
 } from "./math.js"
@@ -392,24 +393,27 @@ function renderTargets(settings) {
         continue
       }
       let target = spec.addTarget(itemKey)
-      let type = parts[1]
+      let qualityPart = parts.find((part) => /^q\d+$/.test(part))
+      let coreParts = parts.filter((part) => !/^q\d+$/.test(part))
+      let type = coreParts[1]
       if (type === "f") {
         let recipe = null
-        if (parts.length > 3) {
-          let recipeKey = parts[3]
+        if (coreParts.length > 3) {
+          let recipeKey = coreParts[3]
           if (!spec.recipes.has(recipeKey)) {
             console.log("unknown recipe:", recipeKey)
             continue
           }
           recipe = spec.recipes.get(recipeKey)
         }
-        target.setBuildings(parts[2], recipe)
+        target.setBuildings(coreParts[2], recipe)
         target.displayRecipes()
       } else if (type === "r") {
-        target.setRate(parts[2])
+        target.setRate(coreParts[2])
       } else {
         throw new Error("unknown target type")
       }
+      if (qualityPart) target.setQuality(Number(qualityPart.slice(1)))
     }
   } else {
     spec.addTarget()
@@ -1103,6 +1107,61 @@ function renderDebugCheckbox(settings) {
   d3.select("#render_debug").property("checked", spec.debug)
 }
 
+function renderPlanningSettings(settings) {
+  spec.beltStackSize = Rational.from_string(settings.get("bstack") ?? "1")
+  spec.bufferMinutes = Rational.from_string(settings.get("buffer") ?? "1")
+  spec.freshnessDelayMinutes = Rational.from_string(settings.get("fresh") ?? "0")
+  spec.maxQualityLevel = Number(settings.get("maxq") ?? "4")
+
+  spec.resourceYields.clear()
+  let resourceYields = settings.get("ryield")
+  if (resourceYields) {
+    for (let entry of resourceYields.split(",")) {
+      let split = entry.lastIndexOf(":")
+      let recipe = spec.recipes.get(entry.slice(0, split))
+      if (recipe && split > 0)
+        spec.setResourceYield(recipe, Rational.from_string(entry.slice(split + 1)).div(Rational.from_float(100)))
+    }
+  }
+  spec.asteroidLimits.clear()
+  let caps = settings.get("astcap")
+  if (caps) {
+    for (let entry of caps.split(",")) {
+      let split = entry.lastIndexOf(":")
+      if (split > 0)
+        spec.asteroidLimits.set(
+          entry.slice(0, split),
+          Rational.from_string(entry.slice(split + 1)).div(spec.format.rateFactor),
+        )
+    }
+  }
+
+  spec.recipeLocations.clear()
+  let locations = settings.get("rloc")
+  if (locations) {
+    for (let entry of locations.split(",")) {
+      let [recipeKey, locationKey] = entry.split(":")
+      let recipe = spec.recipes.get(recipeKey)
+      let location = spec.planets.get(locationKey)
+      if (recipe && location) spec.setRecipeLocation(recipe, location)
+    }
+  }
+
+  ;(document.getElementById("belt_stack_size") as HTMLSelectElement).value = spec.beltStackSize.toString()
+  ;(document.getElementById("buffer_minutes") as HTMLInputElement).value = spec.bufferMinutes.toDecimal()
+  ;(document.getElementById("freshness_delay") as HTMLInputElement).value = spec.freshnessDelayMinutes.toDecimal()
+  ;(document.getElementById("max_quality") as HTMLSelectElement).value = String(spec.maxQualityLevel)
+  document.querySelectorAll<HTMLInputElement>("[data-resource-key]").forEach((input) => {
+    let recipe = spec.recipes.get(input.dataset.resourceKey)
+    let value = recipe ? spec.getResourceYield(recipe) : one
+    input.value = value.mul(Rational.from_float(100)).toDecimal()
+  })
+  document.querySelectorAll<HTMLInputElement>("[data-item-key]").forEach((input) => {
+    let value = spec.asteroidLimits.get(input.dataset.itemKey)
+    input.value = value ? value.mul(spec.format.rateFactor).toDecimal() : ""
+  })
+}
+
 export function renderSettings(settings) {
   renderTitle(settings)
   renderIgnore(settings)
@@ -1114,6 +1173,7 @@ export function renderSettings(settings) {
   renderColorScheme(settings)
   renderBuildings(settings)
   renderBelts(settings)
+  renderPlanningSettings(settings)
   renderFuel(settings)
   renderVisualizer(settings)
   renderDefaultModule(settings)

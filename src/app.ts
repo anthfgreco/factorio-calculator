@@ -6,6 +6,7 @@ import { configureFactoryView, resetSpec, spec } from "./factory.js"
 import {
   configureModelRuntime,
   getBelts,
+  getBeaconPower,
   getBuildings,
   getFuel,
   getItemGroups,
@@ -217,7 +218,18 @@ function loadData(modName, settings) {
     let recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
     getSprites(data)
     let itemGroups = getItemGroups(items, data)
-    spec.setData(items, recipes, planets, modules, buildings, belts, fuel, itemGroups, recipeProductivityResearch)
+    spec.setData(
+      items,
+      recipes,
+      planets,
+      modules,
+      buildings,
+      belts,
+      fuel,
+      itemGroups,
+      recipeProductivityResearch,
+      getBeaconPower(data),
+    )
 
     fixLegacySettings(settings)
     renderSettings(settings)

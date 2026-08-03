@@ -18,6 +18,7 @@ main.ts
        ├─ recipes.ts           item/recipe models and policies
        ├─ priorities.ts        resource-priority feature
        ├─ factory.ts           calculator state facade
+       ├─ planning.ts          advanced planning calculations
        ├─ state.ts             browser/application settings and actions
        ├─ presentation.ts      reusable DOM primitives
        ├─ settings.ts          settings DOM
@@ -53,6 +54,8 @@ Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
 ### Factory
 
 `src/factory.ts` owns the browser-independent `FactorySpecification` compatibility facade and closely related building, location, and recipe-selection policy. It converts runtime objects to the explicit solver contracts and delegates rendering through `FactoryViewPort`.
+
+`src/planning.ts` owns pure post-solve and target-transformation calculations for exact quality targets, recipe location assignment, transport flows, freshness, resource-capacity diagnostics, logistics, pollution, spores, and Aquilo heat. It has no DOM dependencies and deliberately does not mutate simplex internals.
 
 These modules must not access the DOM, D3, storage, or browser globals. `data.ts`, `math.ts`, and `solver.ts` receive stricter TypeScript checks through `tsconfig.core.json`.
 
@@ -92,6 +95,8 @@ Do not create tiny forwarding files solely to reduce line counts. Split only whe
 
 ## Player-model boundaries
 
-Location selection is currently a feasibility filter over a shared production graph. `factory.ts` answers which selected locations can run a recipe with the selected machine; `results.ts` presents ambiguity and transport limitations. A future per-location solver should extend the solver contract rather than hiding assignment logic in the result renderer.
+The simplex still solves a shared scalar item graph. `planning.ts` deterministically assigns active recipes to pinned or compatible locations and derives explicit transport edges from solved material links. This gives accurate accounting for a chosen assignment, but route capacities do not yet participate in recipe optimization.
 
-Quality-module compatibility belongs to `models.ts` because it combines module effects, recipe permissions, machine allowed effects, and beacon allowed effects. Quality-tier output distributions and upcycling are intentionally not approximated in the current scalar item model; implementing them requires quality-qualified item identities or a separate stochastic flow layer.
+Quality-module compatibility belongs to `models.ts`. Exact quality targets are transformed into the required expected total production before solving and are reported with combined non-target-quality byproducts afterward. Automatic recycler-loop optimization still requires a future quality-qualified solver graph.
+
+Freshness, asteroid capacity, pollution, spores, and Aquilo heat are planning layers over solved rates. Keep their assumptions visible rather than inserting layout-dependent estimates into the exact recipe equations.

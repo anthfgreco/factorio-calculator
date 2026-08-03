@@ -1,4 +1,4 @@
-//import {min} from "d3-array";
+import {min} from "d3";
 
 function targetDepth(d) {
   return d.target.depth;
@@ -18,6 +18,6 @@ export function justify(node, n) {
 
 export function center(node) {
   return node.targetLinks.length ? node.depth
-      : node.sourceLinks.length ? d3.min(node.sourceLinks, targetDepth) - 1
+      : node.sourceLinks.length ? min(node.sourceLinks, targetDepth) - 1
       : 0;
 }

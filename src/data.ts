@@ -121,6 +121,33 @@ export interface ModuleData {
   item_key: string
 }
 
+export interface PlantData extends SpriteReference {
+  key: string
+  localized_name: LocalizedName
+  order?: string
+  seed: string
+  growth_ticks: number
+  results: RecipeAmountData[]
+  surface_conditions?: SurfaceCondition[]
+}
+
+export interface SpoilageData {
+  from_item: string
+  to_item: string
+  time: number
+}
+
+export interface AgriculturalTowerData extends MachineData {
+  radius?: number
+}
+
+export interface BeaconData {
+  energy_usage?: number
+  distribution_effectivity: number
+  profile?: number[]
+  allowed_effects?: string[]
+}
+
 export interface ResourceData extends SpriteReference {
   key: string
   localized_name: LocalizedName
@@ -176,6 +203,10 @@ export interface CalculatorData {
   modules: ModuleData[]
   recipe_productivity_research?: RecipeProductivityResearchData[]
   resources: ResourceData[]
+  plants?: PlantData[]
+  spoilage?: SpoilageData[]
+  agricultural_tower?: AgriculturalTowerData[]
+  beacon: BeaconData
   planets?: PlanetData[]
   sprites: SpriteSheetData
   [key: string]: unknown
@@ -227,6 +258,13 @@ function requireNonnegativeNumber(value: unknown, path: string): number {
   return value
 }
 
+function requireFiniteNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new DatasetValidationError(path, "expected a finite number")
+  }
+  return value
+}
+
 function validateKeyedEntries(value: unknown, path: string): void {
   for (let [index, entry] of requireArray(value, path).entries()) {
     let record = requireRecord(entry, `${path}[${index}]`)
@@ -256,6 +294,31 @@ function validateRecipes(value: unknown): void {
   }
 }
 
+function validateOptionalNonnegativeNumber(record: Record<string, unknown>, key: string, path: string): void {
+  if (record[key] !== undefined) {
+    requireNonnegativeNumber(record[key], `${path}.${key}`)
+  }
+}
+
+function validateItems(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "items").entries()) {
+    let path = `items[${index}]`
+    let item = requireRecord(entry, path)
+    requireString(item.key, `${path}.key`)
+    validateOptionalNonnegativeNumber(item, "stack_size", path)
+  }
+}
+
+function validateEnergySource(value: unknown, path: string): void {
+  if (value === undefined) return
+  let source = requireRecord(value, path)
+  if (source.emissions_per_minute === undefined) return
+  let emissions = requireRecord(source.emissions_per_minute, `${path}.emissions_per_minute`)
+  for (let [pollutant, amount] of Object.entries(emissions)) {
+    requireFiniteNumber(amount, `${path}.emissions_per_minute.${pollutant}`)
+  }
+}
+
 function validateRecipeProductivityResearch(value: unknown): void {
   for (let [index, entry] of requireArray(value, "recipe_productivity_research").entries()) {
     let path = `recipe_productivity_research[${index}]`
@@ -279,11 +342,44 @@ function validateMachines(value: unknown, path: string): void {
     let machinePath = `${path}[${index}]`
     let machine = requireRecord(entry, machinePath)
     requireString(machine.key, `${machinePath}.key`)
+    validateEnergySource(machine.energy_source, `${machinePath}.energy_source`)
     if (machine.allowed_effects !== undefined) {
       let effects = requireArray(machine.allowed_effects, `${machinePath}.allowed_effects`)
       for (let [effectIndex, effect] of effects.entries()) {
         requireString(effect, `${machinePath}.allowed_effects[${effectIndex}]`)
       }
+    }
+  }
+}
+
+function validatePlants(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "plants").entries()) {
+    let path = `plants[${index}]`
+    let plant = requireRecord(entry, path)
+    requireString(plant.key, `${path}.key`)
+    requireString(plant.seed, `${path}.seed`)
+    requireNonnegativeNumber(plant.growth_ticks, `${path}.growth_ticks`)
+    requireArray(plant.results, `${path}.results`)
+  }
+}
+
+function validateSpoilage(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "spoilage").entries()) {
+    let path = `spoilage[${index}]`
+    let spoilage = requireRecord(entry, path)
+    requireString(spoilage.from_item, `${path}.from_item`)
+    requireString(spoilage.to_item, `${path}.to_item`)
+    requireNonnegativeNumber(spoilage.time, `${path}.time`)
+  }
+}
+
+function validateBeacon(value: unknown): void {
+  let beacon = requireRecord(value, "beacon")
+  requireNonnegativeNumber(beacon.distribution_effectivity, "beacon.distribution_effectivity")
+  validateOptionalNonnegativeNumber(beacon, "energy_usage", "beacon")
+  if (beacon.profile !== undefined) {
+    for (let [index, effectivity] of requireArray(beacon.profile, "beacon.profile").entries()) {
+      requireNonnegativeNumber(effectivity, `beacon.profile[${index}]`)
     }
   }
 }
@@ -300,17 +396,23 @@ function validateModules(value: unknown): void {
 /** Validate untrusted JSON once at the application boundary. */
 export function parseCalculatorData(value: unknown): CalculatorData {
   let data = requireRecord(value, "dataset")
-  validateKeyedEntries(data.items, "items")
+  validateItems(data.items)
   validateRecipes(data.recipes)
   validateMachines(data.crafting_machines, "crafting_machines")
   validateMachines(data.mining_drills, "mining_drills")
+  if (data.agricultural_tower !== undefined) {
+    validateMachines(data.agricultural_tower, "agricultural_tower")
+  }
   validateKeyedEntries(data.belts, "belts")
   requireArray(data.fuel, "fuel")
   validateModules(data.modules)
+  validateBeacon(data.beacon)
   if (data.recipe_productivity_research !== undefined) {
     validateRecipeProductivityResearch(data.recipe_productivity_research)
   }
   requireArray(data.resources, "resources")
+  if (data.plants !== undefined) validatePlants(data.plants)
+  if (data.spoilage !== undefined) validateSpoilage(data.spoilage)
   requireRecord(data.groups, "groups")
   requireRecord(data.sprites, "sprites")
   return data as unknown as CalculatorData

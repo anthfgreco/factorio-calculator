@@ -1,4 +1,4 @@
-//import {linkHorizontal} from "d3-shape";
+import {linkHorizontal} from "d3";
 
 function horizontalSource(d) {
   return [d.source.x1, d.y0];
@@ -9,7 +9,7 @@ function horizontalTarget(d) {
 }
 
 export default function() {
-  return d3.linkHorizontal()
+  return linkHorizontal()
       .source(horizontalSource)
       .target(horizontalTarget);
 }
