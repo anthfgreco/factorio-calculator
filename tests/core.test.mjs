@@ -662,8 +662,10 @@ test("recipe productivity researches are independent and apply to every exported
   }
 
   assert.equal(factorySpec.setRecipeProductivityLevel("unknown-productivity", 10), false)
-  factorySpec.setRecipeProductivityLevel("steel-plate-productivity", 2.9)
-  assert.equal(factorySpec.getRecipeProductivityLevel("steel-plate-productivity"), 2)
+  factorySpec.setRecipeProductivityLevel("steel-plate-productivity", 0.5)
+  assert.equal(factorySpec.getRecipeProductivityLevel("steel-plate-productivity"), 0.5)
+  let steelPlate = recipes.get("steel-plate")
+  assert.equal(factorySpec.getRecipeProductivityBonus(steelPlate).equal(Rational.from_floats(5, 100)), true)
   factorySpec.setRecipeProductivityLevel("steel-plate-productivity", -1)
   assert.equal(factorySpec.getRecipeProductivityLevel("steel-plate-productivity"), 0)
 })

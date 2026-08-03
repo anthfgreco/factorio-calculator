@@ -10,6 +10,11 @@ Preserve the existing calculator UI unless a task explicitly requests visual cha
 3. Reproduce behavior with an existing validation command or add a focused characterization test.
 4. Keep generated Factorio data out of hand-written source changes.
 
+## Factorio sources
+
+- Treat `factorio-wiki.md` as one of the project's Factorio sources of truth. It is very long, so search for the relevant page or mechanic instead of reading it from beginning to end.
+- Prioritize Space Age mechanics, data, and player workflows when behavior differs between Factorio editions.
+
 ## Required commands
 
 ```bash

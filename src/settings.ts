@@ -601,15 +601,30 @@ function renderMiningProd(settings) {
   syncMiningProductivityControls()
 }
 
-function recipeProductivityBonusLabel(research, level: number): string {
+const MAX_RECIPE_PRODUCTIVITY_PERCENT = 300
+
+function recipeProductivityPercentPerLevel(research): number {
+  let change = research.effects.values().next().value as Rational | undefined
+  return change === undefined ? 0 : Number(change.mul(Rational.from_integer(100)).toDecimal())
+}
+
+function recipeProductivityPercent(research, level: number): string | null {
   let bonuses = new Set<string>()
   for (let change of research.effects.values()) {
-    bonuses.add(change.mul(Rational.from_integer(level)).mul(Rational.from_integer(100)).toDecimal())
+    bonuses.add(change.mul(Rational.from_float_approximate(level)).mul(Rational.from_integer(100)).toDecimal())
   }
   if (bonuses.size !== 1) {
-    return "Varies"
+    return null
   }
-  return `+${bonuses.values().next().value}%`
+  let percent = Rational.from_string(bonuses.values().next().value)
+  return Rational.min(percent, Rational.from_integer(MAX_RECIPE_PRODUCTIVITY_PERCENT)).toDecimal()
+}
+
+function recipeProductivityLevelFromPercent(research, value: string): number {
+  let percent = Number(value)
+  let percentPerLevel = recipeProductivityPercentPerLevel(research)
+  if (!Number.isFinite(percent) || percentPerLevel <= 0) return 0
+  return Math.min(MAX_RECIPE_PRODUCTIVITY_PERCENT, Math.max(0, percent)) / percentPerLevel
 }
 
 function renderRecipeProductivityResearch(settings) {
@@ -620,7 +635,7 @@ function renderRecipeProductivityResearch(settings) {
       if (separator === -1) continue
       let researchKey = entry.slice(0, separator)
       let level = Number(entry.slice(separator + 1))
-      if (Number.isInteger(level) && level >= 0) {
+      if (Number.isFinite(level) && level >= 0) {
         spec.setRecipeProductivityLevel(researchKey, level)
       }
     }
@@ -643,26 +658,22 @@ function renderRecipeProductivityResearch(settings) {
     .classed("recipe-productivity-research-setting", true)
   settingsRows.append((entry) => entry.icon.make(24, true)).classed("recipe-productivity-icon", true)
   settingsRows.append("span").text((entry) => entry.name)
-  settingsRows
+  let percentageInputs = settingsRows.append("span").classed("recipe-productivity-percentage", true)
+  percentageInputs
     .append("input")
     .attr("type", "number")
     .attr("min", 0)
-    .attr("step", 1)
-    .attr("aria-label", (entry) => `${entry.name} level`)
-    .property("value", (entry) => spec.getRecipeProductivityLevel(entry.key))
+    .attr("max", 300)
+    .attr("step", (entry) => recipeProductivityPercentPerLevel(entry))
+    .attr("aria-label", (entry) => `${entry.name} bonus percentage`)
+    .property("value", (entry) => recipeProductivityPercent(entry, spec.getRecipeProductivityLevel(entry.key)) ?? 0)
     .on("change", function (this: HTMLInputElement, _event, entry) {
-      spec.setRecipeProductivityLevel(entry.key, Number(this.value))
+      spec.setRecipeProductivityLevel(entry.key, recipeProductivityLevelFromPercent(entry, this.value))
       let level = spec.getRecipeProductivityLevel(entry.key)
-      this.value = String(level)
-      d3.select(this.parentElement)
-        .select(".recipe-productivity-bonus")
-        .text(recipeProductivityBonusLabel(entry, level))
+      this.value = recipeProductivityPercent(entry, level) ?? "0"
       spec.updateSolution()
     })
-  settingsRows
-    .append("span")
-    .classed("recipe-productivity-bonus", true)
-    .text((entry) => recipeProductivityBonusLabel(entry, spec.getRecipeProductivityLevel(entry.key)))
+  percentageInputs.append("span").attr("aria-hidden", "true").text("%")
 }
 
 // color scheme

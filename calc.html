@@ -367,21 +367,24 @@
               <label class="recipe-productivity-setting mining-productivity-setting">
                 <span class="recipe-productivity-icon mining-productivity-icon" aria-hidden="true"></span>
                 <span>Mining productivity</span>
-                <input
-                  id="mprod"
-                  class="mprod"
-                  type="number"
-                  step="10"
-                  value="0"
-                  min="0"
-                  aria-label="Mining productivity bonus"
-                  onchange="handlers.changeMprod(event)"
-                />
-                <span class="recipe-productivity-bonus mining-productivity-bonus">+0%</span>
+                <span class="recipe-productivity-percentage">
+                  <input
+                    id="mprod"
+                    class="mprod"
+                    type="number"
+                    step="10"
+                    value="0"
+                    min="0"
+                    aria-label="Mining productivity bonus percentage"
+                    onchange="handlers.changeMprod(event)"
+                  />
+                  <span aria-hidden="true">%</span>
+                </span>
               </label>
             </div>
             <div class="setting-help">
-              Enter the total mining bonus and each researched technology level. Every bonus is applied independently.
+              Enter the bonus percentages shown in-game. Recipe productivity is capped at +300% total; mining
+              productivity is uncapped.
             </div>
           </td>
         </tr>

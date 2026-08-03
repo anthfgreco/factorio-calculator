@@ -618,7 +618,7 @@ export class FactorySpecification {
     if (!this.recipeProductivityResearch.has(researchKey)) {
       return false
     }
-    let normalizedLevel = Number.isFinite(level) ? Math.max(0, Math.floor(level)) : 0
+    let normalizedLevel = Number.isFinite(level) ? Math.max(0, level) : 0
     if (normalizedLevel === 0) {
       this.recipeProductivityLevels.delete(researchKey)
     } else {
@@ -630,7 +630,7 @@ export class FactorySpecification {
     let bonus = zero
     for (let effect of this.recipeProductivityEffects.get(recipe) ?? []) {
       let level = this.getRecipeProductivityLevel(effect.researchKey)
-      bonus = bonus.add(effect.change.mul(Rational.from_integer(level)))
+      bonus = bonus.add(effect.change.mul(Rational.from_float_approximate(level)))
     }
     return bonus
   }

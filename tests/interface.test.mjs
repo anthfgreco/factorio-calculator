@@ -123,10 +123,11 @@ test("progression presets keep Settings controls synchronized", async () => {
   assert.ok(state.includes('document.getElementById("default_beacon_count")'))
 })
 
-test("recipe productivity settings use the official icons and independent level inputs", async () => {
+test("productivity settings use official icons and percentage inputs", async () => {
   const html = await readFile(resolve(root, "calc.html"), "utf8")
   const settings = await readFile(resolve(root, "src/settings.ts"), "utf8")
   const state = await readFile(resolve(root, "src/state.ts"), "utf8")
+  const styles = await readFile(resolve(root, "src/styles/calc.css"), "utf8")
 
   assert.ok(html.includes('id="recipe_productivity_row"'))
   assert.ok(html.includes('id="recipe_productivity_settings"'))
@@ -136,12 +137,23 @@ test("recipe productivity settings use the official icons and independent level 
   assert.ok(miningProductivity > productivityStart && miningProductivity < productivityEnd)
   assert.ok(!html.includes('<td class="setting-label">Mining productivity bonus:</td>'))
   assert.ok(html.includes('class="recipe-productivity-icon mining-productivity-icon"'))
-  assert.ok(html.includes('class="recipe-productivity-bonus mining-productivity-bonus"'))
+  assert.ok(html.includes('class="recipe-productivity-percentage"'))
+  assert.ok(!html.includes("mining-productivity-bonus"))
   assert.ok(settings.includes('spec.items.get("electric-mining-drill")'))
   assert.ok(settings.includes("spec.recipeProductivityResearch.values()"))
   assert.ok(settings.includes('selectAll("label.recipe-productivity-research-setting")'))
   assert.ok(settings.includes("entry.icon.make(24, true)"))
-  assert.ok(settings.includes('attr("aria-label", (entry) => `${entry.name} level`)'))
-  assert.ok(settings.includes("spec.setRecipeProductivityLevel(entry.key, Number(this.value))"))
+  assert.ok(settings.includes('attr("max", 300)'))
+  assert.ok(settings.includes('attr("aria-label", (entry) => `${entry.name} bonus percentage`)'))
+  assert.ok(settings.includes("recipeProductivityLevelFromPercent(entry, this.value)"))
+  assert.ok(settings.includes('.classed("recipe-productivity-percentage", true)'))
+  assert.ok(!settings.includes("recipe-productivity-bonus"))
+  assert.ok(!state.includes("mining-productivity-bonus"))
+  assert.ok(styles.includes(".recipe-productivity-percentage"))
+  assert.ok(
+    html
+      .replace(/\s+/g, " ")
+      .includes("Recipe productivity is capped at +300% total; mining productivity is uncapped."),
+  )
   assert.ok(state.includes("syncMiningProductivityControls()"))
 })

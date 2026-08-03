@@ -132,13 +132,13 @@ test("URL recipe productivity levels are stable and omit defaults or unknown res
     recipeProductivityLevels: new Map([
       ["steel-plate-productivity", 12],
       ["unknown-productivity", 99],
-      ["processing-unit-productivity", 3],
+      ["processing-unit-productivity", 0.5],
       ["plastic-bar-productivity", 0],
     ]),
   }
 
   assert.deepEqual(serializeRecipeProductivityLevels(factorySpec), [
-    "processing-unit-productivity:3",
+    "processing-unit-productivity:0.5",
     "steel-plate-productivity:12",
   ])
 })

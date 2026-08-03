@@ -289,8 +289,6 @@ export function syncMiningProductivityControls() {
   let value = spec.miningProd.mul(Rational.from_integer(100)).toDecimal()
   let input = document.getElementById("mprod") as HTMLInputElement | null
   if (input !== null) input.value = value
-  let bonus = document.querySelector<HTMLElement>(".mining-productivity-bonus")
-  if (bonus !== null) bonus.textContent = `+${value}%`
 }
 
 // visualizer events
