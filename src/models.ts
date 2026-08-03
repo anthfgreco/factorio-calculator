@@ -750,7 +750,9 @@ export function moduleDropdown(selector, data) {
     .data(data)
     .join((enter) => {
       let s = enter.append("span").classed("module-wrapper", true)
-      makeDropdown(s)
+      s.each(function (this: HTMLElement) {
+        makeDropdown(d3.select(this))
+      })
       return s
     })
   let moduleDropdown = moduleDropdownSpan.selectAll("div.dropdown")

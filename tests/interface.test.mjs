@@ -93,6 +93,14 @@ test("dropdowns use Tippy positioning without the legacy fullscreen click catche
   assert.ok(!dropdownStyles.includes("position: fixed"))
 })
 
+test("module dropdown rerenders initialize only entering wrappers", async () => {
+  const models = await readFile(resolve(root, "src/models.ts"), "utf8")
+
+  assert.ok(models.includes("s.each(function (this: HTMLElement)"))
+  assert.ok(models.includes("makeDropdown(d3.select(this))"))
+  assert.ok(!models.includes("makeDropdown(s)"))
+})
+
 test("runtime libraries load from pnpm modules instead of classic vendored globals", async () => {
   const [html, globals, math, urlState, visualization, packageJson] = await Promise.all([
     readFile(resolve(root, "calc.html"), "utf8"),
