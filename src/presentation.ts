@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import tippy, { delegate, hideAll } from "tippy.js"
 
 // -----------------------------------------------------------------------------
@@ -10,9 +12,11 @@ let tooltipRegistry = new Set<any>()
 function tooltipProps() {
   return {
     appendTo: () => document.body,
+    arrow: false,
     delay: [100, 0] as [number, number],
     duration: [120, 80] as [number, number],
     maxWidth: 420,
+    offset: [0, 4] as [number, number],
     theme: "factorio",
   }
 }
@@ -60,7 +64,6 @@ export class Tooltip {
       ...tooltipProps(),
       content: " ",
       getReferenceClientRect: target === reference ? undefined : () => target.getBoundingClientRect(),
-      offset: [0, 12],
       placement: "right-start",
       onShow(instance) {
         if (content === null) {
@@ -196,37 +199,91 @@ export function getSprites(data) {
 let dropdownLocal = d3.local()
 
 function toggleDropdown(this: HTMLElement) {
-  let { dropdownNode, onOpen, onClose } = dropdownLocal.get(this)
-  let dropdown = d3.select(dropdownNode)
-  let classes = dropdownNode.classList
-  if (classes.contains("open")) {
-    classes.remove("open")
-    if (onClose) {
-      onClose(dropdown)
-    }
+  let { instance } = dropdownLocal.get(this)
+  if (instance.state.isVisible) {
+    instance.hide()
   } else {
-    let selected = dropdown.select("input:checked + label")
-    dropdown.select(".spacer").style("width", selected.style("width")).style("height", selected.style("height"))
-    classes.add("open")
-    if (onOpen) {
-      onOpen(dropdown)
-    }
+    instance.show()
   }
 }
 
 // Appends a dropdown to the selection, and returns a selection over the div
 // for the content of the dropdown.
 export function makeDropdown(selector, onOpen = null, onClose = null) {
-  let dropdown = selector
+  let wrapper = selector
     .append("div")
     .classed("dropdownWrapper", true)
-    .each(function (this: HTMLElement) {
-      let dropdownNode = this
-      dropdownLocal.set(this, { dropdownNode, onOpen, onClose })
-    })
-  dropdown.append("div").classed("clicker", true).on("click", toggleDropdown)
-  let dropdownInner = dropdown.append("div").classed("dropdown", true).on("click", toggleDropdown)
-  dropdown.append("div").classed("spacer", true)
+    .attr("role", "button")
+    .attr("tabindex", 0)
+    .attr("aria-haspopup", "listbox")
+    .attr("aria-expanded", "false")
+  let dropdownInner = wrapper.append("div").classed("dropdown tippy-dropdown-menu", true)
+  let spacer = wrapper.append("div").classed("spacer", true)
+  let wrapperNode = wrapper.node() as HTMLElement
+  let dropdownNode = dropdownInner.node() as HTMLElement
+  let spacerNode = spacer.node() as HTMLElement
+  let escapeHandler = null
+  let instance = tippy(wrapperNode, {
+    ...tooltipProps(),
+    animation: false,
+    arrow: false,
+    content: " ",
+    duration: 0,
+    hideOnClick: true,
+    interactive: true,
+    maxWidth: "none",
+    offset: [0, 4],
+    placement: "bottom-start",
+    theme: "factorio-dropdown",
+    trigger: "manual",
+    onShow(instance) {
+      hideAll({ exclude: instance })
+      let selected = dropdownNode.querySelector("input:checked + label")
+      if (selected instanceof HTMLElement) {
+        let bounds = selected.getBoundingClientRect()
+        spacer.style("width", `${bounds.width}px`).style("height", `${bounds.height}px`)
+      }
+      wrapperNode.classList.add("open")
+      dropdownNode.classList.add("open")
+      wrapper.attr("aria-expanded", "true")
+      instance.setContent(dropdownNode)
+    },
+    onMount() {
+      escapeHandler = (event) => {
+        if (event.key === "Escape") {
+          instance.hide()
+          wrapperNode.focus()
+        }
+      }
+      document.addEventListener("keydown", escapeHandler)
+      onOpen?.(d3.select(dropdownNode))
+    },
+    onClickOutside(instance) {
+      instance.hide()
+    },
+    onHidden(instance) {
+      if (escapeHandler !== null) {
+        document.removeEventListener("keydown", escapeHandler)
+        escapeHandler = null
+      }
+      wrapperNode.insertBefore(dropdownNode, spacerNode)
+      instance.setContent(" ")
+      wrapperNode.classList.remove("open")
+      dropdownNode.classList.remove("open")
+      wrapper.attr("aria-expanded", "false")
+      onClose?.(d3.select(dropdownNode))
+    },
+  })
+  let dropdownState = { dropdownNode, instance, onClose, onOpen, spacerNode, wrapperNode }
+  dropdownLocal.set(wrapperNode, dropdownState)
+  dropdownLocal.set(dropdownNode, dropdownState)
+  tooltipRegistry.add(instance)
+  wrapper.on("click", toggleDropdown).on("keydown", function (this: HTMLElement, event: KeyboardEvent) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      toggleDropdown.call(this)
+    }
+  })
   return dropdownInner
 }
 

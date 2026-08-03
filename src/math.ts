@@ -1,3 +1,5 @@
+import bigInt from "big-integer"
+
 // -----------------------------------------------------------------------------
 // BigInteger adapter
 // -----------------------------------------------------------------------------
@@ -28,8 +30,8 @@ interface BigIntegerFactory {
   gcd(left: BigIntegerValue, right: BigIntegerValue): BigIntegerValue
 }
 
-/** Typed access to the vendored BigInteger browser global. */
-export const integer = (globalThis as typeof globalThis & { bigInt: BigIntegerFactory }).bigInt
+/** Typed access to exact integers used by the rational arithmetic boundary. */
+export const integer = bigInt as BigIntegerFactory
 
 // -----------------------------------------------------------------------------
 // Exact rational arithmetic

@@ -78,9 +78,6 @@ img.icon {
   padding: 0.45em 0.6em;
   text-align: left;
 }
-.tippy-box[data-theme~="factorio"] > .tippy-arrow {
-  color: var(--dark);
-}
 .tippy-box[data-theme~="factorio"] .frame {
   text-align: left;
 }
@@ -767,16 +764,16 @@ details.recipe-selector[open] > summary {
   border-top: 1px solid var(--light);
 }
 /* dropdowns */
-.dropdownWrapper .dropdown .search {
+.tippy-dropdown-menu .search {
   display: none;
   width: 100%;
   padding-left: 0.4em;
   margin-bottom: 0.4em;
 }
-.dropdownWrapper.open .dropdown .search {
+.tippy-dropdown-menu.open .search {
   display: block;
 }
-.dropdownWrapper.open div.itemDropdown {
+.tippy-dropdown-menu.open.itemDropdown {
   height: 400px;
   width: 380px;
   overflow-y: scroll;

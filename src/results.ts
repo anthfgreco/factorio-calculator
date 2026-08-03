@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled, spec } from "./factory.js"
 import { one, powerRepresentation, Rational, zero } from "./math.js"
 import { moduleDropdown, moduleRows, type Fuel } from "./models.js"

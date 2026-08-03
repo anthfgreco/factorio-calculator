@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { parseCalculatorData } from "./data.js"
 import type { FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"

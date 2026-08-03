@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { normalizeSearchText, sorted } from "./data.js"
 import { one, Rational, zero } from "./math.js"
 import { currentSpecification } from "./models.js"

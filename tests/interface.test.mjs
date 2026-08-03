@@ -58,6 +58,9 @@ test("tooltips use Tippy for rich and text content without the legacy Popper run
   assert.ok(main.includes('import "tippy.js/dist/tippy.css"'))
   assert.ok(presentation.includes('import tippy, { delegate, hideAll } from "tippy.js"'))
   assert.ok(presentation.includes('target: "[data-tooltip]"'))
+  assert.ok(presentation.includes("arrow: false"))
+  assert.ok(presentation.includes("offset: [0, 4] as [number, number]"))
+  assert.ok(!presentation.includes("offset: [0, 12]"))
   assert.ok(presentation.includes("this.instance = tippy(reference"))
   assert.ok(presentation.includes("export function makePopover"))
   assert.ok(presentation.includes("if (!suppressTooltip)"))
@@ -73,6 +76,44 @@ test("tooltips use Tippy for rich and text content without the legacy Popper run
   assert.ok(!tooltipMarkup.includes(' title="'))
   assert.ok(!tooltipMarkup.includes('.attr("title"'))
   assert.ok(!tooltipMarkup.includes('setAttribute("title"'))
+})
+
+test("dropdowns use Tippy positioning without the legacy fullscreen click catcher", async () => {
+  const [presentation, dropdownStyles] = await Promise.all([
+    readFile(resolve(root, "src/presentation.ts"), "utf8"),
+    readFile(resolve(root, "src/styles/dropdown.css"), "utf8"),
+  ])
+
+  assert.ok(presentation.includes('trigger: "manual"'))
+  assert.ok(presentation.includes('theme: "factorio-dropdown"'))
+  assert.ok(presentation.includes('placement: "bottom-start"'))
+  assert.ok(presentation.includes("instance.setContent(dropdownNode)"))
+  assert.ok(!presentation.includes('classed("clicker"'))
+  assert.ok(dropdownStyles.includes('.tippy-box[data-theme~="factorio-dropdown"]'))
+  assert.ok(!dropdownStyles.includes("position: fixed"))
+})
+
+test("runtime libraries load from pnpm modules instead of classic vendored globals", async () => {
+  const [html, globals, math, urlState, visualization, packageJson] = await Promise.all([
+    readFile(resolve(root, "calc.html"), "utf8"),
+    readFile(resolve(root, "src/globals.d.ts"), "utf8"),
+    readFile(resolve(root, "src/math.ts"), "utf8"),
+    readFile(resolve(root, "src/url-state.ts"), "utf8"),
+    readFile(resolve(root, "src/visualization.ts"), "utf8"),
+    readFile(resolve(root, "package.json"), "utf8"),
+  ])
+  const dependencies = JSON.parse(packageJson).dependencies
+
+  for (const dependency of ["d3", "@dagrejs/dagre", "pako", "big-integer"]) {
+    assert.ok(dependencies[dependency])
+  }
+  assert.ok(math.includes('from "big-integer"'))
+  assert.ok(urlState.includes('from "pako"'))
+  assert.ok(visualization.includes('from "@dagrejs/dagre"'))
+  assert.ok(!html.includes("third_party/"))
+  for (const globalName of ["BigInteger", "bigInt", "d3", "dagre", "pako"]) {
+    assert.ok(!globals.includes(`const ${globalName}:`))
+  }
 })
 
 test("progression presets keep Settings controls synchronized", async () => {

@@ -1,7 +1,6 @@
 import { readFile, rm } from "node:fs/promises"
 import { pathToFileURL } from "node:url"
 import { resolve } from "node:path"
-import vm from "node:vm"
 import { compileTypeScript } from "./lib/compile-typescript.mjs"
 
 const root = resolve(import.meta.dirname, "..")
@@ -9,16 +8,7 @@ const outputDirectory = resolve(root, ".tmp/runtime")
 await rm(outputDirectory, { recursive: true, force: true })
 await compileTypeScript({ root, outputDirectory })
 
-const bigIntegerSource = await readFile(resolve(root, "public/third_party/BigInteger.min.js"), "utf8")
-vm.runInThisContext(bigIntegerSource)
-
 globalThis.window = {}
-globalThis.d3 = {
-  local: () => ({
-    get: () => null,
-    set: () => undefined,
-  }),
-}
 
 const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
 

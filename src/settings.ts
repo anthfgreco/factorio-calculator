@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { normalizeSearchText, sorted } from "./data.js"
 import { buildingSort, DEFAULT_BELT, DEFAULT_FUEL, DEFAULT_PLANET, setRecipeEnabled, spec } from "./factory.js"
 import { colorSchemes } from "./graph.js"

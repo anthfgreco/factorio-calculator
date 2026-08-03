@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { spec } from "./factory.js"
 import { one, Rational, zero } from "./math.js"
 import { addInputs, makeDropdown } from "./presentation.js"

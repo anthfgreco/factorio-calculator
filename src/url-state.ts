@@ -1,3 +1,4 @@
+import { deflateRaw, inflateRaw } from "pako"
 import { sorted } from "./data.js"
 import { DEFAULT_BELT, DEFAULT_FUEL, spec } from "./factory.js"
 import { DEFAULT_COUNT_PRECISION, DEFAULT_FORMAT, DEFAULT_RATE, DEFAULT_RATE_PRECISION, Rational } from "./math.js"
@@ -300,7 +301,7 @@ export function formatSettings(excludeTitle = false, overrideTab = null, targets
     settings += "&debug=1"
   }
 
-  let zip = "zip=" + window.btoa(bytesToBinaryString(pako.deflateRaw(settings)))
+  let zip = "zip=" + window.btoa(bytesToBinaryString(deflateRaw(settings)))
   if (zip.length < settings.length) {
     return zip
   }
@@ -322,8 +323,8 @@ export function loadSettings(fragment) {
   }
   if (settings.has("zip")) {
     let z = window.atob(settings.get("zip"))
-    let a = z.split("").map((c) => c.charCodeAt(0))
-    let unzip = pako.inflateRaw(a, { to: "string" })
+    let a = Uint8Array.from(z, (c) => c.charCodeAt(0))
+    let unzip = inflateRaw(a, { toText: true })
     return loadSettings("#" + unzip)
   }
   return settings

@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import * as d3sankey from "./vendor/d3-sankey/index.js"
 import { spec } from "./factory.js"
 import { one } from "./math.js"

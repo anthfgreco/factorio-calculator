@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import test from "node:test"
-import vm from "node:vm"
 
 const root = resolve(import.meta.dirname, "..")
 const build = process.env.FACTORIO_TEST_BUILD
@@ -11,13 +10,6 @@ if (!build) {
   throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test")
 }
 
-vm.runInThisContext(await readFile(resolve(root, "public/third_party/BigInteger.min.js"), "utf8"))
-globalThis.d3 = {
-  local: () => ({
-    get: () => null,
-    set: () => undefined,
-  }),
-}
 const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 
 const { DatasetValidationError, parseCalculatorData } = await load("data")

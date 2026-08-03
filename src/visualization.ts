@@ -1,3 +1,6 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
+import dagre from "@dagrejs/dagre"
 import { spec } from "./factory.js"
 import {
   colonWidth,

@@ -922,13 +922,13 @@ svg.sankey g.edgePathHighlight path.highlighter {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.dropdownWrapper.open .itemDropdown input[type="radio"] + label {
+.itemDropdown.open input[type="radio"] + label {
   padding-right: 2px;
 }
-.dropdownWrapper.open .itemDropdown input[type="radio"] + label .target-item-name {
+.itemDropdown.open input[type="radio"] + label .target-item-name {
   display: none;
 }
-.dropdownWrapper.open .itemDropdown input[type="radio"]:checked + label .target-item-name {
+.itemDropdown.open input[type="radio"]:checked + label .target-item-name {
   display: inline;
 }
 
@@ -938,15 +938,15 @@ svg.sankey g.edgePathHighlight path.highlighter {
 }
 
 /* Dropdowns retain their compact icon behavior without looking like raised widgets. */
-.dropdownWrapper .dropdown {
+.tippy-dropdown-menu {
   border: 1px solid var(--rule);
   border-radius: 2px;
   background: transparent;
 }
-.dropdownWrapper .dropdown:hover {
+.tippy-dropdown-menu:hover {
   border-color: var(--muted);
 }
-.dropdownWrapper.open .dropdown {
+.tippy-dropdown-menu.open {
   padding: 0.35rem;
   border: 1px solid var(--rule);
   border-top: 2px solid var(--accent);
@@ -957,16 +957,16 @@ svg.sankey g.edgePathHighlight path.highlighter {
 .dropdownWrapper.open .spacer {
   border-width: 1px;
 }
-.dropdownWrapper.open .dropdown hr {
+.tippy-dropdown-menu.open hr {
   border: 0;
   border-top: 1px solid var(--rule);
 }
-.dropdownWrapper .dropdown input[type="radio"] + label {
+.tippy-dropdown-menu input[type="radio"] + label {
   margin: 1px;
   border-radius: 2px;
 }
-.dropdownWrapper .dropdown input[type="radio"] + label:hover,
-.dropdownWrapper.open .dropdown input[type="radio"]:checked + label {
+.tippy-dropdown-menu input[type="radio"] + label:hover,
+.tippy-dropdown-menu.open input[type="radio"]:checked + label {
   background: var(--main);
 }
 
@@ -992,17 +992,17 @@ svg.sankey g.edgePathHighlight path.highlighter {
 .machine-selector .machine-option-name {
   display: none;
 }
-.machine-selector .dropdownWrapper.open .machine-dropdown {
+.machine-selector .machine-dropdown.open {
   min-width: 13rem;
   text-align: left;
 }
-.machine-selector .dropdownWrapper.open .machine-option label {
+.machine-selector .machine-dropdown.open .machine-option label {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   padding-right: 0.5rem;
 }
-.machine-selector .dropdownWrapper.open .machine-option-name {
+.machine-selector .machine-dropdown.open .machine-option-name {
   display: inline;
   color: var(--foreground);
   font-size: 0.8rem;

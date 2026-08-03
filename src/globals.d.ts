@@ -1,9 +1,4 @@
 declare global {
-  const BigInteger: any
-  const bigInt: any
-  const d3: any
-  const dagre: any
-  const pako: any
   const spec: any
 
   interface CalculatorHandlers {

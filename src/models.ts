@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { sorted } from "./data.js"
 import { half, one, powerRepresentation, Rational, zero } from "./math.js"
 import { addInputs, Icon, makeDropdown, sprites } from "./presentation.js"

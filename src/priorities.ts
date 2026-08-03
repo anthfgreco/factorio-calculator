@@ -1,3 +1,5 @@
+import * as d3Package from "d3"
+const d3: any = d3Package
 import { Rational } from "./math.js"
 
 // -----------------------------------------------------------------------------
