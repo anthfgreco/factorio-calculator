@@ -1,5 +1,5 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { select } from "d3"
+const d3: any = { select }
 import { parseCalculatorData } from "./data.js"
 import type { FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"
@@ -17,9 +17,10 @@ import {
 import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
-import { renderSettings } from "./settings.js"
+import { ensureDeferredSettingsRendered, renderSettings } from "./settings.js"
 import {
   configureDatasetChangeHandler,
+  configureSettingsTabHandler,
   currentMod,
   currentTab,
   initializeFactoryDensity,
@@ -37,7 +38,6 @@ import {
   loadSettings,
   syncUrlHash,
 } from "./url-state.js"
-import { renderTotals } from "./visualization.js"
 
 // -----------------------------------------------------------------------------
 // Debug output
@@ -102,6 +102,71 @@ export function renderDebug() {
 }
 
 // -----------------------------------------------------------------------------
+// Deferred visualization runtime
+// -----------------------------------------------------------------------------
+
+type VisualizationModule = typeof import("./visualization.js")
+
+let visualizationModule: VisualizationModule | null = null
+let visualizationPromise: Promise<VisualizationModule> | null = null
+let pendingVisualization: { totals: any; ignore: Set<any> } | null = null
+
+function loadVisualization(): Promise<VisualizationModule> {
+  if (visualizationModule !== null) {
+    return Promise.resolve(visualizationModule)
+  }
+  visualizationPromise ??= import("./visualization.js")
+    .then((module) => {
+      visualizationModule = module
+      return module
+    })
+    .catch((error) => {
+      visualizationPromise = null
+      throw error
+    })
+  return visualizationPromise
+}
+
+function renderVisualization(totals: any, ignore: Set<any>): void {
+  if (visualizationModule !== null) {
+    visualizationModule.renderTotals(totals, ignore)
+    return
+  }
+  pendingVisualization = { totals, ignore }
+  void loadVisualization().then((module) => {
+    const pending = pendingVisualization
+    pendingVisualization = null
+    if (pending !== null && currentTab === "graph") {
+      module.renderTotals(pending.totals, pending.ignore)
+    }
+  })
+}
+
+let visualizationPreloadScheduled = false
+
+function preloadVisualization(): void {
+  if (visualizationPreloadScheduled) {
+    return
+  }
+  visualizationPreloadScheduled = true
+  const scheduleIdleLoad = () => {
+    globalThis.setTimeout(() => {
+      const load = () => void loadVisualization()
+      if ("requestIdleCallback" in window) {
+        window.requestIdleCallback(load, { timeout: 5000 })
+      } else {
+        load()
+      }
+    }, 1000)
+  }
+  if (document.readyState === "complete") {
+    scheduleIdleLoad()
+  } else {
+    window.addEventListener("load", scheduleIdleLoad, { once: true })
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Browser factory view
 // -----------------------------------------------------------------------------
 
@@ -121,7 +186,7 @@ export const browserFactoryView: FactoryViewPort = {
   renderSolution(specification: any, totals) {
     displayItems(specification, totals)
     if (currentTab === "graph") {
-      renderTotals(totals, specification.ignore)
+      renderVisualization(totals, specification.ignore)
     }
     reapTooltips()
   },
@@ -202,11 +267,28 @@ function fixLegacySettings(settings) {
   }
 }
 
+const dataRequests = new Map<string, Promise<unknown>>()
+
+function fetchData(filename: string): Promise<unknown> {
+  let request = dataRequests.get(filename)
+  if (request !== undefined) {
+    return request
+  }
+  request = fetch(filename, { cache: "force-cache", credentials: "same-origin" }).then((response) => {
+    if (!response.ok) {
+      throw new Error(`Failed to load ${filename}: ${response.status} ${response.statusText}`)
+    }
+    return response.json() as Promise<unknown>
+  })
+  dataRequests.set(filename, request)
+  return request
+}
+
 function loadData(modName, settings) {
   let mod = MODIFICATIONS.get(modName)
   setLegacyCalculation(mod.legacy)
   let filename = "data/" + mod.filename
-  d3.json(filename, { cache: "reload" }).then(function (rawData: unknown) {
+  fetchData(filename).then(function (rawData: unknown) {
     let data = parseCalculatorData(rawData)
     let items = getItems(data)
     let recipes = getRecipes(data, items)
@@ -236,14 +318,22 @@ function loadData(modName, settings) {
 
     spec.updateSolution()
     finishUrlInitialization()
+    preloadVisualization()
   })
 }
 
+let initialized = false
+
 export function init() {
+  if (initialized) {
+    return
+  }
+  initialized = true
   initializeFactoryDensity()
   initializeTooltips()
   configureFactoryView(browserFactoryView)
   configureDatasetChangeHandler(changeMod)
+  configureSettingsTabHandler(ensureDeferredSettingsRendered)
   window.spec = spec
   configureModelRuntime({
     getSpecification: () => spec,

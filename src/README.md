@@ -17,6 +17,7 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 - `recipes.ts`: item and recipe objects plus recipe search/grouping and enablement policy.
 - `priorities.ts`: the resource-priority data model, serialization policy, and its tightly coupled DOM editor.
 - `state.ts`: mutable UI/application settings, dataset selection, visualizer selection, table density, sharing, and event actions.
+- `color-schemes.ts`: lightweight theme definitions shared by settings without importing graph rendering.
 
 ## Browser interface
 
@@ -29,6 +30,8 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 - `url-state.ts`: browser history plus deterministic, slot-safe calculator fragment parsing/formatting.
 - `app.ts`: composition root, browser view adapter, and dataset bootstrap.
 - `main.ts`: CSS entry, global HTML handlers, and startup.
+
+The initial totals view intentionally excludes graph/layout code and defers closed selector DOM, dropdown positioning, and rich tooltip construction until first use. Preserve that boundary when adding browser features.
 - `styles/calc.css`, `styles/dropdown.css`, and `styles/player-ui.css`: legacy component rules, dropdown behavior, and the modern player-facing visual layer.
 
 ## Dependency direction

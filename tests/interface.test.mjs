@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { readFile } from "node:fs/promises"
+import { readFile, readdir, stat } from "node:fs/promises"
 import { resolve } from "node:path"
 import test from "node:test"
 
@@ -95,10 +95,14 @@ test("tooltips use Tippy for rich and text content without the legacy Popper run
   assert.ok(presentation.includes("arrow: false"))
   assert.ok(presentation.includes("offset: [0, 4] as [number, number]"))
   assert.ok(!presentation.includes("offset: [0, 12]"))
-  assert.ok(presentation.includes("this.instance = tippy(reference"))
+  assert.ok(presentation.includes('reference.addEventListener("pointerenter", this.activate)'))
+  assert.ok(presentation.includes("this.ensureInstance()?.show()"))
+  assert.ok(presentation.includes("this.instance = tippy(this.reference"))
   assert.ok(presentation.includes("export function makePopover"))
   assert.ok(presentation.includes("if (!suppressTooltip)"))
-  assert.ok(results.includes("makePopover(details.node(), menu.node()"))
+  assert.ok(results.includes('makePopover(details.node(), " "'))
+  assert.ok(results.includes("const ensureMenu = (instance) =>"))
+  assert.ok(results.includes("ensureMenu(instance)"))
   assert.ok(results.includes('placement: "right-start"'))
   assert.ok(results.includes("row.item.icon.make(32, true)"))
   assert.ok(!presentation.includes("Popper.createPopper"))
@@ -121,7 +125,9 @@ test("dropdowns use Tippy positioning without the legacy fullscreen click catche
   assert.ok(presentation.includes('trigger: "manual"'))
   assert.ok(presentation.includes('theme: "factorio-dropdown"'))
   assert.ok(presentation.includes('placement: "bottom-start"'))
-  assert.ok(presentation.includes("instance.setContent(dropdownNode)"))
+  assert.ok(presentation.includes("tippyInstance ??= tippy(wrapperNode"))
+  assert.ok(presentation.includes("realInstance.setContent(dropdownNode)"))
+  assert.ok(presentation.includes("return tippyInstance?.state ?? hiddenState"))
   assert.ok(!presentation.includes('classed("clicker"'))
   assert.ok(dropdownStyles.includes('.tippy-box[data-theme~="factorio-dropdown"]'))
   assert.ok(!dropdownStyles.includes("position: fixed"))
@@ -133,6 +139,74 @@ test("module dropdown rerenders initialize only entering wrappers", async () => 
   assert.ok(models.includes("s.each(function (this: HTMLElement)"))
   assert.ok(models.includes("makeDropdown(d3.select(this))"))
   assert.ok(!models.includes("makeDropdown(s)"))
+})
+
+test("mobile startup keeps optional runtimes and hidden controls off the critical path", async () => {
+  const [html, main, app, settings, ui, presentation, graph, visualization, packageJson] = await Promise.all([
+    readFile(resolve(root, "calc.html"), "utf8"),
+    readFile(resolve(root, "src/main.ts"), "utf8"),
+    readFile(resolve(root, "src/app.ts"), "utf8"),
+    readFile(resolve(root, "src/settings.ts"), "utf8"),
+    readFile(resolve(root, "src/ui.ts"), "utf8"),
+    readFile(resolve(root, "src/presentation.ts"), "utf8"),
+    readFile(resolve(root, "src/graph.ts"), "utf8"),
+    readFile(resolve(root, "src/visualization.ts"), "utf8"),
+    readFile(resolve(root, "package.json"), "utf8"),
+  ])
+
+  assert.ok(!html.includes('body onload='))
+  assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/dropdown.css" />'))
+  assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/calc.css" />'))
+  assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/player-ui.css" />'))
+  assert.ok(html.includes('rel="preload" href="./data/space-age-2.1.12.json" as="fetch" crossorigin'))
+  assert.ok(!main.includes('import "./styles/'))
+  assert.ok(main.trimEnd().endsWith("init()"))
+  assert.ok(app.includes('import("./visualization.js")'))
+  assert.ok(!app.includes('from "./visualization.js"'))
+  assert.ok(app.includes('cache: "force-cache", credentials: "same-origin"'))
+  assert.ok(app.includes('window.addEventListener("load", scheduleIdleLoad, { once: true })'))
+  assert.ok(app.includes("let initialized = false"))
+  assert.ok(settings.includes("ensureDeferredSettingsRendered"))
+  assert.ok(settings.includes("if (!recipeSettingsRendered)"))
+  assert.ok(settings.includes("if (!resourcePrioritiesRendered)"))
+  assert.ok(ui.includes("let itemOptionsRendered = false"))
+  assert.ok(ui.includes("renderItemOptions(selection)"))
+  assert.ok(presentation.includes("private ensureInstance(): any"))
+  assert.ok(presentation.includes("tippyInstance ??= tippy(wrapperNode"))
+  assert.ok(!settings.includes('from "./graph.js"'))
+  assert.ok(!graph.includes('from "./color-schemes.js"'))
+  assert.ok(visualization.includes('import { color, curveBasis, line, select } from "d3"'))
+  assert.ok(visualization.includes("const d3: any = { color, curveBasis, line, select }"))
+  assert.equal(JSON.parse(packageJson).scripts.bench, "node scripts/bench-solver.mjs")
+
+  for (const source of [app, settings, ui, presentation, graph, visualization]) {
+    assert.ok(!source.includes('import * as d3Package from "d3"'))
+  }
+})
+
+test("runtime sprite sheets use smaller lossless WebP assets", async () => {
+  const dataDirectory = resolve(root, "public/data")
+  const datasets = (await readdir(dataDirectory)).filter((name) => name.endsWith(".json"))
+  const hashes = new Set()
+  for (const dataset of datasets) {
+    const data = JSON.parse(await readFile(resolve(dataDirectory, dataset), "utf8"))
+    hashes.add(data.sprites.hash)
+  }
+
+  assert.ok(hashes.size > 0)
+  for (const hash of hashes) {
+    const png = await stat(resolve(root, `public/images/sprite-sheet-${hash}.png`))
+    const webp = await stat(resolve(root, `public/images/sprite-sheet-${hash}.webp`))
+    assert.ok(webp.size < png.size, `${hash}: expected WebP ${webp.size} to be smaller than PNG ${png.size}`)
+  }
+
+  const runtimeSources = await Promise.all(
+    ["src/presentation.ts", "src/graph.ts", "src/visualization.ts"].map((file) =>
+      readFile(resolve(root, file), "utf8"),
+    ),
+  )
+  assert.ok(runtimeSources.every((source) => source.includes(".webp")))
+  assert.ok(runtimeSources.every((source) => !source.includes('sheetHash + ".png"')))
 })
 
 test("runtime libraries load from pnpm modules instead of classic vendored globals", async () => {

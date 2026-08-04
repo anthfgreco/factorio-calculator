@@ -1,7 +1,4 @@
 import "tippy.js/dist/tippy.css"
-import "./styles/dropdown.css"
-import "./styles/calc.css"
-import "./styles/player-ui.css"
 import { init } from "./app.js"
 import {
   changeCountPrecision,
@@ -45,3 +42,5 @@ window.handlers = {
   toggleDebug,
   init,
 }
+
+init()

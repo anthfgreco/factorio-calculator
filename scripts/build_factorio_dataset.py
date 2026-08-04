@@ -307,6 +307,8 @@ class SpriteBuilder:
         old = load_json(self.old_data)
         sprite = old["sprites"]
         sheet_path = self.old_images_dir / f"sprite-sheet-{sprite['hash']}.png"
+        if not sheet_path.exists():
+            sheet_path = self.old_images_dir / f"sprite-sheet-{sprite['hash']}.webp"
         clock = sprite["extra"]["clock"]
         left = clock["icon_col"] * CELL_SIZE
         top = clock["icon_row"] * CELL_SIZE
@@ -361,6 +363,8 @@ class SpriteBuilder:
         if output_path.exists():
             output_path.unlink()
         temp_path.replace(output_path)
+        webp_path = output_images_dir / f"sprite-sheet-{digest}.webp"
+        sheet.save(webp_path, format="WEBP", lossless=True, method=6, exact=True)
 
         return {
             "hash": digest,
@@ -1080,6 +1084,7 @@ def main() -> None:
 
     print(f"Created {output}")
     print(f"Created {images_dir / ('sprite-sheet-' + dataset['sprites']['hash'] + '.png')}")
+    print(f"Created {images_dir / ('sprite-sheet-' + dataset['sprites']['hash'] + '.webp')}")
     print(f"Created {report}")
     print(json.dumps(validation, indent=2))
 

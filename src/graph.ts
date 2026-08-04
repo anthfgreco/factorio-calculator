@@ -1,59 +1,9 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { color, select, style } from "d3"
+const d3: any = { color, select, style }
 import * as d3sankey from "./vendor/d3-sankey/index.js"
 import { spec } from "./factory.js"
 import { one } from "./math.js"
 import { PX_HEIGHT, PX_WIDTH, sheetHash, sheetHeight, sheetWidth } from "./presentation.js"
-
-// -----------------------------------------------------------------------------
-// Graph color schemes
-// -----------------------------------------------------------------------------
-
-class ColorScheme {
-  [key: string]: any
-  constructor(name, key, scheme) {
-    this.name = name
-    this.key = key
-    this.scheme = scheme
-  }
-  apply() {
-    let html = document.documentElement
-    for (let [name, value] of this.scheme) {
-      html.style.setProperty(name, value)
-    }
-  }
-}
-
-export let colorSchemes = [
-  new ColorScheme(
-    "Default",
-    "default",
-    new Map([
-      ["--dark", "#171717"],
-      ["--dark-overlay", "rgba(23, 23, 23, 0.8)"],
-      ["--medium", "#212427"],
-      ["--main", "#272b30"],
-      ["--light", "#3a3f44"],
-      ["--foreground", "#c8c8c8"],
-      ["--accent", "#ff7200"],
-      ["--bright", "#f1fff2"],
-    ]),
-  ),
-  new ColorScheme(
-    "Printer-friendly",
-    "printer",
-    new Map([
-      ["--dark", "#f0f0f0"],
-      ["--dark-overlay", "#ffffff"],
-      ["--medium", "#ffffff"],
-      ["--main", "#ffffff"],
-      ["--light", "#dddddd"],
-      ["--foreground", "#000000"],
-      ["--accent", "#222222"],
-      ["--bright", "#111111"],
-    ]),
-  ),
-]
 
 // -----------------------------------------------------------------------------
 // Graph interactions
@@ -518,7 +468,7 @@ export function renderNode(rects, nodeMargin, justification, recipeColors, ignor
     .attr("height", iconSize)
     .append("image")
     .classed("ignore", (d) => ignore.has(d.recipe))
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".png")
+    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
     .attr("width", sheetWidth)
     .attr("height", sheetHeight)
   // node text (building count, or plain rate if no building)
@@ -551,7 +501,7 @@ export function renderNode(rects, nodeMargin, justification, recipeColors, ignor
     .attr("width", iconSize)
     .attr("height", iconSize)
     .append("image")
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".png")
+    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
     .attr("width", sheetWidth)
     .attr("height", sheetHeight)
 }
@@ -756,7 +706,7 @@ export function renderSankey(data, direction, ignore) {
     .attr("height", iconSize / 2)
   linkIcon
     .append("image")
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".png")
+    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
     .attr("width", sheetWidth)
     .attr("height", sheetHeight)
   if (direction === "down") {

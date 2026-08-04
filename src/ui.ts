@@ -1,8 +1,8 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { create, select, selectAll } from "d3"
+const d3: any = { create, select, selectAll }
 import { spec } from "./factory.js"
 import { one, Rational, zero } from "./math.js"
-import { addInputs, makeDropdown } from "./presentation.js"
+import { addInputs, makeDropdown, reapTooltips } from "./presentation.js"
 import { formatLocationList, getUnavailableLocationInfo, itemMatchesSearch } from "./data.js"
 import { refreshRecipeSettings } from "./settings.js"
 import { getRecipeQualityChance, qualityProbability, QUALITY_TIERS } from "./planning.js"
@@ -60,7 +60,10 @@ function changeRateHandler(target) {
 }
 
 function resetSearch(dropdown) {
-  dropdown.getElementsByClassName("search")[0].value = ""
+  let search = dropdown.getElementsByClassName("search")[0] as HTMLInputElement | undefined
+  if (search !== undefined) {
+    search.value = ""
+  }
 
   // unhide all child nodes
   let elems = dropdown.querySelectorAll("label, hr")
@@ -145,29 +148,50 @@ export class BuildTarget {
       .on("click", removeHandler(this))
     this.element = element.node()
 
-    let dropdown = makeDropdown(
+    const targetInputName = `target-${targetCount}`
+    let itemOptionsRendered = false
+    let dropdown: any
+
+    const renderItemOptions = (selection: any) => {
+      if (itemOptionsRendered) {
+        return
+      }
+      itemOptionsRendered = true
+      selection.selectAll("*").remove()
+      selection.append("input").classed("search", true).attr("placeholder", "Search").on("keyup", searchTargets)
+      let group = selection.selectAll("div").data(itemGroups).join("div")
+      group.filter((d, i) => i > 0).append("hr")
+      let items = group
+        .selectAll("div")
+        .data((d) => d)
+        .join("div")
+        .selectAll("span")
+        .data((d) => d)
+        .join("span")
+      let itemLabel = addInputs(items, targetInputName, (d) => d === this.item, itemHandler(this))
+      itemLabel.append((d) => d.icon.make(32, false, selection.node()))
+      itemLabel
+        .append("span")
+        .classed("target-item-name", true)
+        .text((d) => d.name)
+      reapTooltips()
+    }
+
+    dropdown = makeDropdown(
       element,
-      (d) => d.select(".search").node().focus(),
-      (d) => resetSearch(d.node()),
+      (selection) => {
+        renderItemOptions(selection)
+        const search = selection.select(".search").node() as HTMLInputElement | null
+        search?.focus()
+      },
+      (selection) => resetSearch(selection.node()),
     )
     dropdown.classed("itemDropdown", true)
-    dropdown.append("input").classed("search", true).attr("placeholder", "Search").on("keyup", searchTargets)
-    let group = dropdown.selectAll("div").data(itemGroups).join("div")
-    group.filter((d, i) => i > 0).append("hr")
-    let items = group
-      .selectAll("div")
-      .data((d) => d)
-      .join("div")
-      .selectAll("span")
-      .data((d) => d)
-      .join("span")
-    let itemLabel = addInputs(items, `target-${targetCount}`, (d) => d === item, itemHandler(this))
 
-    itemLabel.append((d) => d.icon.make(32, false, dropdown.node()))
-    itemLabel
-      .append("span")
-      .classed("target-item-name", true)
-      .text((d) => d.name)
+    const selectedItem = dropdown.append("span").datum(item)
+    const selectedItemLabel = addInputs(selectedItem, targetInputName, () => true, itemHandler(this))
+    selectedItemLabel.append(() => item.icon.make(32, false, dropdown.node()))
+    selectedItemLabel.append("span").classed("target-item-name", true).text(item.name)
 
     targetCount++
 

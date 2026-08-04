@@ -1,5 +1,5 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { select } from "d3"
+const d3: any = { select }
 import { Rational } from "./math.js"
 
 // -----------------------------------------------------------------------------
@@ -352,6 +352,14 @@ export function renderResourcePriorityEditor(priority: PriorityList, onChange: (
   }
   onCalculationChange = onChange
   render()
+}
+
+export function unmountResourcePriorityEditor(): void {
+  unsubscribe?.()
+  unsubscribe = null
+  mountedPriority = null
+  onCalculationChange = null
+  document.getElementById("resource_settings")?.replaceChildren()
 }
 
 function render() {

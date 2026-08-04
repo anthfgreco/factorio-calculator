@@ -1,8 +1,8 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { select, selectAll } from "d3"
+const d3: any = { select, selectAll }
 import { normalizeSearchText, sorted } from "./data.js"
 import { buildingSort, DEFAULT_BELT, DEFAULT_FUEL, DEFAULT_PLANET, setRecipeEnabled, spec } from "./factory.js"
-import { colorSchemes } from "./graph.js"
+import { colorSchemes } from "./color-schemes.js"
 import type { DisplayFormat, DisplayRate } from "./math.js"
 import {
   DEFAULT_COUNT_PRECISION,
@@ -15,7 +15,7 @@ import {
   zero,
 } from "./math.js"
 import { moduleDropdown, moduleRows, shortModules } from "./models.js"
-import { renderResourcePriorityEditor } from "./priorities.js"
+import { renderResourcePriorityEditor, unmountResourcePriorityEditor } from "./priorities.js"
 import {
   getConfigurableRecipes,
   groupRecipesForSettings,
@@ -45,6 +45,8 @@ import {
 
 let searchText = ""
 let showUnavailable = false
+let recipeSettingsRendered = false
+let resourcePrioritiesRendered = false
 
 function updateRecipeToggleState(spec: any, element: HTMLButtonElement, recipe: any) {
   const unavailable = isRecipeUnavailable(spec, recipe)
@@ -203,6 +205,9 @@ export function renderRecipeSettings(spec: any) {
 }
 
 export function refreshRecipeSettings(spec: any) {
+  if (!recipeSettingsRendered) {
+    return
+  }
   const root = d3.select("#recipe_toggles")
   if (root.empty()) {
     return
@@ -350,7 +355,8 @@ export function renderRecipeAndLocationSettings(settings): void {
   let hasMultipleLocations = applyLocationSettings(settings)
   applyRecipeOverrides(settings, hasMultipleLocations)
   renderLocationSelector(hasMultipleLocations)
-  renderRecipeSettings(spec)
+  recipeSettingsRendered = false
+  document.getElementById("recipe_toggles")?.replaceChildren()
 }
 
 // -----------------------------------------------------------------------------
@@ -1097,7 +1103,19 @@ function renderResourcePriorities(settings) {
       spec.setPriorities(tiers)
     }
   }
-  renderResourcePriorityEditor(spec.priority, () => spec.updateSolution())
+  resourcePrioritiesRendered = false
+  unmountResourcePriorityEditor()
+}
+
+export function ensureDeferredSettingsRendered(): void {
+  if (!recipeSettingsRendered) {
+    recipeSettingsRendered = true
+    renderRecipeSettings(spec)
+  }
+  if (!resourcePrioritiesRendered) {
+    resourcePrioritiesRendered = true
+    renderResourcePriorityEditor(spec.priority, () => spec.updateSolution())
+  }
 }
 
 // debug

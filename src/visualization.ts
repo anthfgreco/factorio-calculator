@@ -1,5 +1,5 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { color, curveBasis, line, select } from "d3"
+const d3: any = { color, curveBasis, line, select }
 import dagre from "@dagrejs/dagre"
 import { spec } from "./factory.js"
 import {
@@ -289,7 +289,7 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
     .attr("width", iconSize)
     .attr("height", iconSize)
     .append("image")
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".png")
+    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
     .attr("width", sheetWidth)
     .attr("height", sheetHeight)
   edgeLabels

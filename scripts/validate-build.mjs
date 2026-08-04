@@ -111,5 +111,6 @@ if (!data.sprites?.hash) {
 }
 
 await requireFile(`images/sprite-sheet-${data.sprites.hash}.png`)
+await requireFile(`images/sprite-sheet-${data.sprites.hash}.webp`)
 
 console.log(`Validated Vite build with ${data.recipes.length} Factorio 2.1.12 recipes.`)

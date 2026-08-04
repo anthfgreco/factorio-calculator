@@ -10,6 +10,7 @@ const allowedImports = new Map([
   ["math.ts", new Set()],
   ["solver.ts", new Set(["math.ts"])],
   ["planning.ts", new Set(["math.ts"])],
+  ["color-schemes.ts", new Set()],
   ["presentation.ts", new Set()],
   ["models.ts", new Set(["data.ts", "math.ts", "presentation.ts"])],
   ["priorities.ts", new Set(["math.ts"])],
@@ -20,7 +21,7 @@ const allowedImports = new Map([
   ["visualization.ts", new Set(["factory.ts", "graph.ts", "math.ts", "presentation.ts", "state.ts"])],
   [
     "settings.ts",
-    new Set(["data.ts", "factory.ts", "graph.ts", "math.ts", "models.ts", "priorities.ts", "recipes.ts", "state.ts"]),
+    new Set(["color-schemes.ts", "data.ts", "factory.ts", "math.ts", "models.ts", "priorities.ts", "recipes.ts", "state.ts"]),
   ],
   [
     "ui.ts",

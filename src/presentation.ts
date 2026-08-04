@@ -1,5 +1,5 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { create, local, select } from "d3"
+const d3: any = { create, local, select }
 import tippy, { delegate, hideAll } from "tippy.js"
 
 // -----------------------------------------------------------------------------
@@ -54,29 +54,66 @@ export function makePopover(reference, content, props: any = {}) {
 
 export class Tooltip {
   [key: string]: any
-  constructor(reference, callback, target) {
-    if (!target) {
-      target = reference
+  private instance: any = null
+  private content: any = null
+  private removed = false
+  private readonly activate: () => void
+
+  constructor(
+    readonly reference: HTMLElement,
+    private readonly callback: () => HTMLElement,
+    private readonly target: HTMLElement = reference,
+  ) {
+    this.activate = () => {
+      this.ensureInstance()?.show()
     }
-    this.reference = reference
-    let content = null
-    this.instance = tippy(reference, {
+    reference.addEventListener("pointerenter", this.activate)
+    reference.addEventListener("focus", this.activate)
+    reference.addEventListener("touchstart", this.activate, { passive: true })
+    tooltipRegistry.add(this)
+  }
+
+  private ensureInstance(): any {
+    if (this.removed) {
+      return null
+    }
+    if (this.instance !== null) {
+      return this.instance
+    }
+    this.reference.removeEventListener("pointerenter", this.activate)
+    this.reference.removeEventListener("focus", this.activate)
+    this.reference.removeEventListener("touchstart", this.activate)
+    this.instance = tippy(this.reference, {
       ...tooltipProps(),
       content: " ",
-      getReferenceClientRect: target === reference ? undefined : () => target.getBoundingClientRect(),
+      getReferenceClientRect:
+        this.target === this.reference ? undefined : () => this.target.getBoundingClientRect(),
       placement: "right-start",
-      onShow(instance) {
-        if (content === null) {
-          content = callback()
-          instance.setContent(content)
+      onShow: (instance) => {
+        if (this.content === null) {
+          this.content = this.callback()
+          instance.setContent(this.content)
         }
       },
     })
-    tooltipRegistry.add(this.instance)
+    return this.instance
   }
-  remove() {
-    tooltipRegistry.delete(this.instance)
-    this.instance.destroy()
+
+  destroy(): void {
+    if (this.removed) {
+      return
+    }
+    this.removed = true
+    tooltipRegistry.delete(this)
+    this.reference.removeEventListener("pointerenter", this.activate)
+    this.reference.removeEventListener("focus", this.activate)
+    this.reference.removeEventListener("touchstart", this.activate)
+    this.instance?.destroy()
+    this.instance = null
+  }
+
+  remove(): void {
+    this.destroy()
   }
 }
 
@@ -130,7 +167,7 @@ export class Icon {
     let img = d3
       .select(makeEmptyIcon(size))
       .classed("icon", true)
-      .style("background", "url(images/sprite-sheet-" + sheetHash + ".png)")
+      .style("background", "url(images/sprite-sheet-" + sheetHash + ".webp)")
     if (size !== 32) {
       let ratio = size / 32
       x *= ratio
@@ -223,57 +260,87 @@ export function makeDropdown(selector, onOpen = null, onClose = null) {
   let dropdownNode = dropdownInner.node() as HTMLElement
   let spacerNode = spacer.node() as HTMLElement
   let escapeHandler = null
-  let instance = tippy(wrapperNode, {
-    ...tooltipProps(),
-    animation: false,
-    arrow: false,
-    content: " ",
-    duration: 0,
-    hideOnClick: true,
-    interactive: true,
-    maxWidth: "none",
-    offset: [0, 4],
-    placement: "bottom-start",
-    theme: "factorio-dropdown",
-    trigger: "manual",
-    onShow(instance) {
-      hideAll({ exclude: instance })
-      let selected = dropdownNode.querySelector("input:checked + label")
-      if (selected instanceof HTMLElement) {
-        let bounds = selected.getBoundingClientRect()
-        spacer.style("width", `${bounds.width}px`).style("height", `${bounds.height}px`)
+  let tippyInstance: any = null
+  let destroyed = false
+  const hiddenState = { isVisible: false }
+  const instance = {
+    reference: wrapperNode,
+    get state() {
+      return tippyInstance?.state ?? hiddenState
+    },
+    show() {
+      if (destroyed) {
+        return
       }
-      wrapperNode.classList.add("open")
-      dropdownNode.classList.add("open")
-      wrapper.attr("aria-expanded", "true")
-      instance.setContent(dropdownNode)
+      tippyInstance ??= tippy(wrapperNode, {
+        ...tooltipProps(),
+        animation: false,
+        arrow: false,
+        content: " ",
+        duration: 0,
+        hideOnClick: true,
+        interactive: true,
+        maxWidth: "none",
+        offset: [0, 4],
+        placement: "bottom-start",
+        theme: "factorio-dropdown",
+        trigger: "manual",
+        onShow(realInstance) {
+          hideAll({ exclude: realInstance })
+          let selected = dropdownNode.querySelector("input:checked + label")
+          if (selected instanceof HTMLElement) {
+            let bounds = selected.getBoundingClientRect()
+            spacer.style("width", `${bounds.width}px`).style("height", `${bounds.height}px`)
+          }
+          wrapperNode.classList.add("open")
+          dropdownNode.classList.add("open")
+          wrapper.attr("aria-expanded", "true")
+          realInstance.setContent(dropdownNode)
+        },
+        onMount() {
+          escapeHandler = (event) => {
+            if (event.key === "Escape") {
+              instance.hide()
+              wrapperNode.focus()
+            }
+          }
+          document.addEventListener("keydown", escapeHandler)
+          onOpen?.(d3.select(dropdownNode))
+        },
+        onClickOutside(realInstance) {
+          realInstance.hide()
+        },
+        onHidden(realInstance) {
+          if (escapeHandler !== null) {
+            document.removeEventListener("keydown", escapeHandler)
+            escapeHandler = null
+          }
+          wrapperNode.insertBefore(dropdownNode, spacerNode)
+          realInstance.setContent(" ")
+          wrapperNode.classList.remove("open")
+          dropdownNode.classList.remove("open")
+          wrapper.attr("aria-expanded", "false")
+          onClose?.(d3.select(dropdownNode))
+        },
+      })
+      tippyInstance.show()
     },
-    onMount() {
-      escapeHandler = (event) => {
-        if (event.key === "Escape") {
-          instance.hide()
-          wrapperNode.focus()
-        }
+    hide() {
+      tippyInstance?.hide()
+    },
+    destroy() {
+      if (destroyed) {
+        return
       }
-      document.addEventListener("keydown", escapeHandler)
-      onOpen?.(d3.select(dropdownNode))
-    },
-    onClickOutside(instance) {
-      instance.hide()
-    },
-    onHidden(instance) {
+      destroyed = true
       if (escapeHandler !== null) {
         document.removeEventListener("keydown", escapeHandler)
         escapeHandler = null
       }
-      wrapperNode.insertBefore(dropdownNode, spacerNode)
-      instance.setContent(" ")
-      wrapperNode.classList.remove("open")
-      dropdownNode.classList.remove("open")
-      wrapper.attr("aria-expanded", "false")
-      onClose?.(d3.select(dropdownNode))
+      tippyInstance?.destroy()
+      tippyInstance = null
     },
-  })
+  }
   let dropdownState = { dropdownNode, instance, onClose, onOpen, spacerNode, wrapperNode }
   dropdownLocal.set(wrapperNode, dropdownState)
   dropdownLocal.set(dropdownNode, dropdownState)

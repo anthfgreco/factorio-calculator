@@ -118,7 +118,7 @@ python scripts/build_factorio_dataset.py /path/to/factorio-export
 The builder writes:
 
 - `public/data/space-age-2.1.12.json`
-- `public/images/sprite-sheet-<hash>.png`
+- `public/images/sprite-sheet-<hash>.png` and lossless `.webp` runtime copies
 - `build-reports/space-age-2.1.12.json`
 
 Raw JSON is validated by `parseCalculatorData()` in `src/data.ts` before runtime objects are created. Do not manually treat generated JSON as the source of truth.

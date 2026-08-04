@@ -71,9 +71,15 @@ These modules must not access the DOM, D3, storage, or browser globals. `data.ts
 
 ## Browser modules
 
+`src/color-schemes.ts` contains the lightweight theme definitions so settings do not pull graph rendering into startup.
+
 `src/presentation.ts` contains generic icons, tooltips, and dropdown primitives.
 
 `src/settings.ts`, `src/results.ts`, and `src/ui.ts` own settings, result tables, factory summaries and diagnostics, and target-row DOM respectively. Calculation policy should be called through `factory.ts`, `recipes.ts`, or `priorities.ts` rather than implemented in event handlers.
+
+### Startup boundary
+
+The default totals view is the critical path. Keep graph/layout modules behind the dynamic visualization import, leave closed item/recipe/resource selectors unmounted until first use, and avoid eager tooltip or dropdown instances. Versioned datasets may be preloaded and runtime sprite sheets use lossless WebP; changes to these boundaries require startup regression coverage.
 
 `src/graph.ts` contains Sankey and shared graph primitives. `src/visualization.ts` contains viewport behavior, box-line rendering, and visualization selection/orchestration.
 

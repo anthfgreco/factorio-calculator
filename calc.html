@@ -32,10 +32,14 @@
       }
     </script>
     <link rel="shortcut icon" href="./favicon.png" type="image/x-icon" />
+    <link rel="stylesheet" href="./src/styles/dropdown.css" />
+    <link rel="stylesheet" href="./src/styles/calc.css" />
+    <link rel="stylesheet" href="./src/styles/player-ui.css" />
+    <link rel="preload" href="./data/space-age-2.1.12.json" as="fetch" crossorigin />
     <script type="module" src="./src/main.ts"></script>
   </head>
 
-  <body onload="handlers.init()">
+  <body>
     <section class="targets-panel" aria-labelledby="targets_title">
       <div class="targets-heading">
         <span id="targets_title">Production targets</span>

@@ -1,5 +1,5 @@
-import * as d3Package from "d3"
-const d3: any = d3Package
+import { create, select, selectAll } from "d3"
+const d3: any = { create, select, selectAll }
 import { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled, spec } from "./factory.js"
 import { one, powerRepresentation, Rational, zero } from "./math.js"
 import { moduleDropdown, moduleRows, type Fuel } from "./models.js"
@@ -154,45 +154,54 @@ export function makeRecipeSelector(row) {
     })
   summary.append(() => row.item.icon.make(32, true))
 
-  let menu = d3.create("div").classed("recipe-selector-menu", true)
-  menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
-  let groups = menu
-    .selectAll("section.recipe-selector-group")
-    .data(getRecipeSelectorGroups(recipes, row.recipe), (entry) => entry.key)
-    .join("section")
-    .classed("recipe-selector-group", true)
-  groups
-    .append("div")
-    .classed("recipe-selector-group-title", true)
-    .text((entry) => entry.name)
-  let options = groups
-    .selectAll("label")
-    .data((entry) => entry.recipes)
-    .join("label")
-    .classed("recipe-selector-option", true)
-    .classed("active", (recipe) => recipe === row.recipe)
-  options
-    .append("input")
-    .attr("type", "checkbox")
-    .property("checked", (recipe) => !spec.disable.has(recipe))
-    .on("change", (event, recipe) => {
-      event.stopPropagation()
-      openItemKey = row.item.key
-      setRecipeEnabled(spec, recipe, event.target.checked)
-      refreshRecipeSettings(spec)
-      spec.updateSolution()
-    })
-  options.append((recipe) => recipe.icon.make(32))
-  options.append("span").text((recipe) => {
-    let details = []
-    if (recipe.time && !recipe.time.isZero()) details.push(`${recipe.time.toDecimal()} s`)
-    if (spec.selectedPlanets?.size) {
-      let count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
-      details.push(`${count} selected location${count === 1 ? "" : "s"}`)
+  let menu = null
+  const ensureMenu = (instance) => {
+    if (menu !== null) {
+      instance.setContent(menu.node())
+      return
     }
-    return details.length > 0 ? `${recipe.name} — ${details.join(", ")}` : recipe.name
-  })
-  let instance = makePopover(details.node(), menu.node(), {
+    menu = d3.create("div").classed("recipe-selector-menu", true)
+    menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
+    let groups = menu
+      .selectAll("section.recipe-selector-group")
+      .data(getRecipeSelectorGroups(recipes, row.recipe), (entry) => entry.key)
+      .join("section")
+      .classed("recipe-selector-group", true)
+    groups
+      .append("div")
+      .classed("recipe-selector-group-title", true)
+      .text((entry) => entry.name)
+    let options = groups
+      .selectAll("label")
+      .data((entry) => entry.recipes)
+      .join("label")
+      .classed("recipe-selector-option", true)
+      .classed("active", (recipe) => recipe === row.recipe)
+    options
+      .append("input")
+      .attr("type", "checkbox")
+      .property("checked", (recipe) => !spec.disable.has(recipe))
+      .on("change", (event, recipe) => {
+        event.stopPropagation()
+        openItemKey = row.item.key
+        setRecipeEnabled(spec, recipe, event.target.checked)
+        refreshRecipeSettings(spec)
+        spec.updateSolution()
+      })
+    options.append((recipe) => recipe.icon.make(32))
+    options.append("span").text((recipe) => {
+      let details = []
+      if (recipe.time && !recipe.time.isZero()) details.push(`${recipe.time.toDecimal()} s`)
+      if (spec.selectedPlanets?.size) {
+        let count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
+        details.push(`${count} selected location${count === 1 ? "" : "s"}`)
+      }
+      return details.length > 0 ? `${recipe.name} — ${details.join(", ")}` : recipe.name
+    })
+    instance.setContent(menu.node())
+  }
+
+  let instance = makePopover(details.node(), " ", {
     appendTo: () => document.body,
     arrow: false,
     offset: [0, 8],
@@ -200,6 +209,7 @@ export function makeRecipeSelector(row) {
     showOnCreate: openItemKey === row.item.key,
     theme: "factorio-menu",
     onShow(instance) {
+      ensureMenu(instance)
       closeAll(instance)
       openItemKey = row.item.key
       details.property("open", true)
