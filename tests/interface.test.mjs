@@ -142,11 +142,12 @@ test("module dropdown rerenders initialize only entering wrappers", async () => 
 })
 
 test("mobile startup keeps optional runtimes and hidden controls off the critical path", async () => {
-  const [html, main, app, settings, ui, presentation, graph, visualization, packageJson] = await Promise.all([
+  const [html, main, app, settings, state, ui, presentation, graph, visualization, packageJson] = await Promise.all([
     readFile(resolve(root, "calc.html"), "utf8"),
     readFile(resolve(root, "src/main.ts"), "utf8"),
     readFile(resolve(root, "src/app.ts"), "utf8"),
     readFile(resolve(root, "src/settings.ts"), "utf8"),
+    readFile(resolve(root, "src/state.ts"), "utf8"),
     readFile(resolve(root, "src/ui.ts"), "utf8"),
     readFile(resolve(root, "src/presentation.ts"), "utf8"),
     readFile(resolve(root, "src/graph.ts"), "utf8"),
@@ -167,8 +168,13 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
   assert.ok(app.includes('window.addEventListener("load", scheduleIdleLoad, { once: true })'))
   assert.ok(app.includes("let initialized = false"))
   assert.ok(settings.includes("ensureDeferredSettingsRendered"))
+  assert.ok(settings.includes("ensureDeferredResourcesRendered"))
   assert.ok(settings.includes("if (!recipeSettingsRendered)"))
   assert.ok(settings.includes("if (!resourcePrioritiesRendered)"))
+  assert.ok(app.includes('if (tabName === "settings")'))
+  assert.ok(app.includes("ensureDeferredResourcesRendered()"))
+  assert.ok(state.includes('if (tabName === "settings" || tabName === "resources")'))
+  assert.ok(state.includes("onDeferredTabOpened(tabName)"))
   assert.ok(ui.includes("let itemOptionsRendered = false"))
   assert.ok(ui.includes("renderItemOptions(selection)"))
   assert.ok(presentation.includes("private ensureInstance(): any"))

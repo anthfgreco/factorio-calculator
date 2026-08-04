@@ -286,10 +286,10 @@ export const DEFAULT_TAB = "totals"
 
 export let currentTab = DEFAULT_TAB
 
-let onSettingsTabOpened: () => void = () => undefined
+let onDeferredTabOpened: (tabName: string) => void = () => undefined
 
-export function configureSettingsTabHandler(handler: () => void): void {
-  onSettingsTabOpened = handler
+export function configureDeferredTabHandler(handler: (tabName: string) => void): void {
+  onDeferredTabOpened = handler
 }
 
 export function clickTab(tabName) {
@@ -305,8 +305,8 @@ export function clickTab(tabName) {
   d3.select("#" + tabName + "_tab").style("display", "block")
   d3.select("#" + tabName + "_button").classed("active", true)
   document.getElementById("factory_tab_tools")?.toggleAttribute("hidden", tabName !== "totals")
-  if (tabName === "settings") {
-    onSettingsTabOpened()
+  if (tabName === "settings" || tabName === "resources") {
+    onDeferredTabOpened(tabName)
   }
   spec.setHash()
 }

@@ -1112,6 +1112,9 @@ export function ensureDeferredSettingsRendered(): void {
     recipeSettingsRendered = true
     renderRecipeSettings(spec)
   }
+}
+
+export function ensureDeferredResourcesRendered(): void {
   if (!resourcePrioritiesRendered) {
     resourcePrioritiesRendered = true
     renderResourcePriorityEditor(spec.priority, () => spec.updateSolution())

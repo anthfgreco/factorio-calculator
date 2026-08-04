@@ -17,10 +17,14 @@ import {
 import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
-import { ensureDeferredSettingsRendered, renderSettings } from "./settings.js"
+import {
+  ensureDeferredResourcesRendered,
+  ensureDeferredSettingsRendered,
+  renderSettings,
+} from "./settings.js"
 import {
   configureDatasetChangeHandler,
-  configureSettingsTabHandler,
+  configureDeferredTabHandler,
   currentMod,
   currentTab,
   initializeFactoryDensity,
@@ -333,7 +337,13 @@ export function init() {
   initializeTooltips()
   configureFactoryView(browserFactoryView)
   configureDatasetChangeHandler(changeMod)
-  configureSettingsTabHandler(ensureDeferredSettingsRendered)
+  configureDeferredTabHandler((tabName) => {
+    if (tabName === "settings") {
+      ensureDeferredSettingsRendered()
+    } else {
+      ensureDeferredResourcesRendered()
+    }
+  })
   window.spec = spec
   configureModelRuntime({
     getSpecification: () => spec,
