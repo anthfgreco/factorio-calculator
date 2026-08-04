@@ -142,12 +142,11 @@ test("module dropdown rerenders initialize only entering wrappers", async () => 
 })
 
 test("mobile startup keeps optional runtimes and hidden controls off the critical path", async () => {
-  const [html, main, app, settings, state, ui, presentation, graph, visualization, packageJson] = await Promise.all([
+  const [html, main, app, settings, ui, presentation, graph, visualization, packageJson] = await Promise.all([
     readFile(resolve(root, "calc.html"), "utf8"),
     readFile(resolve(root, "src/main.ts"), "utf8"),
     readFile(resolve(root, "src/app.ts"), "utf8"),
     readFile(resolve(root, "src/settings.ts"), "utf8"),
-    readFile(resolve(root, "src/state.ts"), "utf8"),
     readFile(resolve(root, "src/ui.ts"), "utf8"),
     readFile(resolve(root, "src/presentation.ts"), "utf8"),
     readFile(resolve(root, "src/graph.ts"), "utf8"),
@@ -167,14 +166,8 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
   assert.ok(app.includes('cache: "force-cache", credentials: "same-origin"'))
   assert.ok(app.includes('window.addEventListener("load", scheduleIdleLoad, { once: true })'))
   assert.ok(app.includes("let initialized = false"))
-  assert.ok(settings.includes("ensureDeferredSettingsRendered"))
-  assert.ok(settings.includes("ensureDeferredResourcesRendered"))
   assert.ok(settings.includes("if (!recipeSettingsRendered)"))
   assert.ok(settings.includes("if (!resourcePrioritiesRendered)"))
-  assert.ok(app.includes('if (tabName === "settings")'))
-  assert.ok(app.includes("ensureDeferredResourcesRendered()"))
-  assert.ok(state.includes('if (tabName === "settings" || tabName === "resources")'))
-  assert.ok(state.includes("onDeferredTabOpened(tabName)"))
   assert.ok(ui.includes("let itemOptionsRendered = false"))
   assert.ok(ui.includes("renderItemOptions(selection)"))
   assert.ok(presentation.includes("private ensureInstance(): any"))
@@ -188,6 +181,36 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
   for (const source of [app, settings, ui, presentation, graph, visualization]) {
     assert.ok(!source.includes('import * as d3Package from "d3"'))
   }
+})
+
+test("Resources and Settings initialize independently on first open", async () => {
+  const [app, settings, state] = await Promise.all([
+    readFile(resolve(root, "src/app.ts"), "utf8"),
+    readFile(resolve(root, "src/settings.ts"), "utf8"),
+    readFile(resolve(root, "src/state.ts"), "utf8"),
+  ])
+
+  assert.ok(state.includes('if (tabName === "settings" || tabName === "resources")'))
+  assert.ok(state.includes("onDeferredTabOpened(tabName)"))
+
+  const tabHandlerStart = app.indexOf("configureDeferredTabHandler((tabName)")
+  const tabHandler = app.slice(tabHandlerStart, app.indexOf("window.spec = spec", tabHandlerStart))
+  assert.ok(tabHandler.includes('if (tabName === "settings")'))
+  assert.ok(tabHandler.includes("ensureDeferredSettingsRendered()"))
+  assert.ok(tabHandler.includes("ensureDeferredResourcesRendered()"))
+
+  const settingsRenderer = settings.slice(
+    settings.indexOf("export function ensureDeferredSettingsRendered"),
+    settings.indexOf("export function ensureDeferredResourcesRendered"),
+  )
+  const resourcesRenderer = settings.slice(
+    settings.indexOf("export function ensureDeferredResourcesRendered"),
+    settings.indexOf("// debug"),
+  )
+  assert.ok(settingsRenderer.includes("renderRecipeSettings(spec)"))
+  assert.ok(!settingsRenderer.includes("renderResourcePriorityEditor"))
+  assert.ok(resourcesRenderer.includes("renderResourcePriorityEditor"))
+  assert.ok(!resourcesRenderer.includes("renderRecipeSettings(spec)"))
 })
 
 test("runtime sprite sheets use smaller lossless WebP assets", async () => {
