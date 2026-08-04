@@ -8,11 +8,12 @@ This fork includes experimental **Factorio Space Age 2.1.12** data.
 
 - Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
 - Factorio 2.1 recipe categories, combined result probabilities, recycling, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
-- Gleba growth-time and agricultural-tower sizing, seed flows, spoilage/freshness reporting, effective agricultural-science throughput, and spores.
+- Gleba growth-time and agricultural-tower sizing, seed flows, spoilage/freshness reporting, effective agricultural-science throughput, and exact harvest-plus-tower spores.
 - Exact target-quality selection using direct quality probabilities and explicit non-target-quality byproduct reporting.
-- Recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or Space platforms, with per-location summaries and cross-location transport flows.
+- Recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or Space platforms, with row-level locations and compact cross-location flow accounting.
 - Configurable pumpjack/resource yield and asteroid-chunk collection capacities.
-- Machine plus configured beacon-equivalent electricity, pollution, and Aquilo production heat.
+- Surface-aware pollution, configured beacon-equivalent electricity, and Aquilo production heat.
+- Space Age rocket-silo throughput with 50-part rockets, buffered launch overlap, launches per selected interval, and visible launch-animation bottlenecks.
 - Belt stacking, stack throughput, configurable buffers, and cargo-wagon loads.
 - Progression presets that set the quality ceiling and belt-stacking research.
 - Directly labeled Factory rows, in-row recipe/building/location selection, searchable settings, persistent URL state, and a one-click plan link.
@@ -21,7 +22,7 @@ This fork includes experimental **Factorio Space Age 2.1.12** data.
 
 The exact simplex solver still balances scalar item rates. Quality targets use Factorio's direct expected-value probability chain, but automatic recycler-loop optimization and a fully generalized `(item, quality, location)` simplex are not included. Location assignments and transport are explicit accounting after solving rather than route-capacity constraints inside the LP.
 
-Agricultural tower electricity and spores use conservative active-load values because planting/harvesting duty timing is absent from the export. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
+Agricultural tower electricity remains a conservative active-load value because planting/harvesting duty timing is absent from the export. Spore totals are exact for the planned harvest rate and placed tower count. Rocket launch timing currently assumes normal-quality silos; quality-specific animation timing is labeled as future work. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
 
 See [Advanced Space Age planning](docs/advanced-planning.md) for calculation details and limitations.
 
@@ -46,6 +47,7 @@ pnpm dev
 
 ```bash
 pnpm dev                 # Start Vite
+pnpm bench               # Benchmark exact 500- and 1,000-step solver chains
 pnpm check               # Architecture, types, tests, and dataset runtime checks
 pnpm check:architecture  # Enforce module dependency rules
 pnpm typecheck:core      # Strictly type-check data, math, and solver modules

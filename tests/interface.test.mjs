@@ -28,9 +28,23 @@ test("player-facing controls stay close to the evidence they affect", async () =
   assert.ok(results.includes('classed("align-right"'))
   assert.ok(results.includes("if (x.isZero())"))
   assert.ok(results.includes('classed("target-output"'))
+  assert.ok(results.includes('classed("launch-limited"'))
+  assert.ok(results.includes("Rocket launches / ${specification.format.rateName}"))
+  assert.ok(results.includes("more speed will not increase throughput"))
   assert.ok(results.includes("compatibleBuildings.length <= 1"))
   assert.ok(results.includes("option.displayBuilding.icon.make(32, true)"))
   assert.ok(results.includes('attr("aria-label", `Choose a machine for ${row.recipe.name}`)'))
+  assert.ok(results.includes('label: "Cross-location flows"'))
+  assert.ok(results.includes('label: "Imported items"'))
+  for (const verboseSummary of [
+    "Transfers between locations:",
+    "Gleba spores:",
+    "Agricultural tower counts assume",
+    "Other machines do not emit spores",
+    "electric load",
+  ]) {
+    assert.ok(!results.includes(verboseSummary), `Found verbose summary copy: ${verboseSummary}`)
+  }
 })
 
 test("player-facing copy describes Factorio behavior instead of implementation details", async () => {

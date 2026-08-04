@@ -458,33 +458,104 @@ class OffshorePump extends Building {
 
 let rocketLaunchDuration = Rational.from_floats(2434, 60)
 
-function launchRate(spec) {
+function getRocketLaunchStats(spec, launchConfig = null) {
   let partRecipe = spec.recipes.get("rocket-part")
   let partFactory = spec.getBuilding(partRecipe)
   let partItem = spec.items.get("rocket-part")
-  let gives = partRecipe.gives(partItem)
-  // The base rate at which the silo can make rocket parts.
-  let rate = Building.prototype.getRecipeRate.call(partFactory, spec, partRecipe)
-  // Number of times to complete the rocket part recipe per launch.
-  let perLaunch = Rational.from_float(100).div(gives)
-  // Total length of time required to launch a rocket.
-  let time = perLaunch.div(rate).add(rocketLaunchDuration)
+  // gives() already includes module and researched recipe productivity.
+  let effectivePartsPerCraft = partRecipe.gives(partItem)
+  // The base rate at which the silo can complete rocket-part crafts.
+  let craftingRate = Building.prototype.getRecipeRate.call(partFactory, spec, partRecipe)
+  // Productivity reduces the number of recipe crafts required to fill a rocket.
+  let partsPerLaunch = launchConfig?.partsPerLaunch ?? Rational.from_float(100)
+  let craftsPerLaunch = partsPerLaunch.div(effectivePartsPerCraft)
+
+  if (launchConfig?.buffered) {
+    let craftingLaunchRate = craftingRate.div(craftsPerLaunch)
+    let animationLaunchRate = launchConfig.launchCycle.reciprocate()
+    let launchRate = Rational.min(craftingLaunchRate, animationLaunchRate)
+    return {
+      part: launchRate.mul(craftsPerLaunch),
+      launch: launchRate,
+      partsPerLaunch,
+      craftsPerLaunch,
+      craftingRate,
+      effectivePartsPerCraft,
+      craftingLaunchRate,
+      animationLaunchRate,
+      launchLimited: !craftingLaunchRate.less(animationLaunchRate),
+      buffered: true,
+    }
+  }
+
+  // Legacy datasets model the original serial build + animation cycle.
+  let time = craftsPerLaunch.div(craftingRate).add(rocketLaunchDuration)
   let launchRate = time.reciprocate()
-  let partRate = perLaunch.div(time)
-  return { part: partRate, launch: launchRate }
+  return {
+    part: craftsPerLaunch.div(time),
+    launch: launchRate,
+    partsPerLaunch,
+    craftsPerLaunch,
+    craftingRate,
+    effectivePartsPerCraft,
+    craftingLaunchRate: launchRate,
+    animationLaunchRate: rocketLaunchDuration.reciprocate(),
+    launchLimited: false,
+    buffered: false,
+  }
 }
 
 class RocketLaunch extends Building {
   [key: string]: any
+  constructor(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel, launchConfig) {
+    super(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel)
+    this.launchConfig = launchConfig
+  }
   getRecipeRate(spec, recipe) {
-    return launchRate(spec).launch
+    return getRocketLaunchStats(spec, this.launchConfig).launch
   }
 }
 
 class RocketSilo extends Building {
   [key: string]: any
+  constructor(
+    key,
+    name,
+    col,
+    row,
+    categories,
+    speed,
+    prodBonus,
+    moduleSlots,
+    power,
+    fuel,
+    conditions,
+    allowedEffects,
+    emissions,
+    launchConfig,
+  ) {
+    super(
+      key,
+      name,
+      col,
+      row,
+      categories,
+      speed,
+      prodBonus,
+      moduleSlots,
+      power,
+      fuel,
+      conditions,
+      allowedEffects,
+      emissions,
+    )
+    this.launchConfig = launchConfig
+  }
   getRecipeRate(spec, recipe) {
-    return launchRate(spec).part
+    return getRocketLaunchStats(spec, this.launchConfig).part
+  }
+  getLaunchStats(spec) {
+    return getRocketLaunchStats(spec, this.launchConfig)
   }
 }
 
@@ -499,6 +570,13 @@ function renderTooltipBase(this: any) {
 
 export function getBuildings(data, items) {
   let buildings = []
+  let launchConfig = data.rocket_launch
+    ? {
+        partsPerLaunch: Rational.from_float_approximate(data.rocket_launch.parts_per_launch),
+        launchCycle: Rational.from_floats(data.rocket_launch.launch_cycle_ticks, 60),
+        buffered: data.rocket_launch.buffered,
+      }
+    : null
   let reactorDef = items.get("nuclear-reactor")
   let reactor = new Building(
     "nuclear-reactor",
@@ -550,6 +628,7 @@ export function getBuildings(data, items) {
     0,
     zero,
     null,
+    launchConfig,
   )
   launch.renderTooltip = renderTooltipBase
   buildings.push(launch)
@@ -596,6 +675,7 @@ export function getBuildings(data, items) {
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
         d.energy_source?.emissions_per_minute ?? null,
+        launchConfig,
       ),
     )
   }
@@ -1047,12 +1127,13 @@ class SurfaceProperty {
 
 class Planet {
   [key: string]: any
-  constructor(key, name, order, col, row, resources, properties) {
+  constructor(key, name, order, col, row, resources, properties, pollutantType = null) {
     this.key = key
     this.name = name
     this.order = order
     this.resources = resources
     this.properties = properties
+    this.pollutantType = pollutantType
     this.disable = new Set()
 
     this.icon_col = col
@@ -1142,7 +1223,16 @@ export function getPlanets(data, recipes, buildings) {
       let value = d.surface_properties[key]
       properties.set(key, value)
     }
-    let planet = new Planet(d.key, d.localized_name.en, d.order, d.icon_col, d.icon_row, resources, properties)
+    let planet = new Planet(
+      d.key,
+      d.localized_name.en,
+      d.order,
+      d.icon_col,
+      d.icon_row,
+      resources,
+      properties,
+      d.pollutant_type ?? null,
+    )
     for (let recipe of recipes.values()) {
       if (!planet.allows(recipe, buildings) || recipe.key.endsWith("-recycling")) {
         planet.disable.add(recipe)

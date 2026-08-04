@@ -8,7 +8,7 @@ Plant growth is represented with the exported `growth_ticks` duration rather tha
 
 The planning controls provide a shared processing/transport delay. Every item with exported spoil metadata contributes to the remaining-freshness summary. Agricultural science also reports effective throughput after freshness loss.
 
-Tower electrical load and spores are conservative active-load figures. The official export does not currently provide planting/harvesting duty timing, so the calculator does not claim an exact average tower duty cycle.
+Tower electricity remains a conservative active-load figure because the official export does not provide planting/harvesting duty timing. Spore totals are calculated separately and exactly from two sources: 15 spores per yumako or jellystem harvest, plus 4 spores per minute for every placed agricultural tower. The fixed tower term uses rounded-up placed towers because it applies even while a tower is waiting for plants to mature.
 
 ## Quality targets
 
@@ -20,7 +20,13 @@ This is an expected-value direct-production model. It does not yet optimize arbi
 
 When multiple planets or platforms are selected, active recipe rows can be pinned to a compatible location. Unpinned recipes are assigned deterministically to the first compatible selected location. Material links that cross assignments are reported as explicit transport flows, and summaries are grouped by location.
 
-Transport is currently an accounting layer rather than a routing optimizer. Rocket cadence, travel time, and vehicle/network capacities do not constrain recipe selection inside the simplex.
+Transport is currently an accounting layer rather than a routing optimizer. Rocket payload, travel time, and vehicle/network capacities do not constrain recipe selection inside the simplex.
+
+## Rocket launches
+
+Space Age rocket silos require 50 rocket parts and can build a buffered second rocket while the current rocket prepares and launches. The calculator therefore uses the slower of rocket-part crafting and the normal-quality 1,614-tick launch cycle instead of adding those durations serially.
+
+Factory summaries report launches per selected time interval. Rocket-part rows are marked when the launch animation is the bottleneck, and explain that more speed no longer improves steady-state throughput while productivity can still reduce the crafts required per launch. Quality-specific silo animation speeds are not yet modeled.
 
 ## Resource capacity
 
@@ -32,7 +38,7 @@ Asteroid chunk availability can be capped by type. The resulting plan reports an
 
 Factory electricity includes production machines and configured beacon equivalents.
 
-Pollution uses exported emissions per minute and scales with both energy-consumption and direct pollution module effects. Gleba spores are reported through the same pollutant mechanism.
+Pollution uses exported emissions per minute and scales with both energy-consumption and direct pollution module effects. Emissions are surface-aware: normal pollution is counted on Nauvis, spores are counted on Gleba, and surfaces with no pollutant do not receive misleading totals. Harvest spores are added as process emissions rather than machine emissions.
 
 Aquilo heat estimates cover production machines and configured beacons according to entity heat classes. Layout-dependent belts, pipes, inserters, pumps, tanks, and other entities remain outside the production graph and must be added separately.
 

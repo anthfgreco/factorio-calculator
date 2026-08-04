@@ -40,6 +40,14 @@ pnpm validate:runtime
 
 This loads all bundled datasets through emitted TypeScript and checks important application invariants.
 
+### Solver benchmark
+
+```bash
+pnpm bench
+```
+
+This compiles the deterministic core and reports median wall time for exact 500- and 1,000-step production chains. It is diagnostic rather than a pass/fail gate; compare results on the same machine and runtime.
+
 ### Release verification
 
 ```bash

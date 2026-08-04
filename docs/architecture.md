@@ -55,7 +55,7 @@ Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
 
 `src/factory.ts` owns the browser-independent `FactorySpecification` compatibility facade and closely related building, location, and recipe-selection policy. It converts runtime objects to the explicit solver contracts and delegates rendering through `FactoryViewPort`.
 
-`src/planning.ts` owns pure post-solve and target-transformation calculations for exact quality targets, recipe location assignment, transport flows, freshness, resource-capacity diagnostics, logistics, pollution, spores, and Aquilo heat. It has no DOM dependencies and deliberately does not mutate simplex internals.
+`src/planning.ts` owns pure post-solve and target-transformation calculations for exact quality targets, recipe location assignment, transport flows, freshness, resource-capacity diagnostics, logistics, surface-aware emissions, rocket launch reporting, and Aquilo heat. It has no DOM dependencies and deliberately does not mutate simplex internals.
 
 These modules must not access the DOM, D3, storage, or browser globals. `data.ts`, `math.ts`, and `solver.ts` receive stricter TypeScript checks through `tsconfig.core.json`.
 
@@ -99,4 +99,4 @@ The simplex still solves a shared scalar item graph. `planning.ts` deterministic
 
 Quality-module compatibility belongs to `models.ts`. Exact quality targets are transformed into the required expected total production before solving and are reported with combined non-target-quality byproducts afterward. Automatic recycler-loop optimization still requires a future quality-qualified solver graph.
 
-Freshness, asteroid capacity, pollution, spores, and Aquilo heat are planning layers over solved rates. Keep their assumptions visible rather than inserting layout-dependent estimates into the exact recipe equations.
+Freshness, asteroid capacity, surface-aware emissions, rocket launch reporting, and Aquilo heat are planning layers over solved rates. Version-specific launch and harvest mechanics belong in validated dataset contracts. Keep layout assumptions visible rather than inserting them into the exact recipe equations.

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --open /calc.html",
+    "bench": "node scripts/bench-solver.mjs",
     "build": "pnpm check && pnpm build:site && pnpm validate:build",
     "build:site": "vite build",
     "check": "pnpm check:architecture && pnpm typecheck:core && pnpm typecheck && pnpm test && pnpm validate:runtime",

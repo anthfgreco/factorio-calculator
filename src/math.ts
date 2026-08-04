@@ -67,7 +67,7 @@ export class Rational {
 
   toDecimal(maxDigits = 3, roundingFactor: Rational | null = null): string {
     let digits = maxDigits ?? 3
-    let rounding = roundingFactor ?? new Rational(integer(5), integer(10).pow(digits + 1))
+    const rounding = roundingFactor ?? new Rational(integer(5), integer(10).pow(digits + 1))
     let sign = ""
     let value: Rational = this
     if (value.less(zero)) {
@@ -75,20 +75,24 @@ export class Rational {
       value = zero.sub(value)
     }
     value = value.add(rounding)
-    let divmod = value.p.divmod(value.q)
-    let integerPart = divmod.quotient.toString()
+
+    let { quotient, remainder } = value.p.divmod(value.q)
+    const integerPart = quotient.toString()
     let decimalPart = ""
-    let fraction = new Rational(divmod.remainder, value.q)
-    let ten = new Rational(integer(10), integer.one)
-    while (digits > 0 && !fraction.equal(rounding)) {
-      fraction = fraction.mul(ten)
-      rounding = rounding.mul(ten)
-      divmod = fraction.p.divmod(fraction.q)
-      decimalPart += divmod.quotient.toString()
-      fraction = new Rational(divmod.remainder, fraction.q)
+    let roundingNumerator = rounding.p
+    const roundingDenominator = rounding.q
+    const ten = integer(10)
+    const equalsRounding = () =>
+      remainder.times(roundingDenominator).equals(roundingNumerator.times(value.q))
+
+    while (digits > 0 && !equalsRounding()) {
+      const digit = remainder.times(ten).divmod(value.q)
+      decimalPart += digit.quotient.toString()
+      remainder = digit.remainder
+      roundingNumerator = roundingNumerator.times(ten)
       digits--
     }
-    if (fraction.equal(rounding)) {
+    if (equalsRounding()) {
       decimalPart = decimalPart.replace(/0+$/, "")
     }
     return decimalPart === "" ? sign + integerPart : `${sign}${integerPart}.${decimalPart}`
@@ -146,12 +150,18 @@ export class Rational {
   }
 
   add(other: Rational): Rational {
+    if (this.isZero()) return other
+    if (other.isZero()) return this
+    if (this.q.equals(other.q)) {
+      return new Rational(this.p.plus(other.p), this.q)
+    }
     return new Rational(this.p.times(other.q).plus(this.q.times(other.p)), this.q.times(other.q))
   }
 
   sub(other: Rational): Rational {
-    if (other.isZero()) {
-      return this
+    if (other.isZero()) return this
+    if (this.q.equals(other.q)) {
+      return new Rational(this.p.subtract(other.p), this.q)
     }
     return new Rational(this.p.times(other.q).subtract(this.q.times(other.p)), this.q.times(other.q))
   }

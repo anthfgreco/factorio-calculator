@@ -784,6 +784,15 @@ function hasQualityModules(moduleSpec) {
   return moduleSpec?.modules.some((module) => module?.category === "quality") ?? false
 }
 
+function getRocketStatsForRow(row) {
+  if (row.recipe?.key !== "rocket-part") return null
+  return row.building?.getLaunchStats?.(spec) ?? null
+}
+
+function isLaunchLimitedRow(row) {
+  return getRocketStatsForRow(row)?.launchLimited ?? false
+}
+
 export function getFactorySummary(specification, totals) {
   let exactMachines = zero
   let placedMachines = zero
@@ -869,12 +878,20 @@ function renderFactorySummary(specification, totals) {
     cards.push({ label: "Pollution / min", value: specification.format.count(summary.planning.pollution) })
   if (!summary.planning.spores.isZero())
     cards.push({ label: "Spores / min", value: specification.format.count(summary.planning.spores) })
+  if (summary.planning.rocket) {
+    cards.push({
+      label: `Rocket launches / ${specification.format.rateName}`,
+      value: specification.format.rate(summary.planning.rocket.launches),
+    })
+  }
   if (!summary.planning.aquiloHeat.isZero()) {
     let heat = powerRepresentation(summary.planning.aquiloHeat)
     cards.push({ label: "Aquilo heat", value: `${specification.format.count(heat.power)} ${heat.suffix}` })
   }
   if (summary.planning.transport.length > 0)
-    cards.push({ label: "Transport flows", value: String(summary.planning.transport.length) })
+    cards.push({ label: "Cross-location flows", value: String(summary.planning.transport.length) })
+  if (summary.importedItems.length > 0)
+    cards.push({ label: "Imported items", value: String(summary.importedItems.length) })
   if (summary.planning.freshness.length > 0) {
     let lowest = summary.planning.freshness[0]
     cards.push({
@@ -907,67 +924,36 @@ function renderFactorySummary(specification, totals) {
     .text((entry) => entry.label)
 
   let warnings = []
-  if (summary.planning.transport.length > 0) {
-    let preview = summary.planning.transport
-      .slice(0, 4)
-      .map(
-        (flow) =>
-          `${flow.item.name}: ${flow.from.name} → ${flow.to.name} (${specification.format.rate(flow.rate)}/${specification.format.rateName})`,
-      )
-      .join("; ")
-    warnings.push(`Transfers between locations: ${preview}${summary.planning.transport.length > 4 ? "; …" : ""}`)
+  if (summary.planning.rocket?.launchLimited) {
+    let rocket = summary.planning.rocket
+    warnings.push(
+      `Rocket silo launch-limited at ${specification.format.rate(rocket.animationLaunchRate)} launches/${specification.format.rateName} per silo; more speed will not increase throughput.`,
+    )
   }
   for (let target of summary.planning.qualityTargets) {
     warnings.push(
-      `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% chance. Producing ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} gives ${specification.format.rate(target.requested)}/${specification.format.rateName} at the requested quality and ${specification.format.rate(target.otherQualityByproduct)}/${specification.format.rateName} at other quality tiers.`,
+      `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total production required.`,
     )
   }
   if (summary.qualityRecipeCount > 0 && summary.planning.qualityTargets.length === 0) {
-    warnings.push(
-      "Quality modules are selected. Choose a quality tier beside an output to include its production chance. Recycler and upcycling loops must be planned separately.",
-    )
+    warnings.push("Quality modules selected; choose a target quality to include its yield.")
   }
   let expired = summary.planning.freshness.filter((row) => row.expired)
   if (expired.length > 0)
-    warnings.push(`Freshness delay fully spoils: ${expired.map((row) => row.item.name).join(", ")}.`)
+    warnings.push(`Fully spoiled after the configured delay: ${expired.map((row) => row.item.name).join(", ")}.`)
   let agriculturalScience = summary.planning.freshness.find((row) => row.item.key === "agricultural-science-pack")
   if (agriculturalScience && !specification.freshnessDelayMinutes.isZero()) {
     warnings.push(
-      `Agricultural science after ${specification.freshnessDelayMinutes.toDecimal()} minutes: ${specification.format.rate(agriculturalScience.effectiveRate)}/${specification.format.rateName} effective at ${(agriculturalScience.remaining.toFloat() * 100).toFixed(1)}% freshness.`,
+      `Agricultural science after ${specification.freshnessDelayMinutes.toDecimal()} min: ${(agriculturalScience.remaining.toFloat() * 100).toFixed(1)}% effective.`,
     )
   }
   let constrained = summary.planning.asteroidConstraints.filter((row) => row.exceeded)
   for (let row of constrained)
     warnings.push(
-      `${row.item.name} collection cap exceeded: ${specification.format.rate(row.required)} required vs ${specification.format.rate(row.limit)} available per ${specification.format.rateName}.`,
+      `${row.item.name} cap exceeded: ${specification.format.rate(row.required)} required vs ${specification.format.rate(row.limit)} available/${specification.format.rateName}.`,
     )
-  if ([...totals.rates.keys()].some((recipe) => recipe.processKind === "growth"))
-    warnings.push(
-      "Agricultural tower counts assume 47 growing plots per tower. Power shows the maximum while a tower is actively planting or harvesting.",
-    )
-  if (summary.selectedLocations.length > 1) {
-    for (let location of summary.planning.perLocation) {
-      let locationPower = location.electricPower.add(location.beaconPower)
-      let displayPower = powerRepresentation(locationPower)
-      let emissions = []
-      if (!location.pollution.isZero()) {
-        emissions.push(`${specification.format.count(location.pollution)} pollution/min`)
-      }
-      if (!location.spores.isZero()) {
-        emissions.push(`${specification.format.count(location.spores)} spores/min`)
-      }
-      warnings.push(
-        `${location.location.name}: ${location.machines.toDecimal(0)} machines, ${specification.format.count(displayPower.power)} ${displayPower.suffix} electric load${location.heat.isZero() ? "" : `, ${specification.format.count(powerRepresentation(location.heat).power)} ${powerRepresentation(location.heat).suffix} heating`}${emissions.length === 0 ? "" : `, ${emissions.join(", ")}`}.`,
-      )
-    }
-  }
   if (!summary.planning.aquiloHeat.isZero())
-    warnings.push(
-      "Aquilo heating covers production machines and beacons only. Add heating for belts, pipes, inserters, pumps, tanks, and the rest of your build.",
-    )
-  if (summary.importedItems.length > 0) {
-    warnings.push(`Imported: ${summary.importedItems.map((item) => item.name).join(", ")}.`)
-  }
+    warnings.push("Aquilo heat excludes belts, pipes, inserters, pumps, tanks, and other logistics entities.")
 
   root
     .selectAll("div.factory-summary-warning")
@@ -1155,6 +1141,7 @@ export function displayItems(spec, totals) {
     .classed("noitem", (d) => d.item === null)
     .classed("target-output", (d) => d.item !== null && spec.buildTargets.some((target) => target.item === d.item))
     .classed("imported-output", (d) => d.item !== null && spec.ignore.has(d.item))
+    .classed("launch-limited", isLaunchLimitedRow)
   let locationCell = row.selectAll("td.location-cell").classed("hide", !showLocations)
   locationCell.selectAll("*").remove()
   locationCell.filter((d) => d.recipe !== null && d.recipe.isReal?.()).append((d) => makeLocationSelector(d))
@@ -1188,6 +1175,7 @@ export function displayItems(spec, totals) {
     let labels = []
     if (spec.buildTargets.some((target) => target.item === d.item)) labels.push("target")
     if (spec.ignore.has(d.item)) labels.push("imported")
+    if (isLaunchLimitedRow(d)) labels.push("launch-limited")
     return labels.join(" · ")
   })
   itemRow.selectAll("tt.item-rate").text((d) => {
@@ -1236,6 +1224,14 @@ export function displayItems(spec, totals) {
   buildingCell.append("span").text(" \u00d7")
   buildingRow
     .selectAll("tt.building-count")
+    .attr("data-tooltip", (d) => {
+      let rocket = getRocketStatsForRow(d)
+      if (!rocket) return null
+      let limit = `${spec.format.rate(rocket.animationLaunchRate)} launches/${spec.format.rateName} per silo`
+      return rocket.launchLimited
+        ? `Normal-quality launch animation limit: ${limit}. More speed does not increase steady-state throughput; productivity still reduces required crafts.`
+        : `Maximum normal-quality buffered launch rate: ${limit}. Current rocket-part crafting is slower than the launch animation.`
+    })
     .text((d) => spec.format.alignCount(spec.getCount(d.recipe, totals.rates.get(d.recipe))))
   let moduleRow = row.filter((d) => d.moduleSpec !== null)
   let moduleCell = moduleRow.selectAll("td.module-cell")

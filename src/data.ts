@@ -128,6 +128,7 @@ export interface PlantData extends SpriteReference {
   seed: string
   growth_ticks: number
   results: RecipeAmountData[]
+  harvest_emissions?: Record<string, number>
   surface_conditions?: SurfaceCondition[]
 }
 
@@ -168,8 +169,15 @@ export interface PlanetData extends SpriteReference {
   key: string
   localized_name: LocalizedName
   order: string
+  pollutant_type?: string
   resources: PlanetResourceData
   surface_properties: Record<string, number>
+}
+
+export interface RocketLaunchData {
+  parts_per_launch: number
+  launch_cycle_ticks: number
+  buffered: boolean
 }
 
 export interface SpriteSheetData {
@@ -198,6 +206,7 @@ export interface CalculatorData {
   crafting_machines: MachineData[]
   mining_drills: MiningDrillData[]
   rocket_silo?: MachineData[]
+  rocket_launch?: RocketLaunchData
   belts: BeltData[]
   fuel: FuelData[]
   modules: ModuleData[]
@@ -254,6 +263,13 @@ function requireString(value: unknown, path: string): string {
 function requireNonnegativeNumber(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new DatasetValidationError(path, "expected a nonnegative finite number")
+  }
+  return value
+}
+
+function requirePositiveNumber(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new DatasetValidationError(path, "expected a positive finite number")
   }
   return value
 }
@@ -360,6 +376,32 @@ function validatePlants(value: unknown): void {
     requireString(plant.seed, `${path}.seed`)
     requireNonnegativeNumber(plant.growth_ticks, `${path}.growth_ticks`)
     requireArray(plant.results, `${path}.results`)
+    if (plant.harvest_emissions !== undefined) {
+      let emissions = requireRecord(plant.harvest_emissions, `${path}.harvest_emissions`)
+      for (let [pollutant, amount] of Object.entries(emissions)) {
+        requireFiniteNumber(amount, `${path}.harvest_emissions.${pollutant}`)
+      }
+    }
+  }
+}
+
+function validateRocketLaunch(value: unknown): void {
+  let launch = requireRecord(value, "rocket_launch")
+  requirePositiveNumber(launch.parts_per_launch, "rocket_launch.parts_per_launch")
+  requirePositiveNumber(launch.launch_cycle_ticks, "rocket_launch.launch_cycle_ticks")
+  if (typeof launch.buffered !== "boolean") {
+    throw new DatasetValidationError("rocket_launch.buffered", "expected a boolean")
+  }
+}
+
+function validatePlanets(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "planets").entries()) {
+    let path = `planets[${index}]`
+    let planet = requireRecord(entry, path)
+    requireString(planet.key, `${path}.key`)
+    if (planet.pollutant_type !== undefined) {
+      requireString(planet.pollutant_type, `${path}.pollutant_type`)
+    }
   }
 }
 
@@ -410,9 +452,11 @@ export function parseCalculatorData(value: unknown): CalculatorData {
   if (data.recipe_productivity_research !== undefined) {
     validateRecipeProductivityResearch(data.recipe_productivity_research)
   }
+  if (data.rocket_launch !== undefined) validateRocketLaunch(data.rocket_launch)
   requireArray(data.resources, "resources")
   if (data.plants !== undefined) validatePlants(data.plants)
   if (data.spoilage !== undefined) validateSpoilage(data.spoilage)
+  if (data.planets !== undefined) validatePlanets(data.planets)
   requireRecord(data.groups, "groups")
   requireRecord(data.sprites, "sprites")
   return data as unknown as CalculatorData

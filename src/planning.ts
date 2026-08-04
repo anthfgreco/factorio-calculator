@@ -110,14 +110,59 @@ function buildingEmissions(building, pollutant: string): Rational {
   return value instanceof Rational ? value : Rational.from_float_approximate(value)
 }
 
-export function getPollution(specification, recipe, rate, pollutant = "pollution"): Rational {
+function recipeEmissions(recipe, pollutant: string): Rational {
+  const value = recipe?.harvestEmissions?.[pollutant] ?? zero
+  return value instanceof Rational ? value : Rational.from_float_approximate(value)
+}
+
+export function getPollutionComponents(specification, recipe, rate, pollutant = "pollution") {
   const building = specification.getBuilding(recipe)
-  if (!building) return zero
-  const count = specification.getCount(recipe, rate)
+  if (!building) return { machine: zero, process: zero, total: zero }
+
+  const location = getAssignedLocation(specification, recipe, building)
+  if (location !== null && location.pollutantType !== pollutant) {
+    return { machine: zero, process: zero, total: zero }
+  }
+
+  let count = specification.getCount(recipe, rate)
+  // Agricultural towers emit spores continuously, including while waiting for
+  // plants to mature. Their fixed emissions therefore scale with placed towers,
+  // not average tower utilization.
+  if (recipe.processKind === "growth" && pollutant === "spores") count = count.ceil()
+
   const moduleSpec = specification.getModuleSpec(recipe)
   const pollutionEffect = moduleSpec?.pollutionEffect?.() ?? one
   const consumptionEffect = moduleSpec?.powerEffect?.(specification) ?? one
-  return buildingEmissions(building, pollutant).mul(count).mul(consumptionEffect).mul(pollutionEffect)
+  const machine = buildingEmissions(building, pollutant).mul(count).mul(consumptionEffect).mul(pollutionEffect)
+  const process = recipeEmissions(recipe, pollutant).mul(rate).mul(Rational.from_float(60))
+  return { machine, process, total: machine.add(process) }
+}
+
+export function getPollution(specification, recipe, rate, pollutant = "pollution"): Rational {
+  return getPollutionComponents(specification, recipe, rate, pollutant).total
+}
+
+export function getRocketLaunchReport(specification, totals) {
+  const recipe = specification.recipes.get("rocket-part")
+  if (!recipe) return null
+  const rate = totals.rates.get(recipe)
+  if (!rate || rate.isZero()) return null
+  const building = specification.getBuilding(recipe)
+  const stats = building?.getLaunchStats?.(specification)
+  if (!stats) return null
+
+  const exactSilos = specification.getCount(recipe, rate)
+  const placedSilos = exactSilos.ceil()
+  return {
+    recipe,
+    building,
+    recipeRate: rate,
+    exactSilos,
+    placedSilos,
+    launches: rate.div(stats.craftsPerLaunch),
+    placedLaunchCapacity: stats.launch.mul(placedSilos),
+    ...stats,
+  }
 }
 
 export function getBeaconPower(specification, recipe, rate): Rational {
@@ -181,6 +226,10 @@ export function getPlanningSummary(specification, totals) {
   let beaconPower = zero
   let pollution = zero
   let spores = zero
+  let pollutionMachine = zero
+  let pollutionProcess = zero
+  let sporeMachine = zero
+  let sporeProcess = zero
   let aquiloHeat = zero
   const perLocation = new Map<any, any>()
 
@@ -191,8 +240,10 @@ export function getPlanningSummary(specification, totals) {
     const count = building ? specification.getCount(recipe, rate) : zero
     const machinePower = specification.getPowerUsage(recipe, rate)
     const recipeBeaconPower = getBeaconPower(specification, recipe, rate)
-    const recipePollution = getPollution(specification, recipe, rate, "pollution")
-    const recipeSpores = getPollution(specification, recipe, rate, "spores")
+    const pollutionComponents = getPollutionComponents(specification, recipe, rate, "pollution")
+    const sporeComponents = getPollutionComponents(specification, recipe, rate, "spores")
+    const recipePollution = pollutionComponents.total
+    const recipeSpores = sporeComponents.total
     let recipeHeat = getAquiloHeat(specification, recipe, rate)
     if (location?.key === "aquilo" && !recipeBeaconPower.isZero()) {
       const moduleSpec = specification.getModuleSpec(recipe)
@@ -204,6 +255,10 @@ export function getPlanningSummary(specification, totals) {
     beaconPower = beaconPower.add(recipeBeaconPower)
     pollution = pollution.add(recipePollution)
     spores = spores.add(recipeSpores)
+    pollutionMachine = pollutionMachine.add(pollutionComponents.machine)
+    pollutionProcess = pollutionProcess.add(pollutionComponents.process)
+    sporeMachine = sporeMachine.add(sporeComponents.machine)
+    sporeProcess = sporeProcess.add(sporeComponents.process)
     aquiloHeat = aquiloHeat.add(recipeHeat)
 
     if (location) {
@@ -230,6 +285,11 @@ export function getPlanningSummary(specification, totals) {
     beaconPower,
     pollution,
     spores,
+    emissions: {
+      pollution: { machine: pollutionMachine, process: pollutionProcess, total: pollution },
+      spores: { machine: sporeMachine, process: sporeProcess, total: spores },
+    },
+    rocket: getRocketLaunchReport(specification, totals),
     aquiloHeat,
     perLocation: [...perLocation.values()].sort((a, b) =>
       String(a.location.order).localeCompare(String(b.location.order)),

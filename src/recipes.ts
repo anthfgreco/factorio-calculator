@@ -474,7 +474,7 @@ class SpoilageRecipe extends Recipe {
 
 class PlantRecipe extends Recipe {
   [key: string]: any
-  constructor(key, name, order, col, row, seed, results, conditions, growthTime) {
+  constructor(key, name, order, col, row, seed, results, conditions, growthTime, harvestEmissions = {}) {
     super(
       key,
       name,
@@ -490,6 +490,10 @@ class PlantRecipe extends Recipe {
       conditions,
     )
     this.processKind = "growth"
+    this.harvestEmissions = {}
+    for (let [pollutant, amount] of Object.entries(harvestEmissions)) {
+      this.harvestEmissions[pollutant] = Rational.from_float_approximate(amount as number)
+    }
     this.defaultPriority = 1
     this.defaultWeight = Rational.from_float(100)
   }
@@ -600,7 +604,10 @@ export function getRecipes(data, items) {
         "rocket-launch",
         one,
         [
-          new Ingredient(items.get("rocket-part"), Rational.from_float(100)),
+          new Ingredient(
+            items.get("rocket-part"),
+            Rational.from_float_approximate(data.rocket_launch?.parts_per_launch ?? 100),
+          ),
           new Ingredient(items.get("satellite"), one),
         ],
         [new Ingredient(items.get("space-science-pack"), Rational.from_float(1000))],
@@ -724,6 +731,7 @@ export function getRecipes(data, items) {
         results,
         conditions,
         Rational.from_float_approximate(plant.growth_ticks / 60),
+        plant.harvest_emissions ?? {},
       )
       recipes.set(plant.key, r)
     }

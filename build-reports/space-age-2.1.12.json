@@ -5,6 +5,15 @@
         "item-unknown-recycling",
         "recipe-unknown"
     ],
+    "harvest_emissions": {
+        "jellystem": {
+            "spores": 15
+        },
+        "tree-plant": null,
+        "yumako-tree": {
+            "spores": 15
+        }
+    },
     "items": 348,
     "mods": [
         "base",
@@ -15,10 +24,23 @@
     ],
     "planets": 6,
     "plants": 3,
+    "pollutant_types": {
+        "aquilo": null,
+        "fulgora": null,
+        "gleba": "spores",
+        "nauvis": "pollution",
+        "space-platform": null,
+        "vulcanus": null
+    },
     "recipe_productivity_research": 8,
     "recipes": 623,
     "resources": 12,
-    "source": "Factorio built-in exports",
+    "rocket_launch": {
+        "buffered": true,
+        "launch_cycle_ticks": 1614,
+        "parts_per_launch": 50
+    },
+    "source": "Factorio built-in exports plus bundled Factorio wiki mechanics",
     "sprite_hash": "ad2ed179f24c9b7ded5835325fa435ca",
     "sprite_height": 896,
     "sprite_width": 832,

@@ -38,6 +38,8 @@ const {
   getBeaconPower,
   getFreshnessReport,
   getPollution,
+  getPollutionComponents,
+  getRocketLaunchReport,
   getTransportFlows,
   qualityProbability,
 } = await load("planning")
@@ -136,6 +138,14 @@ test("dataset parser accepts the generated Space Age dataset", async () => {
   const data = await getParsedTestData()
   assert.equal(data.game_version, "2.1.12")
   assert.ok(data.recipes.length > 600)
+  assert.deepEqual(data.rocket_launch, {
+    buffered: true,
+    launch_cycle_ticks: 1614,
+    parts_per_launch: 50,
+  })
+  assert.equal(data.planets.find((planet) => planet.key === "nauvis").pollutant_type, "pollution")
+  assert.equal(data.planets.find((planet) => planet.key === "gleba").pollutant_type, "spores")
+  assert.deepEqual(data.plants.find((plant) => plant.key === "yumako-tree").harvest_emissions, { spores: 15 })
 })
 
 test("generated Space Age data includes every official recipe productivity research effect", async () => {
@@ -211,6 +221,27 @@ test("dataset parser validates advanced planning metadata", async () => {
       error instanceof DatasetValidationError &&
       error.path === "agricultural_tower[0].energy_source.emissions_per_minute.spores",
   )
+
+  raw.agricultural_tower[0].energy_source.emissions_per_minute.spores = 4
+  raw.plants[0].harvest_emissions.spores = "fifteen"
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "plants[0].harvest_emissions.spores",
+  )
+
+  raw.plants[0].harvest_emissions.spores = 15
+  raw.rocket_launch.launch_cycle_ticks = 0
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "rocket_launch.launch_cycle_ticks",
+  )
+
+  raw.rocket_launch.launch_cycle_ticks = 1614
+  raw.planets[0].pollutant_type = 42
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "planets[0].pollutant_type",
+  )
 })
 
 test("rational arithmetic remains exact", () => {
@@ -218,6 +249,24 @@ test("rational arithmetic remains exact", () => {
   assert.equal(oneThird.add(oneThird).add(oneThird).toString(), "1")
   assert.equal(Rational.from_decimal("12.5").toString(), "25/2")
   assert.equal(Rational.from_float(-0.5).toString(), "-1/2")
+})
+
+test("rational display formatting preserves exact rounding semantics", () => {
+  assert.equal(Rational.from_string("1/3").toDecimal(3), "0.333")
+  assert.equal(Rational.from_string("2/3").toDecimal(3), "0.667")
+  assert.equal(Rational.from_string("1/2").toDecimal(3), "0.5")
+  assert.equal(Rational.from_string("1999/200").toDecimal(2), "10.00")
+  assert.equal(Rational.from_string("-1/8").toDecimal(3), "-0.125")
+  assert.equal(Rational.from_string("1/1000").toDecimal(3, zero), "0.001")
+})
+
+test("rational zero and equal-denominator operations keep exact fast paths", () => {
+  const oneThird = Rational.from_string("1/3")
+  const twoThirds = Rational.from_string("2/3")
+  assert.equal(oneThird.add(zero), oneThird)
+  assert.equal(zero.add(oneThird), oneThird)
+  assert.equal(oneThird.add(twoThirds).toString(), "1")
+  assert.equal(twoThirds.sub(oneThird).toString(), "1/3")
 })
 
 test("power representation zero returns clean W suffix", () => {
@@ -1013,17 +1062,94 @@ test(
   },
 )
 
-test("Gleba plants use five-minute growth and a 47-plot agricultural tower", async () => {
+test("Gleba plants include harvest spores and always-on agricultural tower spores", async () => {
   const { factorySpec, recipes, planets } = await setupTestFactory()
   factorySpec.selectOnePlanet(planets.get("gleba"))
   const recipe = recipes.get("yumako-tree")
   const tower = factorySpec.getBuilding(recipe)
+  const oneTowerRate = Rational.from_floats(47, 300)
   assert.equal(recipe.time.toString(), "300")
   assert.equal(tower.key, "agricultural-tower")
   assert.equal(factorySpec.getRecipeRate(recipe).toString(), "47/300")
-  assert.equal(factorySpec.getCount(recipe, Rational.from_floats(47, 300)).toString(), "1")
-  assert.equal(getPollution(factorySpec, recipe, Rational.from_floats(47, 300), "spores").toString(), "4")
+  assert.equal(factorySpec.getCount(recipe, oneTowerRate).toString(), "1")
+
+  const spores = getPollutionComponents(factorySpec, recipe, oneTowerRate, "spores")
+  assert.equal(spores.machine.toString(), "4")
+  assert.equal(spores.process.toString(), "141")
+  assert.equal(spores.total.toString(), "145")
+
+  const halfTowerRate = Rational.from_floats(47, 600)
+  const fractionalTowerSpores = getPollutionComponents(factorySpec, recipe, halfTowerRate, "spores")
+  assert.equal(factorySpec.getCount(recipe, halfTowerRate).toString(), "1/2")
+  assert.equal(fractionalTowerSpores.machine.toString(), "4")
+  assert.equal(fractionalTowerSpores.process.toString(), "141/2")
+  assert.equal(fractionalTowerSpores.total.toString(), "149/2")
+
+  assert.equal(getPollution(factorySpec, recipe, oneTowerRate, "pollution").toString(), "0")
   assert.equal(planets.get("space-platform").allowsRecipe(recipe), false)
+})
+
+test("pollution reporting follows the assigned surface pollutant", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  const recipe = recipes.get("iron-plate")
+
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  assert.ok(zero.less(getPollution(factorySpec, recipe, one, "pollution")))
+
+  factorySpec.selectOnePlanet(planets.get("gleba"))
+  assert.equal(getPollution(factorySpec, recipe, one, "pollution").toString(), "0")
+  assert.equal(getPollution(factorySpec, recipe, one, "spores").toString(), "0")
+
+  factorySpec.selectOnePlanet(planets.get("vulcanus"))
+  assert.equal(getPollution(factorySpec, recipe, one, "pollution").toString(), "0")
+})
+
+test("Space Age rocket silos overlap crafting and expose the launch-animation cap", async () => {
+  const { factorySpec, recipes, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("rocket-part")
+  const silo = factorySpec.getBuilding(recipe)
+
+  let stats = silo.getLaunchStats(factorySpec)
+  assert.equal(stats.buffered, true)
+  assert.equal(stats.partsPerLaunch.toString(), "50")
+  assert.equal(stats.craftsPerLaunch.toString(), "50")
+  assert.equal(stats.launch.toString(), "1/150")
+  assert.equal(factorySpec.getRecipeRate(recipe).toString(), "1/3")
+  assert.equal(stats.launchLimited, false)
+
+  let report = getRocketLaunchReport(factorySpec, { rates: new Map([[recipe, Rational.from_floats(1, 3)]]) })
+  assert.equal(report.launches.toString(), "1/150")
+  assert.equal(report.exactSilos.toString(), "1")
+
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  const speed3 = modules.get("speed-module-3")
+  for (let index = 0; index < moduleSpec.modules.length; index++) moduleSpec.setModule(index, speed3)
+  moduleSpec.setBeaconModule(speed3, 0)
+  moduleSpec.setBeaconModule(speed3, 1)
+  moduleSpec.setBeaconCount(Rational.from_integer(12))
+
+  stats = silo.getLaunchStats(factorySpec)
+  assert.equal(stats.launchLimited, true)
+  assert.equal(stats.launch.toString(), Rational.from_floats(60, 1614).toString())
+  assert.equal(stats.part.toString(), stats.launch.mul(stats.craftsPerLaunch).toString())
+
+  for (let index = 0; index < moduleSpec.modules.length; index++) moduleSpec.setModule(index, null)
+  const prod3 = modules.get("productivity-module-3")
+  for (let index = 0; index < moduleSpec.modules.length; index++) moduleSpec.setModule(index, prod3)
+  stats = silo.getLaunchStats(factorySpec)
+  assert.equal(stats.effectivePartsPerCraft.toString(), "7/5")
+  assert.equal(stats.craftsPerLaunch.toString(), "250/7")
+  assert.equal(stats.launchLimited, true)
+
+  report = getRocketLaunchReport(factorySpec, { rates: new Map([[recipe, stats.craftsPerLaunch]]) })
+  assert.equal(report.launches.toString(), "1")
+  assert.equal(report.exactSilos.toString(), Rational.from_floats(1614, 60).toString())
+
+  factorySpec.setRecipeProductivityLevel("rocket-part-productivity", 2)
+  stats = silo.getLaunchStats(factorySpec)
+  assert.equal(stats.effectivePartsPerCraft.toString(), "8/5")
+  assert.equal(stats.craftsPerLaunch.toString(), "125/4")
 })
 
 test("spoilage metadata calculates remaining agricultural science freshness", async () => {

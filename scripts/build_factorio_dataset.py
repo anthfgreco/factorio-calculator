@@ -671,6 +671,7 @@ class DatasetBuilder:
                 "localized_name": {"en": self._entity_name(key)},
                 "order": raw.get("order"),
                 "growth_ticks": raw.get("growth_ticks"),
+                "harvest_emissions": raw.get("harvest_emissions"),
                 "results": [
                     normalize_product(product)
                     for product in normalize_sequence(minable.get("results"))
@@ -729,6 +730,7 @@ class DatasetBuilder:
                         "en": self.locale.get(key, "space-location", "surface")
                     },
                     "order": raw.get("order"),
+                    "pollutant_type": raw.get("pollutant_type"),
                     "resources": {
                         "resource": sorted(local_resources),
                         "offshore": offshore,
@@ -850,6 +852,14 @@ class DatasetBuilder:
             "crafting_machines": crafters,
             "mining_drills": drills,
             "rocket_silo": silos,
+            # Normal-quality Space Age silos can build the next rocket while
+            # the current one is preparing and launching. The 2.1.12 wiki
+            # timing table gives a 1,614-tick continuous launch cycle.
+            "rocket_launch": {
+                "parts_per_launch": 50,
+                "launch_cycle_ticks": 1614,
+                "buffered": True,
+            },
             "surface_properties": properties,
             "planets": planets,
             "recipes": recipes,
@@ -904,6 +914,21 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
         for technology in dataset["recipe_productivity_research"]
         for effect in technology["effects"]
     }
+    require(
+        dataset.get("rocket_launch")
+        == {"parts_per_launch": 50, "launch_cycle_ticks": 1614, "buffered": True},
+        "Space Age rocket launch metadata mismatch",
+    )
+    pollutant_types = {planet["key"]: planet.get("pollutant_type") for planet in dataset["planets"]}
+    require(pollutant_types.get("nauvis") == "pollution", "Nauvis pollutant type mismatch")
+    require(pollutant_types.get("gleba") == "spores", "Gleba pollutant type mismatch")
+    for key in ("aquilo", "fulgora", "vulcanus", "space-platform"):
+        require(key in pollutant_types, f"Missing planet or platform {key}")
+        require(pollutant_types.get(key) is None, f"{key} should not have a pollutant type")
+    harvest_emissions = {plant["key"]: plant.get("harvest_emissions") for plant in dataset["plants"]}
+    require(harvest_emissions.get("yumako-tree") == {"spores": 15}, "Yumako harvest spores mismatch")
+    require(harvest_emissions.get("jellystem") == {"spores": 15}, "Jellystem harvest spores mismatch")
+
     require(
         exported_productivity_effects == raw_productivity_effects,
         "Recipe productivity research effects do not match the Factorio technology prototypes",
@@ -982,6 +1007,9 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
         "resources": len(dataset["resources"]),
         "plants": len(dataset["plants"]),
         "planets": len(dataset["planets"]),
+        "rocket_launch": dataset["rocket_launch"],
+        "pollutant_types": pollutant_types,
+        "harvest_emissions": harvest_emissions,
         "sprite_width": dataset["sprites"]["width"],
         "sprite_height": dataset["sprites"]["height"],
         "sprite_hash": dataset["sprites"]["hash"],
@@ -1045,7 +1073,7 @@ def main() -> None:
     write_json(report, {
         "version": version,
         "build": build_number,
-        "source": "Factorio built-in exports",
+        "source": "Factorio built-in exports plus bundled Factorio wiki mechanics",
         "mods": EXPECTED_MODS,
         **validation,
     })

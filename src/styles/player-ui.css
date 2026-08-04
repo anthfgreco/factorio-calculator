@@ -280,6 +280,12 @@ div.tab {
 #totals tr.display-row:hover td {
   background: rgba(255, 255, 255, 0.025);
 }
+#totals tr.launch-limited td:first-child {
+  box-shadow: inset 2px 0 var(--danger);
+}
+#totals tr.launch-limited .item-state {
+  color: var(--danger);
+}
 #totals td {
   white-space: nowrap;
   vertical-align: middle;

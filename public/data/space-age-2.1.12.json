@@ -5856,6 +5856,7 @@
                 "en": "Gleba"
             },
             "order": "c[gleba]",
+            "pollutant_type": "spores",
             "resources": {
                 "offshore": [
                     "water"
@@ -5884,6 +5885,7 @@
                 "en": "Nauvis"
             },
             "order": "a[nauvis]",
+            "pollutant_type": "pollution",
             "resources": {
                 "offshore": [
                     "water"
@@ -5959,6 +5961,9 @@
     "plants": [
         {
             "growth_ticks": 18000,
+            "harvest_emissions": {
+                "spores": 15
+            },
             "icon_col": 6,
             "icon_row": 15,
             "key": "jellystem",
@@ -6000,6 +6005,9 @@
         },
         {
             "growth_ticks": 18000,
+            "harvest_emissions": {
+                "spores": 15
+            },
             "icon_col": 23,
             "icon_row": 22,
             "key": "yumako-tree",
@@ -29328,6 +29336,11 @@
             ]
         }
     ],
+    "rocket_launch": {
+        "buffered": true,
+        "launch_cycle_ticks": 1614,
+        "parts_per_launch": 50
+    },
     "rocket_silo": [
         {
             "allowed_effects": [
