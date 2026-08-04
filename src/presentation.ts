@@ -86,8 +86,7 @@ export class Tooltip {
     this.instance = tippy(this.reference, {
       ...tooltipProps(),
       content: " ",
-      getReferenceClientRect:
-        this.target === this.reference ? undefined : () => this.target.getBoundingClientRect(),
+      getReferenceClientRect: this.target === this.reference ? undefined : () => this.target.getBoundingClientRect(),
       placement: "right-start",
       onShow: (instance) => {
         if (this.content === null) {

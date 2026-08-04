@@ -21,7 +21,16 @@ const allowedImports = new Map([
   ["visualization.ts", new Set(["factory.ts", "graph.ts", "math.ts", "presentation.ts", "state.ts"])],
   [
     "settings.ts",
-    new Set(["color-schemes.ts", "data.ts", "factory.ts", "math.ts", "models.ts", "priorities.ts", "recipes.ts", "state.ts"]),
+    new Set([
+      "color-schemes.ts",
+      "data.ts",
+      "factory.ts",
+      "math.ts",
+      "models.ts",
+      "priorities.ts",
+      "recipes.ts",
+      "state.ts",
+    ]),
   ],
   [
     "ui.ts",

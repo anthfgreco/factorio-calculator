@@ -154,7 +154,7 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
     readFile(resolve(root, "package.json"), "utf8"),
   ])
 
-  assert.ok(!html.includes('body onload='))
+  assert.ok(!html.includes("body onload="))
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/dropdown.css" />'))
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/calc.css" />'))
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/player-ui.css" />'))
@@ -301,4 +301,11 @@ test("productivity settings use official icons and percentage inputs", async () 
       .includes("Recipe productivity is capped at +300% total; mining productivity is uncapped."),
   )
   assert.ok(state.includes("syncMiningProductivityControls()"))
+})
+
+test("URL fragment navigation updates settings on hashchange and popstate", async () => {
+  const app = await readFile(resolve(root, "src/app.ts"), "utf8")
+  assert.ok(app.includes('window.addEventListener("hashchange", handleUrlHashChange)'))
+  assert.ok(app.includes('window.addEventListener("popstate", handleUrlHashChange)'))
+  assert.ok(app.includes("function handleUrlHashChange()"))
 })

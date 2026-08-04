@@ -17,11 +17,7 @@ import {
 import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
 import { getItems, getRecipes } from "./recipes.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
-import {
-  ensureDeferredResourcesRendered,
-  ensureDeferredSettingsRendered,
-  renderSettings,
-} from "./settings.js"
+import { ensureDeferredResourcesRendered, ensureDeferredSettingsRendered, renderSettings } from "./settings.js"
 import {
   configureDatasetChangeHandler,
   configureDeferredTabHandler,
@@ -328,6 +324,17 @@ function loadData(modName, settings) {
 
 let initialized = false
 
+function handleUrlHashChange() {
+  const newHash = window.location.hash
+  if (newHash === `#${formatSettings()}`) {
+    return
+  }
+  const settings = loadSettings(newHash)
+  renderDataSetOptions(settings)
+  reset()
+  loadData(currentMod(), settings)
+}
+
 export function init() {
   if (initialized) {
     return
@@ -353,4 +360,7 @@ export function init() {
   let settings = loadSettings(window.location.hash)
   renderDataSetOptions(settings)
   loadData(currentMod(), settings)
+
+  window.addEventListener("hashchange", handleUrlHashChange)
+  window.addEventListener("popstate", handleUrlHashChange)
 }

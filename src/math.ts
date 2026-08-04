@@ -82,8 +82,7 @@ export class Rational {
     let roundingNumerator = rounding.p
     const roundingDenominator = rounding.q
     const ten = integer(10)
-    const equalsRounding = () =>
-      remainder.times(roundingDenominator).equals(roundingNumerator.times(value.q))
+    const equalsRounding = () => remainder.times(roundingDenominator).equals(roundingNumerator.times(value.q))
 
     while (digits > 0 && !equalsRounding()) {
       const digit = remainder.times(ten).divmod(value.q)

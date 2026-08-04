@@ -32,6 +32,7 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 - `main.ts`: CSS entry, global HTML handlers, and startup.
 
 The initial totals view intentionally excludes graph/layout code and defers closed selector DOM, dropdown positioning, and rich tooltip construction until first use. Preserve that boundary when adding browser features.
+
 - `styles/calc.css`, `styles/dropdown.css`, and `styles/player-ui.css`: legacy component rules, dropdown behavior, and the modern player-facing visual layer.
 
 ## Dependency direction
