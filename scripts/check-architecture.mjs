@@ -1,5 +1,5 @@
 import { readFile, readdir } from "node:fs/promises"
-import { basename, extname, resolve } from "node:path"
+import { dirname, extname, relative, resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
 const sourceRoot = resolve(root, "src")
@@ -68,46 +68,51 @@ const allowedImports = new Map([
       "visualization.ts",
     ]),
   ],
-  ["main.ts", new Set(["app.ts", "state.ts"])],
+  ["react/types.ts", new Set()],
+  ["react/HelpPanel.tsx", new Set()],
+  ["react/SettingsPanel.tsx", new Set(["react/types.ts"])],
+  ["react/CalculatorShell.tsx", new Set(["react/HelpPanel.tsx", "react/SettingsPanel.tsx", "react/types.ts"])],
+  ["react/CalculatorApp.tsx", new Set(["app.ts", "state.ts", "react/CalculatorShell.tsx", "react/types.ts"])],
+  ["main.tsx", new Set(["react/CalculatorApp.tsx"])],
 ])
 
 const browserIndependent = new Set(["data.ts", "math.ts", "solver.ts", "factory.ts"])
-const sourceFiles = (await readdir(sourceRoot, { withFileTypes: true }))
-  .filter((entry) => entry.isFile() && extname(entry.name) === ".ts" && !entry.name.endsWith(".d.ts"))
-  .map((entry) => resolve(sourceRoot, entry.name))
-const sourceNames = new Set(sourceFiles.map((file) => basename(file)))
-const graph = new Map(sourceFiles.map((file) => [basename(file), []]))
+const sourceFiles = await findSourceFiles(sourceRoot)
+const sourceByKey = new Map(sourceFiles.map((file) => [moduleKey(file), file]))
+const sourceByStem = new Map(sourceFiles.map((file) => [stripExtension(file), file]))
+const graph = new Map(sourceByKey.keys().map((key) => [key, []]))
 const violations = []
 
 for (const file of sourceFiles) {
-  const name = basename(file)
+  const key = moduleKey(file)
   const source = await readFile(file, "utf8")
-  const allowed = allowedImports.get(name)
+  const allowed = allowedImports.get(key)
   if (allowed === undefined) {
-    violations.push(`${name}: missing from the architecture module map`)
+    violations.push(`${key}: missing from the architecture module map`)
     continue
   }
 
-  if (browserIndependent.has(name)) {
-    for (const forbidden of ["document", "window", "localStorage", "sessionStorage", "d3."]) {
+  if (browserIndependent.has(key)) {
+    for (const forbidden of ["document", "window", "localStorage", "sessionStorage", "d3.", "react"]) {
       if (source.includes(forbidden)) {
-        violations.push(`${name}: deterministic module contains browser dependency ${JSON.stringify(forbidden)}`)
+        violations.push(`${key}: deterministic module contains browser dependency ${JSON.stringify(forbidden)}`)
       }
     }
   }
 
   for (const match of source.matchAll(importPattern)) {
     const specifier = match[1]
-    if (!specifier.startsWith("./")) {
+    if (!specifier.startsWith(".")) {
       continue
     }
-    const targetName = basename(specifier.replace(/\.js$/, ".ts"))
-    if (!sourceNames.has(targetName)) {
+    const targetFile = resolveFirstPartyImport(file, specifier)
+    if (targetFile === undefined) {
       continue
     }
-    graph.get(name).push(targetName)
-    if (!allowed.has(targetName)) {
-      violations.push(`${name}: must not import ${targetName} (${specifier})`)
+    const targetKey = moduleKey(targetFile)
+    graph.get(key).push(targetKey)
+    if (!allowed.has(targetKey)) {
+      violations.push(`${key}: must not import ${targetKey} (${specifier})`)
     }
   }
 }
@@ -124,7 +129,38 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log(`Architecture check passed for ${sourceFiles.length} consolidated source modules.`)
+console.log(`Architecture check passed for ${sourceFiles.length} source modules.`)
+
+async function findSourceFiles(directory) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  const nested = await Promise.all(
+    entries.map(async (entry) => {
+      const path = resolve(directory, entry.name)
+      if (entry.isDirectory()) {
+        return findSourceFiles(path)
+      }
+      if (entry.isFile() && [".ts", ".tsx"].includes(extname(entry.name)) && !entry.name.endsWith(".d.ts")) {
+        return [path]
+      }
+      return []
+    }),
+  )
+  return nested.flat().sort()
+}
+
+function moduleKey(file) {
+  return relative(sourceRoot, file).replaceAll("\\", "/")
+}
+
+function stripExtension(file) {
+  return file.slice(0, -extname(file).length)
+}
+
+function resolveFirstPartyImport(importer, specifier) {
+  const resolved = resolve(dirname(importer), specifier)
+  const stem = extname(resolved) === ".js" ? resolved.slice(0, -3) : stripExtension(resolved)
+  return sourceByStem.get(stem)
+}
 
 function findImportCycles(moduleGraph) {
   const state = new Map()

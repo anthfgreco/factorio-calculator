@@ -18,7 +18,8 @@
     "strictPropertyInitialization": false,
     "useUnknownInCatchVariables": false,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx"
   },
   "include": ["src"]
 }

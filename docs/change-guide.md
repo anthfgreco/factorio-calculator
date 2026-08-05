@@ -5,7 +5,7 @@
 1. Write a failing characterization test or runtime assertion.
 2. Put exact calculations in `src/math.ts` or `src/solver.ts`.
 3. Put recipe/item policy in `src/recipes.ts`; put factory/location/building policy in `src/factory.ts`.
-4. Keep DOM changes in `src/settings.ts`, `src/results.ts`, `src/ui.ts`, `src/graph.ts`, or `src/visualization.ts`.
+4. Keep static shell/control changes in `src/react/`; keep dynamic target, result, settings-option, and graph rendering in their existing imperative owner.
 5. Run `pnpm check`.
 
 ## Add a new dataset field
@@ -29,9 +29,11 @@ Do not patch `public/data/space-age-2.1.12.json` as the source of truth.
 ## Add a UI control
 
 1. Reuse a factory, recipe, or priority operation; do not place business rules in the event handler.
-2. Put settings controls in `settings.ts`, result controls in `results.ts`, and target controls in `ui.ts`.
-3. Persist through `state.ts` and `url-state.ts` where applicable.
-4. Add a runtime test for the underlying behavior; add a browser smoke test only when layout or browser interaction is central.
+2. Put static tabs, toolbar controls, and settings markup in `src/react/`. Keep dynamically generated targets, recipe controls, results, and visualizations in their current imperative owners.
+3. Preserve required mount-point IDs and use `forwardNativeEvent()` when a React control calls an existing `state.ts` handler.
+4. Use uncontrolled inputs when runtime code mutates the DOM value.
+5. Persist through `state.ts` and `url-state.ts` where applicable.
+6. Add a focused interface/runtime test; use browser-level testing only when layout or browser interaction is central.
 
 ## Change solver behavior
 

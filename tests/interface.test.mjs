@@ -6,17 +6,17 @@ import test from "node:test"
 const root = resolve(import.meta.dirname, "..")
 
 test("player-facing controls stay close to the evidence they affect", async () => {
-  const html = await readFile(resolve(root, "calc.html"), "utf8")
+  const shell = await readFile(resolve(root, "src/react/CalculatorShell.tsx"), "utf8")
   const results = await readFile(resolve(root, "src/results.ts"), "utf8")
 
-  const tabsStart = html.indexOf('<div class="tabs">')
-  const tabsEnd = html.indexOf('<div id="graph_tab"')
-  const density = html.indexOf('id="factory_tab_tools"')
+  const tabsStart = shell.indexOf('className="tabs"')
+  const tabsEnd = shell.indexOf('id="graph_tab"')
+  const density = shell.indexOf('id="factory_tab_tools"')
   assert.ok(tabsStart !== -1 && tabsEnd !== -1 && density > tabsStart && density < tabsEnd)
-  assert.ok(!html.includes("factory-view-toolbar"))
-  assert.ok(html.includes('id="targets_title"'))
-  assert.ok(html.includes('id="visualization_summary"'))
-  assert.ok(html.includes("fluids use a 10:1 scale"))
+  assert.ok(!shell.includes("factory-view-toolbar"))
+  assert.ok(shell.includes('id="targets_title"'))
+  assert.ok(shell.includes('id="visualization_summary"'))
+  assert.ok(shell.includes("fluids use a 10:1 scale"))
 
   assert.ok(results.includes('classed("item-name", true)'))
   assert.ok(results.includes('new Header("Item", 2'))
@@ -49,9 +49,15 @@ test("player-facing controls stay close to the evidence they affect", async () =
 
 test("player-facing copy describes Factorio behavior instead of implementation details", async () => {
   const sources = await Promise.all(
-    ["calc.html", "public/docs/changelog.html", "src/results.ts", "src/ui.ts", "src/planning.ts"].map((file) =>
-      readFile(resolve(root, file), "utf8"),
-    ),
+    [
+      "src/react/CalculatorShell.tsx",
+      "src/react/SettingsPanel.tsx",
+      "src/react/HelpPanel.tsx",
+      "public/docs/changelog.html",
+      "src/results.ts",
+      "src/ui.ts",
+      "src/planning.ts",
+    ].map((file) => readFile(resolve(root, file), "utf8")),
   )
   const playerCopy = sources.join("\n").toLowerCase()
 
@@ -80,7 +86,7 @@ test("tooltips use Tippy for rich and text content without the legacy Popper run
   const [html, globals, main, presentation, settings, results, ui, packageJson] = await Promise.all([
     readFile(resolve(root, "calc.html"), "utf8"),
     readFile(resolve(root, "src/globals.d.ts"), "utf8"),
-    readFile(resolve(root, "src/main.ts"), "utf8"),
+    readFile(resolve(root, "src/main.tsx"), "utf8"),
     readFile(resolve(root, "src/presentation.ts"), "utf8"),
     readFile(resolve(root, "src/settings.ts"), "utf8"),
     readFile(resolve(root, "src/results.ts"), "utf8"),
@@ -144,7 +150,7 @@ test("module dropdown rerenders initialize only entering wrappers", async () => 
 test("mobile startup keeps optional runtimes and hidden controls off the critical path", async () => {
   const [html, main, app, settings, ui, presentation, graph, visualization, packageJson] = await Promise.all([
     readFile(resolve(root, "calc.html"), "utf8"),
-    readFile(resolve(root, "src/main.ts"), "utf8"),
+    readFile(resolve(root, "src/main.tsx"), "utf8"),
     readFile(resolve(root, "src/app.ts"), "utf8"),
     readFile(resolve(root, "src/settings.ts"), "utf8"),
     readFile(resolve(root, "src/ui.ts"), "utf8"),
@@ -160,7 +166,8 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/player-ui.css" />'))
   assert.ok(html.includes('rel="preload" href="./data/space-age-2.1.12.json" as="fetch" crossorigin'))
   assert.ok(!main.includes('import "./styles/'))
-  assert.ok(main.trimEnd().endsWith("init()"))
+  assert.ok(main.includes("createRoot(rootElement).render(<CalculatorApp />)"))
+  assert.ok(!main.includes("StrictMode"))
   assert.ok(app.includes('import("./visualization.js")'))
   assert.ok(!app.includes('from "./visualization.js"'))
   assert.ok(app.includes('cache: "force-cache", credentials: "same-origin"'))
@@ -269,7 +276,7 @@ test("progression presets keep Settings controls synchronized", async () => {
 })
 
 test("productivity settings use official icons and percentage inputs", async () => {
-  const html = await readFile(resolve(root, "calc.html"), "utf8")
+  const html = await readFile(resolve(root, "src/react/SettingsPanel.tsx"), "utf8")
   const settings = await readFile(resolve(root, "src/settings.ts"), "utf8")
   const state = await readFile(resolve(root, "src/state.ts"), "utf8")
   const styles = await readFile(resolve(root, "src/styles/calc.css"), "utf8")
@@ -280,9 +287,9 @@ test("productivity settings use official icons and percentage inputs", async () 
   const productivityEnd = html.indexOf("</div>", productivityStart)
   const miningProductivity = html.indexOf('id="mprod"')
   assert.ok(miningProductivity > productivityStart && miningProductivity < productivityEnd)
-  assert.ok(!html.includes('<td class="setting-label">Mining productivity bonus:</td>'))
-  assert.ok(html.includes('class="recipe-productivity-icon mining-productivity-icon"'))
-  assert.ok(html.includes('class="recipe-productivity-percentage"'))
+  assert.ok(!html.includes('<td className="setting-label">Mining productivity bonus:</td>'))
+  assert.ok(html.includes('className="recipe-productivity-icon mining-productivity-icon"'))
+  assert.ok(html.includes('className="recipe-productivity-percentage"'))
   assert.ok(!html.includes("mining-productivity-bonus"))
   assert.ok(settings.includes('spec.items.get("electric-mining-drill")'))
   assert.ok(settings.includes("spec.recipeProductivityResearch.values()"))
@@ -301,6 +308,42 @@ test("productivity settings use official icons and percentage inputs", async () 
       .includes("Recipe productivity is capped at +300% total; mining productivity is uncapped."),
   )
   assert.ok(state.includes("syncMiningProductivityControls()"))
+})
+
+test("React 19 shell uses typed local actions without inline or global handlers", async () => {
+  const [html, main, app, shell, settingsPanel, globals, packageJson, tsconfig, lockfile] = await Promise.all([
+    readFile(resolve(root, "calc.html"), "utf8"),
+    readFile(resolve(root, "src/main.tsx"), "utf8"),
+    readFile(resolve(root, "src/react/CalculatorApp.tsx"), "utf8"),
+    readFile(resolve(root, "src/react/CalculatorShell.tsx"), "utf8"),
+    readFile(resolve(root, "src/react/SettingsPanel.tsx"), "utf8"),
+    readFile(resolve(root, "src/globals.d.ts"), "utf8"),
+    readFile(resolve(root, "package.json"), "utf8"),
+    readFile(resolve(root, "tsconfig.json"), "utf8"),
+    readFile(resolve(root, "pnpm-lock.yaml"), "utf8"),
+  ])
+  const packageData = JSON.parse(packageJson)
+  const compilerOptions = JSON.parse(tsconfig).compilerOptions
+
+  assert.equal(packageData.dependencies.react, "19.2.8")
+  assert.equal(packageData.dependencies["react-dom"], "19.2.8")
+  assert.equal(packageData.devDependencies["@types/react"], "19.2.17")
+  assert.equal(packageData.devDependencies["@types/react-dom"], "19.2.3")
+  assert.ok(lockfile.includes("react:\n        specifier: 19.2.8\n        version: 19.2.8"))
+  assert.ok(lockfile.includes("react-dom:\n        specifier: 19.2.8\n        version: 19.2.8(react@19.2.8)"))
+  assert.equal(compilerOptions.jsx, "react-jsx")
+  assert.ok(html.includes('<div id="root"></div>'))
+  assert.ok(html.includes('src="./src/main.tsx"'))
+  assert.ok(!html.includes("onclick="))
+  assert.ok(!html.includes("onchange="))
+  assert.ok(main.includes('from "react-dom/client"'))
+  assert.ok(app.includes("useLayoutEffect"))
+  assert.ok(app.includes("<CalculatorShell actions={actions} />"))
+  assert.ok(shell.includes("forwardNativeEvent"))
+  assert.ok(settingsPanel.includes('defaultValue="4"'))
+  assert.ok(settingsPanel.includes("defaultChecked"))
+  assert.ok(!globals.includes("CalculatorHandlers"))
+  assert.ok(!globals.includes("handlers:"))
 })
 
 test("URL fragment navigation updates settings on hashchange and popstate", async () => {

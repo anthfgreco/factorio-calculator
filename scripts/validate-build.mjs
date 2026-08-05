@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises"
+import { access, readFile, readdir } from "node:fs/promises"
 
 const dist = new URL("../dist/", import.meta.url)
 
@@ -24,8 +24,15 @@ if (calculatorHtml.includes("/src/") || calculatorHtml.includes("src/main.ts")) 
 if (calculatorHtml.includes("third_party/")) {
   throw new Error("calc.html still references a classic vendored runtime dependency")
 }
-if (!calculatorHtml.includes('id="targets_title"')) {
-  throw new Error("calc.html is missing the production-target heading")
+if (!calculatorHtml.includes('<div id="root"></div>')) {
+  throw new Error("calc.html is missing the React root")
+}
+if (
+  calculatorHtml.includes("onclick=") ||
+  calculatorHtml.includes("onchange=") ||
+  calculatorHtml.includes("oninput=")
+) {
+  throw new Error("calc.html still contains inline event handlers")
 }
 if (
   !calculatorHtml.includes('name="description"') ||
@@ -36,56 +43,31 @@ if (
 if (!calculatorHtml.includes('type="application/ld+json"') || !calculatorHtml.includes('"@type": "WebApplication"')) {
   throw new Error("calc.html is missing WebApplication structured data")
 }
-if (!calculatorHtml.includes("<h1>Factorio Calculator</h1>")) {
-  throw new Error("calc.html is missing its primary Factorio Calculator heading")
+
+const assetSources = await readJavaScriptAssets(new URL("assets/", dist))
+const calculatorBundle = assetSources.join("\n")
+for (const requiredText of [
+  "Production targets",
+  "visualization_summary",
+  "fluids use a 10:1 scale",
+  "factory_tab_tools",
+  "location_toolbar",
+  "help-about",
+  "help-faq",
+  "help-changelog",
+  "factory_density_comfortable",
+  "factory_density_compact",
+  "copy_share_link",
+  "debug_button",
+]) {
+  if (!calculatorBundle.includes(requiredText)) {
+    throw new Error(`Built calculator bundle is missing ${JSON.stringify(requiredText)}`)
+  }
 }
-if (!calculatorHtml.includes('id="visualization_summary"') || !calculatorHtml.includes("fluids use a 10:1 scale")) {
-  throw new Error("calc.html is missing the visualization scale and scope guidance")
-}
-const tabsStart = calculatorHtml.indexOf('<div class="tabs">')
-const graphTabStart = calculatorHtml.indexOf('<div id="graph_tab"')
-const factoryToolsIndex = calculatorHtml.indexOf('id="factory_tab_tools"')
-if (tabsStart === -1 || graphTabStart === -1 || factoryToolsIndex < tabsStart || factoryToolsIndex > graphTabStart) {
-  throw new Error("Factory row-density controls must stay on the right side of the tab bar")
-}
-if (calculatorHtml.includes("factory-view-toolbar") || calculatorHtml.includes("Table density")) {
-  throw new Error("calc.html still contains the old separate Factory density toolbar")
-}
-if (!calculatorHtml.includes('id="location_toolbar"')) {
-  throw new Error("calc.html is missing the top-level production-location control")
-}
-if (
-  !calculatorHtml.includes('id="help_tab"') ||
-  !calculatorHtml.includes('id="help-about"') ||
-  !calculatorHtml.includes('id="help-faq"') ||
-  !calculatorHtml.includes('id="help-changelog"')
-) {
-  throw new Error("calc.html is missing the consolidated Help tab")
-}
-if (
-  calculatorHtml.includes('id="about_tab"') ||
-  calculatorHtml.includes('id="faq_tab"') ||
-  calculatorHtml.includes('id="changelog_tab"') ||
-  calculatorHtml.includes("changelog-frame")
-) {
-  throw new Error("calc.html still contains a legacy About, FAQ, or Changelog tab")
-}
-if (
-  !calculatorHtml.includes('id="factory_density_comfortable"') ||
-  !calculatorHtml.includes('id="factory_density_compact"')
-) {
-  throw new Error("calc.html is missing Factory table density controls")
-}
-if (calculatorHtml.includes("Recent changes:")) {
-  throw new Error("calc.html still contains the removed Recent changes box")
-}
-const copyButtonIndex = calculatorHtml.indexOf('id="copy_share_link"')
-const debugButtonIndex = calculatorHtml.indexOf('id="debug_button"')
-if (copyButtonIndex === -1 || debugButtonIndex === -1 || copyButtonIndex > debugButtonIndex) {
-  throw new Error("Copy plan link must appear immediately before the Debug toolbar button")
-}
-if (calculatorHtml.includes("Machine equivalents")) {
-  throw new Error("calc.html still shows the confusing machine-equivalents summary")
+for (const removedText of ["factory-view-toolbar", "Table density", "Recent changes:", "Machine equivalents"]) {
+  if (calculatorBundle.includes(removedText)) {
+    throw new Error(`Built calculator bundle still contains ${JSON.stringify(removedText)}`)
+  }
 }
 
 const changelogHtml = await readFile(new URL("docs/changelog.html", dist), "utf8")
@@ -113,4 +95,21 @@ if (!data.sprites?.hash) {
 await requireFile(`images/sprite-sheet-${data.sprites.hash}.png`)
 await requireFile(`images/sprite-sheet-${data.sprites.hash}.webp`)
 
-console.log(`Validated Vite build with ${data.recipes.length} Factorio 2.1.12 recipes.`)
+console.log(`Validated React 19 Vite build with ${data.recipes.length} Factorio 2.1.12 recipes.`)
+
+async function readJavaScriptAssets(directory) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  const files = await Promise.all(
+    entries.map(async (entry) => {
+      const url = new URL(entry.name + (entry.isDirectory() ? "/" : ""), directory)
+      if (entry.isDirectory()) {
+        return readJavaScriptAssets(url)
+      }
+      if (entry.isFile() && entry.name.endsWith(".js")) {
+        return [await readFile(url, "utf8")]
+      }
+      return []
+    }),
+  )
+  return files.flat()
+}

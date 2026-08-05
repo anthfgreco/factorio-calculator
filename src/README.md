@@ -19,6 +19,14 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 - `state.ts`: mutable UI/application settings, dataset selection, visualizer selection, table density, sharing, and event actions.
 - `color-schemes.ts`: lightweight theme definitions shared by settings without importing graph rendering.
 
+## React application shell
+
+- `main.tsx`: React 19 root.
+- `react/CalculatorApp.tsx`: typed bridge into the existing runtime.
+- `react/CalculatorShell.tsx`: stable shell and imperative mount points.
+- `react/SettingsPanel.tsx`: static settings markup.
+- `react/HelpPanel.tsx`: help and changelog content.
+
 ## Browser interface
 
 - `presentation.ts`: shared icon, tooltip, and dropdown primitives.
@@ -29,7 +37,7 @@ These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are
 - `visualization.ts`: graph viewport, box-line renderer, and visualization orchestration.
 - `url-state.ts`: browser history plus deterministic, slot-safe calculator fragment parsing/formatting.
 - `app.ts`: composition root, browser view adapter, and dataset bootstrap.
-- `main.ts`: CSS entry, global HTML handlers, and startup.
+- `app.ts`: runtime composition and dataset bootstrap. React startup lives in `main.tsx`.
 
 The initial totals view intentionally excludes graph/layout code and defers closed selector DOM, dropdown positioning, and rich tooltip construction until first use. Preserve that boundary when adding browser features.
 

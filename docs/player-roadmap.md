@@ -7,7 +7,7 @@ The calculator's strongest foundations are worth preserving:
 - exact rational arithmetic rather than floating-point approximations
 - a proven recipe-graph and simplex solver for multi-output systems
 - compact, shareable URL state
-- no heavy UI framework or server dependency
+- no server dependency; keep the React shell thin and the solver framework-independent
 - generated datasets backed by Factorio prototype exports
 - cohesive modules with executable architecture and runtime checks
 

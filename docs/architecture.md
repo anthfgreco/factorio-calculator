@@ -2,107 +2,102 @@
 
 ## Goal
 
-The project keeps the original calculator behavior while making repository-level changes easy to locate, understand, and validate. The source is consolidated into cohesive feature modules—large enough to preserve local context, but small enough to retain explicit ownership.
+The project combines a React 19.2.8 application shell with a deterministic Factorio calculation engine and focused imperative renderers. The boundaries are explicit so changes are easy to locate, agents can gather only relevant context, and calculation correctness is not coupled to UI framework behavior.
 
-The architecture optimizes for deterministic boundaries, direct imports, an acyclic dependency graph, and executable validation. It does not depend on a UI framework.
+The architecture favors direct imports, acyclic dependencies, typed ports, stable ownership, and executable validation.
 
 ## Module map
 
 ```text
-main.ts
-  └─ app.ts                    composition root
-       ├─ data.ts              dataset boundary and shared pure queries
-       ├─ math.ts              exact arithmetic and formatting
-       ├─ solver.ts            pure factory solving
-       ├─ models.ts            runtime dataset models
-       ├─ recipes.ts           item/recipe models and policies
-       ├─ priorities.ts        resource-priority feature
-       ├─ factory.ts           calculator state facade
-       ├─ planning.ts          advanced planning calculations
-       ├─ state.ts             browser/application settings and actions
-       ├─ presentation.ts      reusable DOM primitives
-       ├─ settings.ts          settings DOM
-       ├─ results.ts           results DOM
-       ├─ ui.ts                target DOM
-       ├─ graph.ts             graph and Sankey implementation
-       ├─ visualization.ts     visualization orchestration
-       └─ url-state.ts         URL and fragment persistence
+main.tsx
+  └─ react/CalculatorApp.tsx        React/runtime bridge
+       ├─ react/CalculatorShell.tsx page shell and mount points
+       │    ├─ react/SettingsPanel.tsx
+       │    └─ react/HelpPanel.tsx
+       ├─ app.ts                    runtime composition and bootstrap
+       └─ state.ts                  user actions and UI settings
+
+app.ts
+  ├─ data.ts                        validated dataset boundary
+  ├─ math.ts                        exact arithmetic
+  ├─ solver.ts                      pure factory solving
+  ├─ planning.ts                    pure planning calculations
+  ├─ models.ts                      runtime dataset models
+  ├─ recipes.ts                     item/recipe models and policies
+  ├─ priorities.ts                  resource-priority feature
+  ├─ factory.ts                     calculator facade and rendering port
+  ├─ presentation.ts                DOM primitives
+  ├─ settings.ts                    dynamic settings renderer
+  ├─ results.ts                     results renderer
+  ├─ ui.ts                          dynamic target renderer
+  ├─ graph.ts / visualization.ts    deferred visualization runtime
+  └─ url-state.ts                   history and fragment persistence
 ```
 
-`app.ts` is the composition root and intentionally connects the browser-facing modules. `main.ts` only loads styles, exposes legacy HTML handlers, and starts the app.
+`main.tsx` mounts React. `CalculatorApp.tsx` is the only React module that imports the legacy runtime/actions. Lower React components receive the typed `CalculatorActions` interface.
+
+## React and imperative rendering boundary
+
+React owns static structure, accessibility relationships, direct event wiring, and stable containers. Existing renderers own dynamic children inside containers such as `#targets`, `#totals`, `#recipe_toggles`, `#resource_settings`, and `#graph`.
+
+The shell intentionally renders once. Runtime-mutated form fields are uncontrolled with `defaultValue` and `defaultChecked`; converting them to controlled inputs would let React overwrite URL-loaded or preset-loaded values.
+
+New static controls should normally be placed in `src/react/`. Dynamic, high-volume result and graph rendering may remain imperative unless a dedicated migration has characterization tests and measurable value. Business rules never belong in React callbacks.
 
 ## Deterministic boundary
 
 ### Data
 
-`src/data.ts` owns:
+`src/data.ts` owns the normalized `CalculatorData` contract, runtime validation of untrusted JSON, normalized item search, location queries, and shared sorting. Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
 
-- the normalized `CalculatorData` contract
-- runtime validation of untrusted JSON
-- normalized item search
-- location-list and unavailable-location queries
-- the small shared sorting helper
+### Math, solver, and planning
 
-Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
+`src/math.ts` owns exact arithmetic, matrices, simplex primitives, display formatting, and power formatting.
 
-### Math and solver
+`src/solver.ts` owns solver contracts, cycle detection, fuel-consumer edges, per-product productivity, typed `SolverFailure` diagnostics, totals, and the pure `solve()` operation. It depends only on `math.ts`.
 
-`src/math.ts` owns exact arithmetic, matrices, the simplex primitive, display formatting, and power formatting.
+`src/planning.ts` owns pure post-solve and target-transformation calculations for exact quality targets, recipe location assignment, transport flows, freshness, resource capacity, logistics, emissions, rocket launches, and Aquilo heat.
 
-`src/solver.ts` owns solver contracts, cycle detection, fuel-consumer graph edges, per-product productivity handling, totals, typed `SolverFailure` diagnostics, and the pure `solve()` operation. It depends only on `math.ts`.
+These modules must not access React, the DOM, D3, storage, or browser globals. `data.ts`, `math.ts`, and `solver.ts` receive stricter TypeScript checks through `tsconfig.core.json`.
 
 ### Factory
 
-`src/factory.ts` owns the browser-independent `FactorySpecification` compatibility facade and closely related building, location, and recipe-selection policy. It converts runtime objects to the explicit solver contracts and delegates rendering through `FactoryViewPort`.
-
-`src/planning.ts` owns pure post-solve and target-transformation calculations for exact quality targets, recipe location assignment, transport flows, freshness, resource-capacity diagnostics, logistics, surface-aware emissions, rocket launch reporting, and Aquilo heat. It has no DOM dependencies and deliberately does not mutate simplex internals.
-
-These modules must not access the DOM, D3, storage, or browser globals. `data.ts`, `math.ts`, and `solver.ts` receive stricter TypeScript checks through `tsconfig.core.json`.
+`src/factory.ts` owns the browser-independent `FactorySpecification` facade and closely related building, location, and recipe-selection policy. It converts runtime objects to explicit solver contracts and delegates rendering through `FactoryViewPort`.
 
 ## Runtime and policy modules
 
 `src/models.ts` constructs buildings, modules, belts, fuels, planets, and item groups from validated data.
 
-`src/recipes.ts` contains the item/recipe runtime models together with recipe classification, search, grouping, and enable/disable policy. Keeping these together makes recipe changes discoverable without crossing many files.
+`src/recipes.ts` contains item and recipe runtime models together with recipe classification, search, grouping, and enablement policy.
 
-`src/priorities.ts` contains the priority model, its application policy, and its tightly coupled editor. The editor remains in the same module because it directly manipulates that model and has no independent use.
+`src/priorities.ts` contains the priority model, its application policy, and its tightly coupled editor.
 
-`src/state.ts` contains the small mutable browser/application settings: active tab, selected dataset, visualizer options, legacy-calculation mode, document title, and HTML event actions.
+`src/state.ts` contains the small mutable application settings and user actions. React calls these operations; it does not duplicate their state.
 
 ## Browser modules
 
-`src/color-schemes.ts` contains the lightweight theme definitions so settings do not pull graph rendering into startup.
+`src/presentation.ts` contains generic icons, tooltips, popovers, and dropdowns.
 
-`src/presentation.ts` contains generic icons, tooltips, and dropdown primitives.
+`src/settings.ts`, `src/results.ts`, and `src/ui.ts` populate React-provided mount points. Calculation policy must be called through `factory.ts`, `recipes.ts`, or `priorities.ts`, not implemented in event handlers.
 
-`src/settings.ts`, `src/results.ts`, and `src/ui.ts` own settings, result tables, factory summaries and diagnostics, and target-row DOM respectively. Calculation policy should be called through `factory.ts`, `recipes.ts`, or `priorities.ts` rather than implemented in event handlers.
+`src/graph.ts` contains Sankey and graph primitives. `src/visualization.ts` contains viewport behavior, box-line rendering, and visualization orchestration.
 
-### Startup boundary
+`src/url-state.ts` owns browser history and the calculator fragment format. Module slots use explicit empty placeholders, set-like values serialize deterministically, and fragments remain backward-compatible unless a deliberate migration is approved.
 
-The default totals view is the critical path. Keep graph/layout modules behind the dynamic visualization import, leave closed item/recipe/resource selectors unmounted until first use, and avoid eager tooltip or dropdown instances. Versioned datasets may be preloaded and runtime sprite sheets use lossless WebP; changes to these boundaries require startup regression coverage.
+## Startup boundary
 
-`src/graph.ts` contains Sankey and shared graph primitives. `src/visualization.ts` contains viewport behavior, box-line rendering, and visualization selection/orchestration.
-
-`src/url-state.ts` owns both browser history updates and the calculator-specific fragment format. Module slots use explicit empty placeholders, configured inactive recipes remain shareable, and serialized set-like values are deterministic. URL fragments remain backward-compatible unless a deliberate migration is approved.
+The default totals view is the critical path. Keep graph/layout modules behind the dynamic visualization import, leave closed selectors unrendered until first use, and avoid eager tooltip or dropdown instances. The React shell adds structure and event wiring only; it must not pull deferred runtime modules into startup.
 
 ## Import rules
 
-Use direct imports from the module that owns a symbol. Do not add barrel exports.
+Use direct imports from the owning module. Do not add barrel exports.
 
-`scripts/check-architecture.mjs` enforces the approved module dependency map, rejects browser dependencies in deterministic modules, and rejects first-party import cycles.
-
-The module map is deliberately explicit. Update the checker alongside any intentional architectural change.
-
-## Module size and cohesion
-
-The preferred module is usually a few hundred lines and owns one recognizable feature or deterministic boundary. A module may exceed that range when splitting it would separate tightly coupled behavior.
-
-Do not create tiny forwarding files solely to reduce line counts. Split only when the extracted code has an independent responsibility, stable interface, or separate test surface.
+`scripts/check-architecture.mjs` recursively checks TypeScript and TSX modules, enforces the approved dependency map, rejects browser dependencies in deterministic modules, and rejects first-party import cycles. Add every new source module and intended dependency to the map.
 
 ## Player-model boundaries
 
-The simplex still solves a shared scalar item graph. `planning.ts` deterministically assigns active recipes to pinned or compatible locations and derives explicit transport edges from solved material links. This gives accurate accounting for a chosen assignment, but route capacities do not yet participate in recipe optimization.
+The simplex solves a shared scalar item graph. `planning.ts` deterministically assigns active recipes to pinned or compatible locations and derives transport edges from solved material links. This gives accurate accounting for a chosen assignment, but route capacities do not yet participate in recipe optimization.
 
-Quality-module compatibility belongs to `models.ts`. Exact quality targets are transformed into the required expected total production before solving and are reported with combined non-target-quality byproducts afterward. Automatic recycler-loop optimization still requires a future quality-qualified solver graph.
+Quality-module compatibility belongs to `models.ts`. Exact quality targets are transformed into expected total production before solving and reported with combined non-target-quality byproducts afterward. Automatic recycler-loop optimization still requires a future quality-qualified solver graph.
 
-Freshness, asteroid capacity, surface-aware emissions, rocket launch reporting, and Aquilo heat are planning layers over solved rates. Version-specific launch and harvest mechanics belong in validated dataset contracts. Keep layout assumptions visible rather than inserting them into the exact recipe equations.
+Freshness, asteroid capacity, surface-aware emissions, rocket launch reporting, and Aquilo heat are planning layers over solved rates. Version-specific mechanics belong in validated dataset contracts; keep layout assumptions visible rather than inserting them into exact recipe equations.

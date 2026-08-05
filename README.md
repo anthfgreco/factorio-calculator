@@ -78,7 +78,8 @@ The TypeScript source is intentionally consolidated into cohesive feature module
 - `src/settings.ts`, `src/results.ts`, `src/ui.ts` — settings, results, and target DOM
 - `src/graph.ts`, `src/visualization.ts` — Sankey/graph implementation and rendering
 - `src/url-state.ts` — URL history and fragment serialization
-- `src/app.ts`, `src/main.ts` — composition root and browser entry point
+- `src/main.tsx`, `src/react/` — React 19.2.8 shell and typed runtime bridge
+- `src/app.ts` — calculator runtime composition and dataset bootstrap
 
 Start with [AGENTS.md](AGENTS.md), [src/README.md](src/README.md), [docs/architecture.md](docs/architecture.md), and the [player-focused roadmap](docs/player-roadmap.md).
 
