@@ -142,3 +142,55 @@ test("URL recipe productivity levels are stable and omit defaults or unknown res
     "steel-plate-productivity:12",
   ])
 })
+
+const { compressCalculatorSettings, parseCalculatorFragment, parseSettingsParameters } = await import(
+  pathToFileURL(resolve(build, "url/codec.js")).href
+)
+const { CalculatorUrlHistory } = await import(pathToFileURL(resolve(build, "url/history.js")).href)
+
+const nodeBase64 = {
+  encode: (binary) => Buffer.from(binary, "latin1").toString("base64"),
+  decode: (encoded) => Buffer.from(encoded, "base64").toString("latin1"),
+}
+
+test("pure URL codec preserves uncompressed parameter values exactly", () => {
+  assert.deepEqual(
+    [...parseSettingsParameters("title=A%20Factory&items=advanced-circuit:r:60&empty=")],
+    [
+      ["title", "A%20Factory"],
+      ["items", "advanced-circuit:r:60"],
+      ["empty", ""],
+    ],
+  )
+})
+
+test("pure URL codec round-trips compressed calculator fragments", () => {
+  const settings = `data=space-age-2-1-13&items=${"advanced-circuit:r:60,".repeat(250)}`
+  const compressed = compressCalculatorSettings(settings, nodeBase64)
+  assert.match(compressed, /^zip=/)
+  assert.deepEqual(parseCalculatorFragment(`#${compressed}`, nodeBase64), parseSettingsParameters(settings))
+})
+
+test("URL history controller suppresses startup writes and replaces later state atomically", () => {
+  const replacements = []
+  const port = {
+    hash: "",
+    pathname: "/calc.html",
+    search: "?embed=1",
+    replace(url) {
+      replacements.push(url)
+      this.hash = url.startsWith("#") ? url : ""
+    },
+  }
+  const history = new CalculatorUrlHistory(port)
+
+  history.initialize()
+  history.sync("data=space-age-2-1-13&items=")
+  assert.deepEqual(replacements, [])
+
+  history.finishInitialization()
+  history.sync("data=space-age-2-1-13&items=")
+  history.sync("data=space-age-2-1-13&items=")
+  history.clearHash()
+  assert.deepEqual(replacements, ["#data=space-age-2-1-13&items=", "/calc.html?embed=1"])
+})

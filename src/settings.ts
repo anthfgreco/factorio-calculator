@@ -1,8 +1,17 @@
-import { select, selectAll } from "d3"
-const d3: any = { select, selectAll }
+import { select, selectAll, type BaseType, type Selection } from "d3"
 import { normalizeSearchText, sorted } from "./data.js"
-import { buildingSort, DEFAULT_BELT, DEFAULT_FUEL, DEFAULT_PLANET, setRecipeEnabled, spec } from "./factory.js"
-import { colorSchemes } from "./color-schemes.js"
+import {
+  BuildingGroup,
+  buildingSort,
+  DEFAULT_BELT,
+  DEFAULT_FUEL,
+  DEFAULT_PLANET,
+  FactorySpecification,
+  setRecipeEnabled,
+  spec,
+} from "./factory.js"
+import { ColorScheme, colorSchemes } from "./color-schemes.js"
+import type { Icon } from "./presentation.js"
 import type { DisplayFormat, DisplayRate } from "./math.js"
 import {
   DEFAULT_COUNT_PRECISION,
@@ -14,7 +23,19 @@ import {
   Rational,
   zero,
 } from "./math.js"
-import { moduleDropdown, moduleRows, shortModules } from "./models.js"
+import {
+  Belt,
+  Building,
+  Fuel,
+  Module,
+  type ModuleDropdownCell,
+  type ModuleDropdownOption,
+  moduleDropdown,
+  moduleRows,
+  type Planet,
+  type RecipeProductivityResearch,
+  shortModules,
+} from "./models.js"
 import { renderResourcePriorityEditor, unmountResourcePriorityEditor } from "./priorities.js"
 import {
   getConfigurableRecipes,
@@ -22,7 +43,14 @@ import {
   isRecipeUnavailable,
   isRecyclingRecipe,
   recipeVisibleInSettings,
+  type Recipe,
+  type RecipeSettingsGroup,
 } from "./recipes.js"
+import {
+  recipeProductivityLevelFromPercent,
+  recipeProductivityPercent,
+  recipeProductivityPercentPerLevel,
+} from "./settings/productivity-research.js"
 import {
   DEFAULT_RENDER,
   DEFAULT_TAB,
@@ -39,6 +67,26 @@ import {
   visualizerType,
 } from "./state.js"
 
+type SettingsMap = ReadonlyMap<string, string>
+type AnySelection = Selection<BaseType, unknown, BaseType, unknown>
+type RadioOption = Belt | Fuel
+
+function requirePlanets(): Map<string, Planet> {
+  if (spec.planets === null) throw new Error("Planet data has not been loaded")
+  return spec.planets
+}
+
+function requireFuels() {
+  if (spec.fuels === null) throw new Error("Fuel data has not been loaded")
+  return spec.fuels
+}
+
+function requireElement<TElement extends HTMLElement>(id: string): TElement {
+  const element = document.getElementById(id)
+  if (!(element instanceof HTMLElement)) throw new Error(`Missing #${id}`)
+  return element as TElement
+}
+
 // -----------------------------------------------------------------------------
 // Recipe browser
 // -----------------------------------------------------------------------------
@@ -49,13 +97,17 @@ let showChangedOnly = false
 let recipeSettingsRendered = false
 let resourcePrioritiesRendered = false
 
-function recipeCategoryId(category: string) {
+function recipeCategoryId(category: string): string {
   return `recipe-category-${category.replace(/[^a-z0-9_-]+/gi, "-")}`
 }
 
-function updateRecipeToggleState(spec: any, element: HTMLButtonElement, recipe: any) {
-  const unavailable = isRecipeUnavailable(spec, recipe)
-  const enabled = !spec.disable.has(recipe)
+function updateRecipeToggleState(
+  specification: FactorySpecification,
+  element: HTMLButtonElement,
+  recipe: Recipe,
+): void {
+  const unavailable = isRecipeUnavailable(specification, recipe)
+  const enabled = !specification.disable.has(recipe)
 
   element.classList.toggle("selected", enabled && !unavailable)
   element.classList.toggle("disabled-recipe", !enabled && !unavailable)
@@ -78,90 +130,98 @@ function updateRecipeToggleState(spec: any, element: HTMLButtonElement, recipe: 
   element.setAttribute("aria-pressed", String(enabled))
 }
 
-function makeRecipeToggles(container: any, recipes: any[], spec: any) {
+function makeRecipeToggles(
+  container: AnySelection,
+  recipes: readonly Recipe[],
+  specification: FactorySpecification,
+): void {
   const toggles = container
     .selectAll("button.recipe-setting-toggle")
     .data(recipes)
     .join("button")
     .attr("type", "button")
     .classed("toggle recipe recipe-setting-toggle", true)
-    .on("click", function (this: HTMLButtonElement, event: Event, recipe: any) {
+    .on("click", function (event: Event, recipe: Recipe) {
       event.preventDefault()
-      if (isRecipeUnavailable(spec, recipe)) {
+      if (isRecipeUnavailable(specification, recipe)) {
         return
       }
-      setRecipeEnabled(spec, recipe, spec.disable.has(recipe))
-      spec.updateSolution()
+      setRecipeEnabled(specification, recipe, specification.disable.has(recipe))
+      specification.updateSolution()
     })
 
-  toggles.each(function (this: HTMLButtonElement, recipe: any) {
-    updateRecipeToggleState(spec, this, recipe)
+  toggles.each(function (recipe: Recipe) {
+    updateRecipeToggleState(specification, this as HTMLButtonElement, recipe)
   })
   toggles.selectAll("*").remove()
-  toggles.append((recipe: any) => recipe.icon.make(32))
+  toggles.append((recipe: Recipe) => recipe.icon.make(32))
 }
 
-function makeRecipeGroups(container: any, groups: any[], spec: any) {
+function makeRecipeGroups(
+  container: AnySelection,
+  groups: readonly RecipeSettingsGroup[],
+  specification: FactorySpecification,
+): void {
   const group = container
-    .selectAll("details.recipe-settings-category")
-    .data(groups, (entry: any) => entry.category)
+    .selectAll<HTMLDetailsElement, RecipeSettingsGroup>("details.recipe-settings-category")
+    .data(groups, (entry: RecipeSettingsGroup) => entry.category)
     .join("details")
     .classed("recipe-settings-category", true)
     .property("open", true)
-    .attr("id", (entry: any) => recipeCategoryId(entry.category))
-    .attr("data-category", (entry: any) => entry.category)
+    .attr("id", (entry: RecipeSettingsGroup) => recipeCategoryId(entry.category))
+    .attr("data-category", (entry: RecipeSettingsGroup) => entry.category)
 
   group
-    .selectAll("summary")
-    .data((entry: any) => [entry])
+    .selectAll<HTMLElement, RecipeSettingsGroup>("summary")
+    .data((entry: RecipeSettingsGroup) => [entry])
     .join("summary")
-    .text((entry: any) => entry.name)
+    .text((entry: RecipeSettingsGroup) => entry.name)
   group
     .selectAll("div.recipe-settings-toggle-row")
-    .data((entry: any) => [entry])
+    .data((entry: RecipeSettingsGroup) => [entry])
     .join("div")
     .classed("toggle-list recipe-settings-toggle-row", true)
-    .each(function (this: HTMLDivElement, entry: any) {
-      makeRecipeToggles(d3.select(this), entry.recipes, spec)
+    .each(function (entry: RecipeSettingsGroup) {
+      makeRecipeToggles(select(this as HTMLDivElement), entry.recipes, specification)
     })
 }
 
-function disableAllRecycling(spec: any, recyclingRecipes: any[]) {
+function disableAllRecycling(specification: FactorySpecification, recyclingRecipes: readonly Recipe[]): void {
   let changed = false
   for (const recipe of recyclingRecipes) {
-    if (!spec.disable.has(recipe)) {
-      spec.setDisable(recipe)
+    if (!specification.disable.has(recipe)) {
+      specification.setDisable(recipe)
       changed = true
     }
   }
   if (changed) {
-    spec.updateSolution()
+    specification.updateSolution()
   } else {
-    refreshRecipeSettings(spec)
+    refreshRecipeSettings(specification)
   }
 }
 
-function resetRecipeChanges(spec: any) {
-  const overrides = spec.getNetDisable()
-  for (const recipe of [...overrides.disable]) {
-    spec.setEnable(recipe)
+function resetRecipeChanges(specification: FactorySpecification): void {
+  const overrides = specification.getNetDisable()
+  for (const recipe of overrides.disable) {
+    specification.setEnable(recipe)
   }
-  for (const recipe of [...overrides.enable]) {
-    spec.setDisable(recipe)
+  for (const recipe of overrides.enable) {
+    specification.setDisable(recipe)
   }
-  spec.updateSolution()
+  specification.updateSolution()
 }
 
-export function renderRecipeSettings(spec: any) {
+export function renderRecipeSettings(specification: FactorySpecification): void {
   searchText = ""
   showUnavailable = false
   showChangedOnly = false
 
-  const recipes = getConfigurableRecipes(spec)
+  const recipes = getConfigurableRecipes(specification)
   const productionRecipes = recipes.filter((recipe) => !isRecyclingRecipe(recipe))
   const recyclingRecipes = recipes.filter(isRecyclingRecipe)
   const productionGroups = groupRecipesForSettings(productionRecipes)
-  const root = d3.select("#recipe_toggles")
+  const root = select("#recipe_toggles")
   root.selectAll("*").remove()
   root.classed("recipe-settings-browser", true)
 
@@ -172,18 +232,18 @@ export function renderRecipeSettings(spec: any) {
     .attr("type", "search")
     .attr("placeholder", "Search recipes, items, ingredients, or machines")
     .attr("aria-label", "Search recipes")
-    .on("input", function (this: HTMLInputElement) {
-      searchText = this.value
-      refreshRecipeSettings(spec)
+    .on("input", function () {
+      searchText = (this as HTMLInputElement).value
+      refreshRecipeSettings(specification)
     })
 
   const unavailableLabel = toolbar.append("label").classed("recipe-settings-unavailable", true)
   unavailableLabel
     .append("input")
     .attr("type", "checkbox")
-    .on("change", function (this: HTMLInputElement) {
-      showUnavailable = this.checked
-      refreshRecipeSettings(spec)
+    .on("change", function () {
+      showUnavailable = (this as HTMLInputElement).checked
+      refreshRecipeSettings(specification)
     })
   unavailableLabel
     .attr("data-tooltip", "Show recipes blocked by the selected planets or compatible machines.")
@@ -196,7 +256,7 @@ export function renderRecipeSettings(spec: any) {
     .attr("type", "checkbox")
     .on("change", function (this: HTMLInputElement) {
       showChangedOnly = this.checked
-      refreshRecipeSettings(spec)
+      refreshRecipeSettings(specification)
     })
   changedLabel.append("span").text("Changed only")
 
@@ -205,17 +265,17 @@ export function renderRecipeSettings(spec: any) {
     .attr("type", "button")
     .classed("ui reset-recipe-changes", true)
     .text("Reset recipe changes")
-    .on("click", () => resetRecipeChanges(spec))
+    .on("click", () => resetRecipeChanges(specification))
 
   const categoryNav = root.append("nav").classed("recipe-category-nav", true).attr("aria-label", "Recipe categories")
   categoryNav.append("span").text("Jump to")
   categoryNav
-    .selectAll("a")
+    .selectAll<HTMLAnchorElement, RecipeSettingsGroup>("a")
     .data(productionGroups)
     .join("a")
-    .attr("href", (entry: any) => `#${recipeCategoryId(entry.category)}`)
-    .text((entry: any) => entry.name)
-    .on("click", function (_event: Event, entry: any) {
+    .attr("href", (entry: RecipeSettingsGroup) => `#${recipeCategoryId(entry.category)}`)
+    .text((entry: RecipeSettingsGroup) => entry.name)
+    .on("click", function (_event: Event, entry: RecipeSettingsGroup) {
       const category = document.getElementById(recipeCategoryId(entry.category)) as HTMLDetailsElement | null
       if (category !== null) category.open = true
     })
@@ -225,7 +285,7 @@ export function renderRecipeSettings(spec: any) {
 
   const production = root.append("section").classed("recipe-settings-section production-recipes", true)
   production.append("h4").text("Production recipes")
-  makeRecipeGroups(production.append("div").classed("recipe-settings-groups", true), productionGroups, spec)
+  makeRecipeGroups(production.append("div").classed("recipe-settings-groups", true), productionGroups, specification)
 
   const recycling = root.append("details").classed("recipe-settings-section recycling-recipes", true)
   recycling.append("summary").append("span").classed("recycling-recipes-title", true).text("Recycling recipes")
@@ -238,47 +298,49 @@ export function renderRecipeSettings(spec: any) {
     .on("click", (event: Event) => {
       event.preventDefault()
       event.stopPropagation()
-      disableAllRecycling(spec, recyclingRecipes)
+      disableAllRecycling(specification, recyclingRecipes)
     })
   makeRecipeToggles(
     recyclingBody.append("div").classed("toggle-list recipe-settings-toggle-row", true),
     recyclingRecipes,
-    spec,
+    specification,
   )
 
   root.append("div").classed("recipe-settings-empty", true).text("No recipes match your search.")
-  refreshRecipeSettings(spec)
+  refreshRecipeSettings(specification)
 }
 
-export function refreshRecipeSettings(spec: any) {
+export function refreshRecipeSettings(specification: FactorySpecification): void {
   if (!recipeSettingsRendered) {
     return
   }
-  const root = d3.select("#recipe_toggles")
+  const root = select("#recipe_toggles")
   if (root.empty()) {
     return
   }
 
   const normalizedSearch = normalizeSearchText(searchText)
-  const overrides = spec.getNetDisable()
+  const overrides = specification.getNetDisable()
   const changedRecipes = new Set([...overrides.disable, ...overrides.enable])
   let visibleCount = 0
 
-  root.selectAll("button.recipe-setting-toggle").each(function (this: HTMLButtonElement, recipe: any) {
+  root.selectAll<HTMLButtonElement, Recipe>("button.recipe-setting-toggle").each(function (recipe: Recipe) {
     const visible =
-      recipeVisibleInSettings(spec, recipe, {
+      recipeVisibleInSettings(specification, recipe, {
         searchText,
         showUnavailable,
       }) &&
       (!showChangedOnly || changedRecipes.has(recipe))
-    this.hidden = !visible
+    const element = this as HTMLButtonElement
+    element.hidden = !visible
     visibleCount += Number(visible)
-    updateRecipeToggleState(spec, this, recipe)
+    updateRecipeToggleState(specification, element, recipe)
   })
 
-  root.selectAll("details.recipe-settings-category").each(function (this: HTMLDetailsElement) {
-    this.hidden = this.querySelector("button.recipe-setting-toggle:not([hidden])") === null
-    if (normalizedSearch !== "" && !this.hidden) this.open = true
+  root.selectAll<HTMLDetailsElement, unknown>("details.recipe-settings-category").each(function () {
+    const element = this as HTMLDetailsElement
+    element.hidden = element.querySelector("button.recipe-setting-toggle:not([hidden])") === null
+    if (normalizedSearch !== "" && !element.hidden) element.open = true
   })
 
   const production = root.select(".production-recipes")
@@ -293,12 +355,12 @@ export function refreshRecipeSettings(spec: any) {
     .select(".recycling-recipes-title")
     .text(`Recycling recipes${visibleRecyclingCount > 0 ? ` (${visibleRecyclingCount})` : ""}`)
 
-  const recyclingRecipes = recycling.selectAll("button.recipe-setting-toggle").data()
+  const recyclingRecipes = recycling.selectAll<HTMLButtonElement, Recipe>("button.recipe-setting-toggle").data()
   recycling
     .select("button.disable-recycling-recipes")
     .property(
       "disabled",
-      recyclingRecipes.length === 0 || recyclingRecipes.every((recipe: any) => spec.disable.has(recipe)),
+      recyclingRecipes.length === 0 || recyclingRecipes.every((recipe) => specification.disable.has(recipe)),
     )
 
   let helpText = "Orange: enabled · Dimmed: disabled · Click to toggle"
@@ -322,16 +384,17 @@ export function refreshRecipeSettings(spec: any) {
 // Recipe and location panel
 // -----------------------------------------------------------------------------
 
-function applyLocationSettings(settings): boolean {
-  let hasMultipleLocations = spec.planets && spec.planets.size > 1
-  d3.select("#location_toolbar").property("hidden", !hasMultipleLocations)
+function applyLocationSettings(settings: SettingsMap): boolean {
+  const planets = requirePlanets()
+  const hasMultipleLocations = planets.size > 1
+  select("#location_toolbar").property("hidden", !hasMultipleLocations)
   if (!hasMultipleLocations) {
     return false
   }
 
-  let keys = settings.has("planet") ? settings.get("planet").split(",").filter(Boolean) : [DEFAULT_PLANET]
+  let keys = settings.has("planet") ? (settings.get("planet") ?? "").split(",").filter(Boolean) : [DEFAULT_PLANET]
   for (let key of keys) {
-    let location = spec.planets.get(key)
+    const location = planets.get(key)
     if (location !== undefined) {
       spec.selectPlanet(location)
     }
@@ -339,7 +402,7 @@ function applyLocationSettings(settings): boolean {
   return true
 }
 
-function applyRecipeOverrides(settings, hasMultipleLocations: boolean): void {
+function applyRecipeOverrides(settings: SettingsMap, hasMultipleLocations: boolean): void {
   if (!settings.has("disable") && !settings.has("enable")) {
     if (!hasMultipleLocations) {
       spec.setDefaultDisable()
@@ -362,7 +425,7 @@ function applyRecipeOverrides(settings, hasMultipleLocations: boolean): void {
 }
 
 function renderLocationSelector(hasMultipleLocations: boolean): void {
-  let selector = d3.select("#planet_selector").classed("toggle-list", true)
+  let selector = select("#planet_selector").classed("toggle-list", true)
   selector.selectAll("*").remove()
   if (!hasMultipleLocations) {
     return
@@ -370,14 +433,14 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
 
   let toggles = selector
     .selectAll("button")
-    .data(sorted(spec.planets.values(), (location) => location.order))
+    .data(sorted(requirePlanets().values(), (location: Planet) => location.order))
     .join("button")
     .attr("type", "button")
     .classed("toggle location-toggle", true)
-    .classed("selected", (location) => spec.selectedPlanets.has(location))
-    .attr("aria-pressed", (location) => String(spec.selectedPlanets.has(location)))
-    .attr("data-tooltip", (location) => location.name)
-    .on("click", function (event, location) {
+    .classed("selected", (location: Planet) => spec.selectedPlanets.has(location))
+    .attr("aria-pressed", (location: Planet) => String(spec.selectedPlanets.has(location)))
+    .attr("data-tooltip", (location: Planet) => location.name)
+    .on("click", function (event: MouseEvent, location: Planet) {
       if (event.shiftKey) {
         event.preventDefault()
         if (spec.selectedPlanets.has(location)) {
@@ -388,22 +451,22 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
       } else {
         spec.selectOnePlanet(location)
       }
-      d3.selectAll("#planet_selector .toggle")
-        .classed("selected", (candidate) => spec.selectedPlanets.has(candidate))
-        .attr("aria-pressed", (candidate) => String(spec.selectedPlanets.has(candidate)))
+      selectAll("#planet_selector .toggle")
+        .classed("selected", (candidate: Planet) => spec.selectedPlanets.has(candidate))
+        .attr("aria-pressed", (candidate: Planet) => String(spec.selectedPlanets.has(candidate)))
       refreshRecipeSettings(spec)
       spec.updateSolution()
     })
 
   toggles.selectAll("*").remove()
-  toggles.append((location) => location.icon.make(24))
+  toggles.append((location: Planet) => location.icon.make(24))
   toggles
     .append("span")
     .classed("location-name", true)
-    .text((location) => location.name)
+    .text((location: Planet) => location.name)
 }
 
-export function renderRecipeAndLocationSettings(settings): void {
+export function renderRecipeAndLocationSettings(settings: SettingsMap): void {
   let hasMultipleLocations = applyLocationSettings(settings)
   applyRecipeOverrides(settings, hasMultipleLocations)
   renderLocationSelector(hasMultipleLocations)
@@ -426,48 +489,52 @@ export function renderRecipeAndLocationSettings(settings): void {
 
 // tab
 
-function renderTab(settings) {
-  let tabName = DEFAULT_TAB
+function renderTab(settings: SettingsMap) {
+  let tabName: string = DEFAULT_TAB
   if (settings.has("tab")) {
-    tabName = settings.get("tab")
+    tabName = settings.get("tab") ?? DEFAULT_TAB
   }
   clickTab(tabName)
 }
 
 // build targets
 
-function renderTargets(settings) {
-  spec.buildTargets = []
-  d3.selectAll("#targets li.target").remove()
+function renderTargets(settings: SettingsMap) {
+  spec.buildTargets.splice(0, spec.buildTargets.length)
+  selectAll("#targets li.target").remove()
 
   let targetSetting = settings.get("items")
   if (targetSetting !== undefined && targetSetting !== "") {
     let targets = targetSetting.split(",")
     for (let targetString of targets) {
       let parts = targetString.split(":")
-      let itemKey = parts[0]
-      if (!spec.items.has(itemKey)) {
+      const itemKey = parts[0]
+      if (itemKey === undefined || !spec.items.has(itemKey)) {
         console.log("unknown item:", itemKey)
         continue
       }
-      let target = spec.addTarget(itemKey)
-      let qualityPart = parts.find((part) => /^q\d+$/.test(part))
-      let coreParts = parts.filter((part) => !/^q\d+$/.test(part))
-      let type = coreParts[1]
+      const target = spec.addTarget(itemKey)
+      const qualityPart = parts.find((part) => /^q\d+$/.test(part))
+      const coreParts = parts.filter((part) => !/^q\d+$/.test(part))
+      const type = coreParts[1]
       if (type === "f") {
         let recipe = null
         if (coreParts.length > 3) {
-          let recipeKey = coreParts[3]
-          if (!spec.recipes.has(recipeKey)) {
+          const recipeKey = coreParts[3]
+          if (recipeKey === undefined || !spec.recipes.has(recipeKey)) {
             console.log("unknown recipe:", recipeKey)
             continue
           }
-          recipe = spec.recipes.get(recipeKey)
+          recipe = spec.recipes.get(recipeKey) ?? null
         }
-        target.setBuildings(coreParts[2], recipe)
+        const buildingCount = coreParts[2]
+        if (buildingCount === undefined) throw new Error("Missing target building count")
+        target.setBuildings(buildingCount, recipe)
         target.displayRecipes()
       } else if (type === "r") {
-        target.setRate(coreParts[2])
+        const rate = coreParts[2]
+        if (rate === undefined) throw new Error("Missing target rate")
+        target.setRate(rate)
       } else {
         throw new Error("unknown target type")
       }
@@ -480,7 +547,7 @@ function renderTargets(settings) {
 
 // modules
 
-function getModule(moduleKey) {
+function getModule(moduleKey: string): Module | null {
   let module
   if (spec.modules.has(moduleKey)) {
     module = spec.modules.get(moduleKey)
@@ -497,22 +564,28 @@ function getModule(moduleKey) {
 }
 
 // NOTE: Buildings must be configured before modules!
-function renderModules(settings) {
+function renderModules(settings: SettingsMap) {
   let two = Rational.from_float(2)
   let moduleString = settings.get("modules")
   if (moduleString !== undefined && moduleString !== "") {
     for (let recipeSetting of moduleString.split(",")) {
-      let [buildingModuleSettings, beaconSettings] = recipeSetting.split(";")
-      let [recipeKey, ...moduleKeyList] = buildingModuleSettings.split(":")
-      let recipe = spec.recipes.get(recipeKey)
+      const [buildingModuleSettings, beaconSettings] = recipeSetting.split(";")
+      if (buildingModuleSettings === undefined) continue
+      const [recipeKey, ...moduleKeyList] = buildingModuleSettings.split(":")
+      if (recipeKey === undefined) continue
+      const recipe = spec.recipes.get(recipeKey)
       if (recipe === undefined) {
         console.log("unknown recipe:", recipeKey)
         continue
       }
-      let moduleSpec = spec.getModuleSpec(recipe)
+      const moduleSpec = spec.getModuleSpec(recipe)
+      if (moduleSpec === null) {
+        console.log("recipe has no module-capable building:", recipeKey)
+        continue
+      }
       for (let i = 0; i < moduleKeyList.length; i++) {
-        let moduleKey = moduleKeyList[i]
-        if (moduleKey === "") {
+        const moduleKey = moduleKeyList[i]
+        if (moduleKey === undefined || moduleKey === "") {
           continue
         }
         let module = getModule(moduleKey)
@@ -531,8 +604,11 @@ function renderModules(settings) {
         let module2
         let count
         if (beaconParts.length === 2) {
-          let module = getModule(beaconParts[0])
-          count = Rational.from_string(beaconParts[1])
+          const firstBeaconKey = beaconParts[0]
+          const countValue = beaconParts[1]
+          if (firstBeaconKey === undefined || countValue === undefined) continue
+          const module = getModule(firstBeaconKey)
+          count = Rational.from_string(countValue)
           let divmod = count.divmod(two)
           if (divmod.remainder.isZero()) {
             module1 = module
@@ -543,9 +619,13 @@ function renderModules(settings) {
             module2 = null
           }
         } else {
-          module1 = getModule(beaconParts[0])
-          module2 = getModule(beaconParts[1])
-          count = Rational.from_string(beaconParts[2])
+          const firstBeaconKey = beaconParts[0]
+          const secondBeaconKey = beaconParts[1]
+          const countValue = beaconParts[2]
+          if (firstBeaconKey === undefined || secondBeaconKey === undefined || countValue === undefined) continue
+          module1 = getModule(firstBeaconKey)
+          module2 = getModule(secondBeaconKey)
+          count = Rational.from_string(countValue)
         }
         moduleSpec.setBeaconModule(module1, 0)
         moduleSpec.setBeaconModule(module2, 1)
@@ -557,7 +637,7 @@ function renderModules(settings) {
 
 // ignore
 
-function renderIgnore(settings) {
+function renderIgnore(settings: SettingsMap) {
   spec.ignore.clear()
   // UI will be rendered later, as part of the solution.
   let ignoreSetting = settings.get("ignore")
@@ -576,11 +656,11 @@ function renderIgnore(settings) {
 
 // title
 
-function renderTitle(settings) {
-  let input = d3.select("#title_setting").node()
+function renderTitle(settings: SettingsMap) {
+  const input = requireElement<HTMLInputElement>("title_setting")
   let title = ""
   if (settings.has("title")) {
-    title = decodeURIComponent(settings.get("title"))
+    title = decodeURIComponent(settings.get("title") ?? "")
   }
   input.value = title
   setTitle(title)
@@ -593,47 +673,49 @@ function rateHandler(this: HTMLInputElement) {
   spec.display()
 }
 
-function renderRateOptions(settings) {
+function renderRateOptions(settings: SettingsMap) {
   let rateName = DEFAULT_RATE
   if (settings.has("rate")) {
-    rateName = settings.get("rate")
+    rateName = settings.get("rate") ?? DEFAULT_RATE
   }
   spec.format.setDisplayRate(rateName as DisplayRate)
-  let rates = []
+  const rates: { rateName: DisplayRate; longRateName: string }[] = []
   for (let [rateName, longRateName] of longRateNames) {
     rates.push({ rateName, longRateName })
   }
-  let form = d3.select("#display_rate")
+  let form = select("#display_rate")
   form.selectAll("*").remove()
   let rateOption = form.selectAll("span").data(rates).join("span")
   rateOption
     .append("input")
-    .attr("id", (d) => d.rateName + "_rate")
+    .attr("id", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName + "_rate")
     .attr("type", "radio")
     .attr("name", "rate")
-    .attr("value", (d) => d.rateName)
-    .property("checked", (d) => d.rateName === rateName)
-    .on("change", rateHandler)
+    .attr("value", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName)
+    .property("checked", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName === rateName)
+    .on("change", function () {
+      rateHandler.call(this as HTMLInputElement)
+    })
   rateOption
     .append("label")
-    .attr("for", (d) => d.rateName + "_rate")
-    .text((d) => "items/" + d.longRateName)
+    .attr("for", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName + "_rate")
+    .text((d: { rateName: DisplayRate; longRateName: string }) => "items/" + d.longRateName)
   rateOption.append("br")
 }
 
 // precisions
 
-function renderPrecisions(settings) {
+function renderPrecisions(settings: SettingsMap) {
   spec.format.ratePrecision = DEFAULT_RATE_PRECISION
   if (settings.has("rp")) {
-    spec.format.ratePrecision = Number(settings.get("rp"))
+    spec.format.ratePrecision = Number(settings.get("rp") ?? DEFAULT_RATE_PRECISION)
   }
-  d3.select("#rprec").attr("value", spec.format.ratePrecision)
+  select("#rprec").attr("value", spec.format.ratePrecision)
   spec.format.countPrecision = DEFAULT_COUNT_PRECISION
   if (settings.has("cp")) {
-    spec.format.countPrecision = Number(settings.get("cp"))
+    spec.format.countPrecision = Number(settings.get("cp") ?? DEFAULT_COUNT_PRECISION)
   }
-  d3.select("#cprec").attr("value", spec.format.countPrecision)
+  select("#cprec").attr("value", spec.format.countPrecision)
 }
 
 // value format
@@ -643,10 +725,10 @@ let displayFormats = new Map<string, DisplayFormat>([
   ["r", "rational"],
 ])
 
-function renderValueFormat(settings) {
+function renderValueFormat(settings: SettingsMap) {
   spec.format.displayFormat = DEFAULT_FORMAT
   if (settings.has("vf")) {
-    spec.format.displayFormat = displayFormats.get(settings.get("vf")) ?? DEFAULT_FORMAT
+    spec.format.displayFormat = displayFormats.get(settings.get("vf") ?? "") ?? DEFAULT_FORMAT
   }
   let input = document.getElementById(spec.format.displayFormat + "_format") as HTMLInputElement
   input.checked = true
@@ -654,45 +736,19 @@ function renderValueFormat(settings) {
 
 // mining productivity
 
-function renderMiningProd(settings) {
+function renderMiningProd(settings: SettingsMap) {
   let mprod = "0"
   if (settings.has("mprod")) {
-    mprod = settings.get("mprod")
+    mprod = settings.get("mprod") ?? "0"
   }
   spec.miningProd = Rational.from_string(mprod).div(Rational.from_float(100))
   syncMiningProductivityControls()
 }
 
-const MAX_RECIPE_PRODUCTIVITY_PERCENT = 300
-
-function recipeProductivityPercentPerLevel(research): number {
-  let change = research.effects.values().next().value as Rational | undefined
-  return change === undefined ? 0 : Number(change.mul(Rational.from_integer(100)).toDecimal())
-}
-
-function recipeProductivityPercent(research, level: number): string | null {
-  let bonuses = new Set<string>()
-  for (let change of research.effects.values()) {
-    bonuses.add(change.mul(Rational.from_float_approximate(level)).mul(Rational.from_integer(100)).toDecimal())
-  }
-  if (bonuses.size !== 1) {
-    return null
-  }
-  let percent = Rational.from_string(bonuses.values().next().value)
-  return Rational.min(percent, Rational.from_integer(MAX_RECIPE_PRODUCTIVITY_PERCENT)).toDecimal()
-}
-
-function recipeProductivityLevelFromPercent(research, value: string): number {
-  let percent = Number(value)
-  let percentPerLevel = recipeProductivityPercentPerLevel(research)
-  if (!Number.isFinite(percent) || percentPerLevel <= 0) return 0
-  return Math.min(MAX_RECIPE_PRODUCTIVITY_PERCENT, Math.max(0, percent)) / percentPerLevel
-}
-
-function renderRecipeProductivityResearch(settings) {
+function renderRecipeProductivityResearch(settings: SettingsMap) {
   spec.recipeProductivityLevels.clear()
   if (settings.has("rprod")) {
-    for (let entry of settings.get("rprod").split(",")) {
+    for (let entry of (settings.get("rprod") ?? "").split(",")) {
       let separator = entry.lastIndexOf(":")
       if (separator === -1) continue
       let researchKey = entry.slice(0, separator)
@@ -703,8 +759,8 @@ function renderRecipeProductivityResearch(settings) {
     }
   }
 
-  let research = sorted(spec.recipeProductivityResearch.values(), (entry) => entry.name)
-  let container = d3.select("#recipe_productivity_settings")
+  const research = sorted(spec.recipeProductivityResearch.values(), (entry: RecipeProductivityResearch) => entry.name)
+  let container = select("#recipe_productivity_settings")
   let miner = spec.items.get("electric-mining-drill") ?? spec.items.get("burner-mining-drill")
   let miningIcon = container.select(".mining-productivity-icon")
   miningIcon.selectAll("*").remove()
@@ -718,21 +774,28 @@ function renderRecipeProductivityResearch(settings) {
     .join("label")
     .classed("recipe-productivity-setting", true)
     .classed("recipe-productivity-research-setting", true)
-  settingsRows.append((entry) => entry.icon.make(24, true)).classed("recipe-productivity-icon", true)
-  settingsRows.append("span").text((entry) => entry.name)
+  settingsRows
+    .append((entry: RecipeProductivityResearch) => entry.icon.make(24, true))
+    .classed("recipe-productivity-icon", true)
+  settingsRows.append("span").text((entry: RecipeProductivityResearch) => entry.name)
   let percentageInputs = settingsRows.append("span").classed("recipe-productivity-percentage", true)
   percentageInputs
     .append("input")
     .attr("type", "number")
     .attr("min", 0)
     .attr("max", 300)
-    .attr("step", (entry) => recipeProductivityPercentPerLevel(entry))
-    .attr("aria-label", (entry) => `${entry.name} bonus percentage`)
-    .property("value", (entry) => recipeProductivityPercent(entry, spec.getRecipeProductivityLevel(entry.key)) ?? 0)
-    .on("change", function (this: HTMLInputElement, _event, entry) {
-      spec.setRecipeProductivityLevel(entry.key, recipeProductivityLevelFromPercent(entry, this.value))
-      let level = spec.getRecipeProductivityLevel(entry.key)
-      this.value = recipeProductivityPercent(entry, level) ?? "0"
+    .attr("step", (entry: RecipeProductivityResearch) => recipeProductivityPercentPerLevel(entry))
+    .attr("aria-label", (entry: RecipeProductivityResearch) => `${entry.name} bonus percentage`)
+    .property(
+      "value",
+      (entry: RecipeProductivityResearch) =>
+        recipeProductivityPercent(entry, spec.getRecipeProductivityLevel(entry.key)) ?? 0,
+    )
+    .on("change", function (_event: Event, entry: RecipeProductivityResearch) {
+      const input = this as HTMLInputElement
+      spec.setRecipeProductivityLevel(entry.key, recipeProductivityLevelFromPercent(entry, input.value))
+      const level = spec.getRecipeProductivityLevel(entry.key)
+      input.value = recipeProductivityPercent(entry, level) ?? "0"
       spec.updateSolution()
     })
   percentageInputs.append("span").attr("aria-hidden", "true").text("%")
@@ -741,28 +804,30 @@ function renderRecipeProductivityResearch(settings) {
 // color scheme
 export const DEFAULT_COLOR_SCHEME = "default"
 
-export let colorScheme
+export let colorScheme: ColorScheme = colorSchemes[0]
 
-function renderColorScheme(settings) {
+function renderColorScheme(settings: SettingsMap) {
   let color = DEFAULT_COLOR_SCHEME
   if (settings.has("c")) {
-    color = settings.get("c")
+    color = settings.get("c") ?? DEFAULT_COLOR_SCHEME
   }
   setColorScheme(color)
-  d3.select("#color_scheme")
-    .on("change", function (event, d) {
-      setColorScheme(event.target.value)
+  select("#color_scheme")
+    .on("change", function (event: Event) {
+      const target = event.target
+      if (!(target instanceof HTMLSelectElement)) return
+      setColorScheme(target.value)
       spec.display()
     })
     .selectAll("option")
     .data(colorSchemes)
     .join("option")
-    .attr("value", (d) => d.key)
-    .property("selected", (d) => d.key === color)
-    .text((d) => d.name)
+    .attr("value", (d: ColorScheme) => d.key)
+    .property("selected", (d: ColorScheme) => d.key === color)
+    .text((d: ColorScheme) => d.name)
 }
 
-function setColorScheme(schemeKey) {
+function setColorScheme(schemeKey: string): void {
   for (let scheme of colorSchemes) {
     if (scheme.key === schemeKey) {
       colorScheme = scheme
@@ -774,19 +839,20 @@ function setColorScheme(schemeKey) {
 
 // buildings
 
-function renderBuildings(settings) {
-  let groupSet = new Set<any>()
+function renderBuildings(settings: SettingsMap) {
+  const groupSet = new Set<BuildingGroup>()
   for (let [cat, group] of spec.buildings) {
     if (group.buildings.length > 1) {
       groupSet.add(group)
     }
   }
   for (let group of groupSet) {
-    spec.setMinimumBuilding(group.getDefault())
+    const defaultBuilding = group.getDefault()
+    if (defaultBuilding !== null) spec.setMinimumBuilding(defaultBuilding)
   }
   if (settings.has("buildings")) {
-    let buildingKeys = settings.get("buildings").split(",")
-    let selections = new Map<any, any[]>()
+    let buildingKeys = (settings.get("buildings") ?? "").split(",")
+    const selections = new Map<BuildingGroup, Building[]>()
     for (let key of buildingKeys) {
       let building = spec.buildingKeys.get(key)
       if (building === undefined) {
@@ -797,10 +863,12 @@ function renderBuildings(settings) {
       if (!selections.has(group)) {
         selections.set(group, [])
       }
-      selections.get(group).push(building)
+      selections.get(group)?.push(building)
     }
     for (let selectedBuildings of selections.values()) {
-      spec.setMinimumBuilding(selectedBuildings[0])
+      const minimum = selectedBuildings[0]
+      if (minimum === undefined) continue
+      spec.setMinimumBuilding(minimum)
       for (let building of selectedBuildings.slice(1)) {
         spec.setAutomaticBuildingEnabled(building, true)
       }
@@ -809,39 +877,40 @@ function renderBuildings(settings) {
 
   // It doesn't really matter how we order these, but pick something just to
   // make it consistent.
-  let groups = sorted(groupSet, (g) => g.getDefault().name)
-  let groupIndex = new Map()
+  const groups = sorted(groupSet, (g: BuildingGroup) => g.getDefault()?.name ?? "")
+  const groupIndex = new Map<Building, number>()
   for (let [i, g] of groups.entries()) {
     for (let building of g.buildings) {
       groupIndex.set(building, i)
     }
   }
-  let div = d3.select("#building_selector")
+  let div = select("#building_selector")
   div.selectAll("*").remove()
   let set = div.selectAll("div").data(groups).join("div").classed("machine-setting", true)
   let options = set
     .selectAll("span")
-    .data((group) => group.buildings)
+    .data((group: BuildingGroup) => group.buildings)
     .join("span")
   options
     .append("input")
-    .attr("id", (building) => `building-input-${groupIndex.get(building)}-${building.key}`)
+    .attr("id", (building: Building) => `building-input-${groupIndex.get(building)}-${building.key}`)
     .attr("type", "checkbox")
-    .property("checked", (building) => spec.isAutomaticBuildingEnabled(building))
-    .on("change", function (this: HTMLInputElement, event, building) {
-      if (!spec.setAutomaticBuildingEnabled(building, event.target.checked)) {
-        d3.select(this).property("checked", true)
+    .property("checked", (building: Building) => spec.isAutomaticBuildingEnabled(building))
+    .on("change", function (event: Event, building: Building) {
+      const input = this as HTMLInputElement
+      if (!spec.setAutomaticBuildingEnabled(building, input.checked)) {
+        select(input).property("checked", true)
         return
       }
       spec.updateSolution()
     })
   options
     .append("label")
-    .attr("for", (building) => `building-input-${groupIndex.get(building)}-${building.key}`)
-    .append((building) => building.icon.make(32))
+    .attr("for", (building: Building) => `building-input-${groupIndex.get(building)}-${building.key}`)
+    .append((building: Building) => building.icon.make(32))
 }
 
-function renderBuildingOverrides(settings) {
+function renderBuildingOverrides(settings: SettingsMap) {
   for (let recipe of [...spec.buildingOverrides.keys()]) {
     spec.setBuildingOverride(recipe, null)
   }
@@ -852,9 +921,10 @@ function renderBuildingOverrides(settings) {
   }
 
   for (let machineSetting of machineString.split(",")) {
-    let [recipeKey, buildingKey] = machineSetting.split(":")
-    let recipe = spec.recipes.get(recipeKey)
-    let building = spec.buildingKeys.get(buildingKey)
+    const [recipeKey, buildingKey] = machineSetting.split(":")
+    if (recipeKey === undefined || buildingKey === undefined) continue
+    const recipe = spec.recipes.get(recipeKey)
+    const building = spec.buildingKeys.get(buildingKey)
     if (recipe === undefined || building === undefined || !spec.setBuildingOverride(recipe, building)) {
       console.log("unknown or unavailable recipe machine:", machineSetting)
     }
@@ -863,263 +933,243 @@ function renderBuildingOverrides(settings) {
 
 // belt
 
-function beltHandler(event, belt) {
+function beltHandler(_event: Event, belt: Belt): void {
   spec.belt = belt
   spec.display()
 }
 
 let radioInput = 0
 let radioLabel = 0
-function radioSetting(form, name, data, checked, onchange) {
-  let option = form.selectAll("span").data(data).join("span")
-  option
-    .append("input")
-    .attr("id", (d) => `radio-input-${radioInput++}`)
-    .attr("type", "radio")
-    .attr("name", name)
-    .attr("value", (d) => d.key)
-    .property("checked", (d) => checked(d))
-    .on("change", onchange)
-  option
-    .append("label")
-    .attr("for", (d) => `radio-input-${radioLabel++}`)
-    .append((d) => d.icon.make(32))
+
+interface RadioSettingOption {
+  readonly key: string
+  readonly icon: Icon
 }
 
-function renderBelts(settings) {
+function radioSetting<TOption extends RadioSettingOption>(
+  form: AnySelection,
+  name: string,
+  data: readonly TOption[],
+  checked: (option: TOption) => boolean,
+  onChange: (event: Event, option: TOption) => void,
+): void {
+  const option = form.selectAll<HTMLSpanElement, TOption>("span").data(data).join("span")
+  option
+    .append("input")
+    .attr("id", () => `radio-input-${radioInput++}`)
+    .attr("type", "radio")
+    .attr("name", name)
+    .attr("value", (datum: TOption) => datum.key)
+    .property("checked", (datum: TOption) => checked(datum))
+    .on("change", (event: Event, datum: TOption) => onChange(event, datum))
+  option
+    .append("label")
+    .attr("for", () => `radio-input-${radioLabel++}`)
+    .append((datum: TOption) => datum.icon.make(32))
+}
+
+function renderBelts(settings: SettingsMap) {
   let beltKey = DEFAULT_BELT
   if (settings.has("belt")) {
-    let b = settings.get("belt")
-    if (spec.belts.has(b)) {
+    const b = settings.get("belt")
+    if (b !== undefined && spec.belts.has(b)) {
       beltKey = b
     } else {
       console.log("unknown belt:", b)
     }
   }
-  spec.belt = spec.belts.get(beltKey)
+  spec.belt = spec.belts.get(beltKey) ?? null
 
-  let belts = []
-  for (let [beltKey, belt] of spec.belts) {
-    belts.push(belt)
-  }
-  let form = d3.select("#belt_selector")
+  const belts = Array.from(spec.belts.values())
+  let form = select("#belt_selector")
   form.selectAll("*").remove()
-  radioSetting(form, "belt", belts, (d) => d === spec.belt, beltHandler)
+  radioSetting(form, "belt", belts, (belt: Belt) => belt === spec.belt, beltHandler)
 }
 
 // fuel
 
-function fuelHandler(event, fuel) {
+function fuelHandler(_event: Event, fuel: Fuel): void {
   spec.fuel = fuel
   spec.updateSolution()
 }
 
-function renderFuel(settings) {
+function renderFuel(settings: SettingsMap) {
   let fuelKey = DEFAULT_FUEL
   if (settings.has("fuel")) {
-    let f = settings.get("fuel")
-    if (spec.fuels.has(f)) {
+    const f = settings.get("fuel")
+    if (f !== undefined && requireFuels().has(f)) {
       fuelKey = f
     } else {
       console.log("unknown fuel:", f)
     }
   }
-  spec.fuel = spec.fuels.get(fuelKey)
+  spec.fuel = requireFuels().get(fuelKey) ?? null
 
-  let fuels = Array.from(spec.fuels.values())
-  let form = d3.select("#fuel_selector")
+  const fuels = Array.from(requireFuels().values())
+  let form = select("#fuel_selector")
   form.selectAll("*").remove()
-  radioSetting(form, "fuel", fuels, (d) => d === spec.fuel, fuelHandler)
+  radioSetting(form, "fuel", fuels, (fuel: Fuel) => fuel === spec.fuel, fuelHandler)
 }
 
 // visualizer
 
-function renderVisualizer(settings) {
+function renderVisualizer(settings: SettingsMap) {
   if (settings.has("vt")) {
-    setVisualizerType(settings.get("vt"))
+    setVisualizerType(settings.get("vt") ?? DEFAULT_VISUALIZER)
   } else {
     setVisualizerType(DEFAULT_VISUALIZER)
   }
-  d3.select(`#${visualizerType}_type`).property("checked", true)
+  select(`#${visualizerType}_type`).property("checked", true)
   if (settings.has("vr")) {
-    setVisualizerRender(settings.get("vr"))
+    setVisualizerRender(settings.get("vr") ?? DEFAULT_RENDER)
   } else {
     setVisualizerRender(DEFAULT_RENDER)
   }
-  d3.select(`#${visualizerRender}_render`).property("checked", true)
+  select(`#${visualizerRender}_render`).property("checked", true)
   if (settings.has("vd")) {
-    setVisualizerDirection(settings.get("vd"))
+    setVisualizerDirection(settings.get("vd") ?? getDefaultVisualizerDirection())
   } else {
     setVisualizerDirection(getDefaultVisualizerDirection())
   }
-  d3.select(`#${visualizerDirection}_direction`).property("checked", true)
+  select(`#${visualizerDirection}_direction`).property("checked", true)
 }
 
 // default module
 
-class DefaultModuleInput {
-  [key: string]: any
-  constructor(cell, module) {
-    this.cell = cell
-    this.module = module
-  }
-  checked() {
+class DefaultModuleInput implements ModuleDropdownOption {
+  constructor(
+    readonly cell: DefaultModuleCell,
+    readonly module: Module | null,
+  ) {}
+
+  checked(): boolean {
     return this.module === spec.defaultModule
   }
-  choose() {
+
+  choose(): void {
     spec.setDefaultModule(this.module)
     spec.updateSolution()
   }
 }
-class DefaultModuleCell {
-  [key: string]: any
+
+class DefaultModuleCell implements ModuleDropdownCell {
+  readonly name = "default_module_dropdown"
+  readonly inputRows: readonly (readonly DefaultModuleInput[])[]
+
   constructor() {
-    this.name = "default_module_dropdown"
-    this.inputRows = []
-    for (let row of moduleRows) {
-      let inputRow = []
-      for (let module of row) {
-        inputRow.push(new DefaultModuleInput(this, module))
-      }
-      this.inputRows.push(inputRow)
-    }
+    this.inputRows = moduleRows.map((row) => row.map((module) => new DefaultModuleInput(this, module)))
   }
 }
-class SecondaryModuleInput {
-  [key: string]: any
-  constructor(cell, module) {
-    this.cell = cell
-    this.module = module
-  }
-  checked() {
+
+class SecondaryModuleInput implements ModuleDropdownOption {
+  constructor(
+    readonly cell: SecondaryModuleCell,
+    readonly module: Module | null,
+  ) {}
+
+  checked(): boolean {
     return this.module === spec.secondaryDefaultModule
   }
-  choose() {
+
+  choose(): void {
     spec.setSecondaryDefaultModule(this.module)
     spec.updateSolution()
   }
 }
-class SecondaryModuleCell {
-  [key: string]: any
+
+class SecondaryModuleCell implements ModuleDropdownCell {
+  readonly name = "secondary_module_dropdown"
+  readonly inputRows: readonly (readonly SecondaryModuleInput[])[]
+
   constructor() {
-    this.name = "secondary_module_dropdown"
-    this.inputRows = []
-    for (let row of moduleRows) {
-      let inputRow = []
-      for (let module of row) {
-        inputRow.push(new SecondaryModuleInput(this, module))
-      }
-      this.inputRows.push(inputRow)
-    }
+    this.inputRows = moduleRows.map((row) => row.map((module) => new SecondaryModuleInput(this, module)))
   }
 }
 
-function renderDefaultModule(settings) {
-  let defaultModule = null
-  if (settings.has("dm")) {
-    defaultModule = getModule(settings.get("dm"))
-  }
+function renderDefaultModule(settings: SettingsMap): void {
+  const defaultModule = settings.has("dm") ? getModule(settings.get("dm") ?? "null") : null
   spec.setDefaultModule(defaultModule)
-  let secondaryModule = null
-  if (settings.has("dm2")) {
-    secondaryModule = getModule(settings.get("dm2"))
-  }
+  const secondaryModule = settings.has("dm2") ? getModule(settings.get("dm2") ?? "null") : null
   spec.setSecondaryDefaultModule(secondaryModule)
 
-  let cell = new DefaultModuleCell()
-  let select = d3.select("#default_module")
-  select.selectAll("*").remove()
-  moduleDropdown(select, [cell])
-  cell = new SecondaryModuleCell()
-  select = d3.select("#secondary_module")
-  select.selectAll("*").remove()
-  moduleDropdown(select, [cell])
+  const defaultCell = new DefaultModuleCell()
+  const defaultSelector = select<HTMLElement, unknown>("#default_module")
+  defaultSelector.selectAll("*").remove()
+  moduleDropdown(defaultSelector, [defaultCell])
+
+  const secondaryCell = new SecondaryModuleCell()
+  const secondarySelector = select<HTMLElement, unknown>("#secondary_module")
+  secondarySelector.selectAll("*").remove()
+  moduleDropdown(secondarySelector, [secondaryCell])
 }
 
-// default beacon
+class DefaultBeaconInput implements ModuleDropdownOption {
+  constructor(
+    readonly cell: DefaultBeaconCell,
+    readonly module: Module | null,
+  ) {}
 
-class DefaultBeaconInput {
-  [key: string]: any
-  constructor(cell, module) {
-    this.cell = cell
-    this.module = module
-  }
-  checked() {
+  checked(): boolean {
     return this.module === spec.defaultBeacon[this.cell.index]
   }
-  choose() {
-    let self = this
-    let oldModule = spec.defaultBeacon[this.cell.index]
+
+  choose(): void {
+    const oldModule = spec.defaultBeacon[this.cell.index] ?? null
     spec.setDefaultBeacon(this.module, this.cell.index)
-    if (this.cell.index === 0) {
-      let modules = spec.defaultBeacon
-      if (oldModule === modules[1]) {
-        spec.setDefaultBeacon(this.module, 1)
-        d3.selectAll("#default_beacon span.module-wrapper:nth-child(2) input").property(
-          "checked",
-          (d) => self.module === d.module,
-        )
-      }
+    if (this.cell.index === 0 && oldModule === spec.defaultBeacon[1]) {
+      spec.setDefaultBeacon(this.module, 1)
+      selectAll<HTMLInputElement, ModuleDropdownOption>(
+        "#default_beacon span.module-wrapper:nth-child(2) input",
+      ).property("checked", (datum: ModuleDropdownOption) => this.module === datum.module)
     }
     spec.updateSolution()
   }
 }
-class DefaultBeaconCell {
-  [key: string]: any
-  constructor(index) {
+
+class DefaultBeaconCell implements ModuleDropdownCell {
+  readonly name: string
+  readonly inputRows: readonly (readonly DefaultBeaconInput[])[]
+
+  constructor(readonly index: number) {
     this.name = `default_beacon_dropdown_${index}`
-    this.index = index
-    this.inputRows = []
-    for (let row of moduleRows) {
-      let inputRow = []
-      for (let module of row) {
-        if (module === null || module.canBeacon()) {
-          inputRow.push(new DefaultBeaconInput(this, module))
-        }
-      }
-      this.inputRows.push(inputRow)
-    }
+    this.inputRows = moduleRows.map((row) =>
+      row
+        .filter((module) => module === null || module.canBeacon())
+        .map((module) => new DefaultBeaconInput(this, module)),
+    )
   }
 }
 
-function renderDefaultBeacon(settings) {
-  let defaultBeacon = [null, null]
+function renderDefaultBeacon(settings: SettingsMap): void {
+  let defaultBeacon: [Module | null, Module | null] = [null, null]
   let defaultCount = zero
   let legacy = false
   if (settings.has("db")) {
-    let keys = settings.get("db").split(":")
-    if (keys.length === 1) {
-      legacy = true
-    }
-    for (let i = 0; i < keys.length; i++) {
-      defaultBeacon[i] = getModule(keys[i])
-    }
+    const keys = (settings.get("db") ?? "").split(":")
+    legacy = keys.length === 1
+    defaultBeacon = [getModule(keys[0] ?? "null"), getModule(keys[1] ?? "null")]
   }
-  if (settings.has("dbc")) {
-    defaultCount = Rational.from_string(settings.get("dbc"))
-  }
+  if (settings.has("dbc")) defaultCount = Rational.from_string(settings.get("dbc") ?? "0")
   if (legacy) {
-    let two = Rational.from_float(2)
-    let divmod = defaultCount.divmod(two)
+    const divmod = defaultCount.divmod(Rational.from_float(2))
     if (divmod.remainder.isZero()) {
       defaultBeacon = [defaultBeacon[0], defaultBeacon[0]]
       defaultCount = divmod.quotient
     }
   }
-  for (let i = 0; i < defaultBeacon.length; i++) {
-    spec.setDefaultBeacon(defaultBeacon[i], i)
-  }
+  defaultBeacon.forEach((module, index) => spec.setDefaultBeacon(module, index))
   spec.setDefaultBeaconCount(defaultCount)
 
-  let cells = [new DefaultBeaconCell(0), new DefaultBeaconCell(1)]
-  let select = d3.select("#default_beacon")
-  select.selectAll("*").remove()
-  moduleDropdown(select, cells)
-  d3.select("#default_beacon_count")
+  const cells: readonly ModuleDropdownCell[] = [new DefaultBeaconCell(0), new DefaultBeaconCell(1)]
+  const selector = select<HTMLElement, unknown>("#default_beacon")
+  selector.selectAll("*").remove()
+  moduleDropdown(selector, cells)
+  select("#default_beacon_count")
     .attr("value", defaultCount.toDecimal())
-    .on("change", (event) => {
-      let count = Rational.from_string(event.target.value)
-      spec.setDefaultBeaconCount(count)
+    .on("change", (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLInputElement)) return
+      spec.setDefaultBeaconCount(Rational.from_string(target.value))
       spec.updateSolution()
     })
 }
@@ -1128,13 +1178,13 @@ function renderDefaultBeacon(settings) {
 
 // resource priority
 
-function renderResourcePriorities(settings) {
+function renderResourcePriorities(settings: SettingsMap) {
   spec.setDefaultPriority()
   if (settings.has("priority")) {
-    let tiers = []
-    let keys = settings.get("priority").split(";")
+    let tiers: [string, Rational][][] | null = []
+    let keys = (settings.get("priority") ?? "").split(";")
     outer: for (let tierStr of keys) {
-      let tier = []
+      const tier: [string, Rational][] = []
       for (let pair of tierStr.split(",")) {
         // Backward compatibility: If this is using the old format,
         // ignore the whole thing and bail.
@@ -1143,14 +1193,15 @@ function renderResourcePriorities(settings) {
           tiers = null
           break outer
         }
-        let [key, weightStr] = pair.split("=")
+        const [key, weightStr] = pair.split("=")
+        if (key === undefined || weightStr === undefined) continue
         if (!spec.isValidPriorityKey(key)) {
           console.log("invalid priority key:", key)
           continue
         }
         tier.push([key, Rational.from_string(weightStr)])
       }
-      tiers.push(tier)
+      tiers?.push(tier)
     }
     if (tiers !== null) {
       spec.setPriorities(tiers)
@@ -1176,12 +1227,12 @@ export function ensureDeferredResourcesRendered(): void {
 
 // debug
 
-function renderDebugCheckbox(settings) {
+function renderDebugCheckbox(settings: SettingsMap) {
   spec.debug = settings.has("debug")
-  d3.select("#render_debug").property("checked", spec.debug)
+  select("#render_debug").property("checked", spec.debug)
 }
 
-function renderPlanningSettings(settings) {
+function renderPlanningSettings(settings: SettingsMap) {
   spec.beltStackSize = Rational.from_string(settings.get("bstack") ?? "1")
   spec.bufferMinutes = Rational.from_string(settings.get("buffer") ?? "1")
   spec.freshnessDelayMinutes = Rational.from_string(settings.get("fresh") ?? "0")
@@ -1214,9 +1265,10 @@ function renderPlanningSettings(settings) {
   let locations = settings.get("rloc")
   if (locations) {
     for (let entry of locations.split(",")) {
-      let [recipeKey, locationKey] = entry.split(":")
-      let recipe = spec.recipes.get(recipeKey)
-      let location = spec.planets.get(locationKey)
+      const [recipeKey, locationKey] = entry.split(":")
+      if (recipeKey === undefined || locationKey === undefined) continue
+      const recipe = spec.recipes.get(recipeKey)
+      const location = requirePlanets().get(locationKey)
       if (recipe && location) spec.setRecipeLocation(recipe, location)
     }
   }
@@ -1226,17 +1278,17 @@ function renderPlanningSettings(settings) {
   ;(document.getElementById("freshness_delay") as HTMLInputElement).value = spec.freshnessDelayMinutes.toDecimal()
   ;(document.getElementById("max_quality") as HTMLSelectElement).value = String(spec.maxQualityLevel)
   document.querySelectorAll<HTMLInputElement>("[data-resource-key]").forEach((input) => {
-    let recipe = spec.recipes.get(input.dataset.resourceKey)
+    let recipe = spec.recipes.get(input.dataset.resourceKey ?? "")
     let value = recipe ? spec.getResourceYield(recipe) : one
     input.value = value.mul(Rational.from_float(100)).toDecimal()
   })
   document.querySelectorAll<HTMLInputElement>("[data-item-key]").forEach((input) => {
-    let value = spec.asteroidLimits.get(input.dataset.itemKey)
+    let value = spec.asteroidLimits.get(input.dataset.itemKey ?? "")
     input.value = value ? value.mul(spec.format.rateFactor).toDecimal() : ""
   })
 }
 
-export function renderSettings(settings) {
+export function renderSettings(settings: SettingsMap) {
   renderTitle(settings)
   renderIgnore(settings)
   renderRateOptions(settings)

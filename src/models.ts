@@ -1,15 +1,34 @@
-import { create, select } from "d3"
-const d3: any = { create, select }
-import { sorted } from "./data.js"
-import { half, one, powerRepresentation, Rational, zero } from "./math.js"
+import { create, select, type BaseType, type Selection } from "d3"
+import { sorted, type CalculatorData, type SurfaceCondition as SurfaceConditionData } from "./data.js"
+import { Formatter, half, one, powerRepresentation, Rational, zero } from "./math.js"
 import { addInputs, Icon, makeDropdown, sprites } from "./presentation.js"
+import type { Item, Recipe } from "./recipes.js"
 
 // -----------------------------------------------------------------------------
 // Runtime context
 // -----------------------------------------------------------------------------
 
+export interface ModelFactorySpecification {
+  readonly items: Map<string, Item>
+  readonly recipes: Map<string, Recipe>
+  readonly format: Formatter
+  readonly miningProd: Rational
+  readonly defaultBeacon: readonly (Module | null)[]
+  readonly defaultBeaconCount: Rational
+  getBuilding(recipe: Recipe): Building | null
+  getModuleSpec(recipe: Recipe): ModuleSpec | null
+  getDefaultModule(recipe: Recipe, building: Building): Module | null
+  getResourceYield(recipe: Recipe): Rational
+  getFuelForRecipe(recipe: Recipe): Fuel | null
+  getRecipeRate(recipe: Recipe): Rational | null
+  getPowerUsage(recipe: Recipe, rate: Rational): { readonly fuel: string | null; readonly power: Rational }
+  getProdEffect(recipe: Recipe): Rational
+  notifyRecipeConfigurationChanged(recipe: Recipe): void
+  recordRecipeConfigurationChange(recipe: Recipe): void
+}
+
 export interface ModelRuntimeContext {
-  getSpecification(): any
+  getSpecification(): ModelFactorySpecification
   useLegacyCalculation(): boolean
 }
 
@@ -21,7 +40,7 @@ export function configureModelRuntime(nextContext: ModelRuntimeContext): void {
   context = nextContext
 }
 
-export function currentSpecification(): any {
+export function currentSpecification(): ModelFactorySpecification {
   if (context === null) {
     throw new Error("Model runtime has not been configured")
   }
@@ -32,105 +51,41 @@ export function usesLegacyCalculation(): boolean {
   return context?.useLegacyCalculation() ?? false
 }
 
-// -----------------------------------------------------------------------------
-// Recipe productivity research
-// -----------------------------------------------------------------------------
+export { getRecipeProductivityResearch } from "./models/productivity-research.js"
+export type { RecipeProductivityResearch } from "./models/productivity-research.js"
 
-export function getRecipeProductivityResearch(data, recipes) {
-  let result = new Map<string, any>()
-  for (let entry of data.recipe_productivity_research ?? []) {
-    let effects = new Map<any, Rational>()
-    for (let effect of entry.effects) {
-      let recipe = recipes.get(effect.recipe)
-      if (recipe !== undefined) {
-        effects.set(recipe, Rational.from_float_approximate(effect.change))
-      }
-    }
-    let research = {
-      key: entry.key,
-      name: entry.localized_name.en,
-      icon_col: entry.icon_col,
-      icon_row: entry.icon_row,
-      effects,
-      icon: null as Icon | null,
-    }
-    research.icon = new Icon(research)
-    result.set(entry.key, research)
-  }
-  return result
-}
-
-// -----------------------------------------------------------------------------
-// Item groups
-// -----------------------------------------------------------------------------
-
-// Sorts items into their groups and subgroups. Used chiefly by the target
-// dropdown.
-export function getItemGroups(items, data) {
-  // {groupName: {subgroupName: [item]}}
-  let itemGroupMap = new Map()
-  for (let [itemKey, item] of items) {
-    let group = itemGroupMap.get(item.group)
-    if (group === undefined) {
-      group = new Map()
-      itemGroupMap.set(item.group, group)
-    }
-    let subgroup = group.get(item.subgroup)
-    if (subgroup === undefined) {
-      subgroup = []
-      group.set(item.subgroup, subgroup)
-    }
-    subgroup.push(item)
-  }
-  let itemGroups = []
-  let groupNames = sorted(itemGroupMap.keys(), function (k) {
-    return data.groups[k].order
-  })
-  for (let groupName of groupNames) {
-    let subgroupNames = sorted(itemGroupMap.get(groupName).keys(), function (k) {
-      return data.groups[groupName].subgroups[k]
-    })
-    let group = []
-    itemGroups.push(group)
-    for (let subgroupName of subgroupNames) {
-      let items = itemGroupMap.get(groupName).get(subgroupName)
-      items = sorted(items, function (item) {
-        return item.order
-      })
-      group.push(items)
-    }
-  }
-  return itemGroups
-}
+export { getItemGroups } from "./models/item-groups.js"
+export type { ItemGroups } from "./models/item-groups.js"
 
 // -----------------------------------------------------------------------------
 // Belts
 // -----------------------------------------------------------------------------
 
-class Belt {
-  [key: string]: any
-  constructor(key, name, col, row, rate) {
-    this.key = key
-    this.name = name
-    this.rate = rate
-    this.icon_col = col
-    this.icon_row = row
+export class Belt {
+  readonly icon: Icon
+  constructor(
+    readonly key: string,
+    readonly name: string,
+    readonly icon_col: number,
+    readonly icon_row: number,
+    readonly rate: Rational,
+  ) {
     this.icon = new Icon(this)
   }
-  renderTooltip() {
+  renderTooltip(): HTMLElement {
     let self = this
-    let t = d3.create("div").classed("frame", true)
+    let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
     header.append(() => new Text(self.name))
     t.append("b").text(`Max throughput: `)
     t.append(() => new Text(`${spec.format.rate(this.rate)}/${spec.format.longRate}`))
-    return t.node()
+    return requireElement(t.node(), "tooltip")
   }
 }
 
-export function getBelts(data) {
-  let beltObjs = []
+export function getBelts(data: CalculatorData): Map<string, Belt> {
+  const beltObjs: Belt[] = []
   for (let beltInfo of data.belts) {
     // Belt speed is given in tiles/tick, which we can convert to
     // items/second as follows:
@@ -149,7 +104,7 @@ export function getBelts(data) {
     }
     return 0
   })
-  let belts = new Map()
+  const belts = new Map<string, Belt>()
   for (let belt of beltObjs) {
     belts.set(belt.key, belt)
   }
@@ -160,22 +115,22 @@ export function getBelts(data) {
 // Fuels
 // -----------------------------------------------------------------------------
 
-let energySuffixes = ["J", "kJ", "MJ", "GJ", "TJ", "PJ"]
+const energySuffixes = ["J", "kJ", "MJ", "GJ", "TJ", "PJ"] as const
 
 export class Fuel {
-  [key: string]: any
-  constructor(key, name, col, row, item, category, value) {
-    this.key = key
-    this.name = name
-    this.item = item
-    this.category = category
-    this.value = value
-
-    this.icon_col = col
-    this.icon_row = row
+  readonly icon: Icon
+  constructor(
+    readonly key: string,
+    readonly name: string,
+    readonly icon_col: number,
+    readonly icon_row: number,
+    readonly item: Item,
+    readonly category: string,
+    readonly value: Rational,
+  ) {
     this.icon = new Icon(this)
   }
-  valueString() {
+  valueString(): string {
     let x = this.value
     let thousand = Rational.from_float(1000)
     let i = 0
@@ -185,15 +140,15 @@ export class Fuel {
     }
     return x.toUpDecimal(0) + " " + energySuffixes[i]
   }
-  renderTooltip() {
+  renderTooltip(): HTMLElement {
     let self = this
-    let t = d3.create("div").classed("frame", true)
+    let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
     header.append(() => new Text(self.name))
     t.append("b").text("Energy: ")
     t.append(() => new Text(self.valueString()))
-    return t.node()
+    return requireElement(t.node(), "tooltip")
   }
 }
 
@@ -216,10 +171,10 @@ export class FuelCollection extends Map<string, Fuel> {
   }
 }
 
-export function getFuel(data, items) {
-  let fuelCategories = new Map()
+export function getFuel(data: CalculatorData, items: ReadonlyMap<string, Item>): FuelCollection {
+  const fuelCategories = new Map<string, Fuel[]>()
   for (let d of data.fuel) {
-    let item = items.get(d.item_key)
+    const item = requireItem(items, d.item_key)
     let fuel = new Fuel(
       d.item_key,
       item.name,
@@ -236,7 +191,7 @@ export function getFuel(data, items) {
     }
     f.push(fuel)
   }
-  for (let [categoryKey, category] of fuelCategories) {
+  for (const category of fuelCategories.values()) {
     category.sort(function (a, b) {
       if (a.value.less(b.value)) {
         return -1
@@ -255,59 +210,52 @@ export function getFuel(data, items) {
 
 let thirty = Rational.from_float(30)
 
-class Building {
-  [key: string]: any
-  constructor(
-    key,
-    name,
-    col,
-    row,
-    categories,
-    speed,
-    prodBonus,
-    moduleSlots,
-    power,
-    fuel,
-    conditions = [],
-    allowedEffects = null,
-    emissions = null,
-  ) {
-    this.key = key
-    this.name = name
-    this.categories = new Set(categories)
-    this.speed = speed
-    this.prodBonus = prodBonus
-    this.moduleSlots = moduleSlots
-    this.power = power
-    this.fuel = fuel
-    this.conditions = conditions ?? []
-    this.emissions = {}
-    for (let [pollutant, value] of Object.entries(emissions ?? {})) {
-      this.emissions[pollutant] = Rational.from_float_approximate(value as number)
-    }
-    if (allowedEffects === null || allowedEffects === undefined) {
-      this.allowedEffects = null
-    } else if (Array.isArray(allowedEffects)) {
-      this.allowedEffects = new Set(allowedEffects)
-    } else {
-      this.allowedEffects = new Set(
-        Object.entries(allowedEffects)
-          .filter(([, enabled]) => enabled)
-          .map(([effect]) => effect),
-      )
-    }
+export class Building {
+  readonly categories: Set<string>
+  readonly conditions: readonly SurfaceConditionData[]
+  readonly emissions: Readonly<Record<string, Rational>>
+  readonly allowedEffects: Set<string> | null
+  readonly icon: Icon
 
-    this.icon_col = col
-    this.icon_row = row
+  constructor(
+    readonly key: string,
+    readonly name: string,
+    readonly icon_col: number,
+    readonly icon_row: number,
+    categories: readonly string[],
+    readonly speed: Rational,
+    readonly prodBonus: Rational,
+    readonly moduleSlots: number,
+    readonly power: Rational,
+    readonly fuel: string | null,
+    conditions: readonly SurfaceConditionData[] = [],
+    allowedEffects: readonly string[] | Readonly<Record<string, boolean>> | null = null,
+    emissions: Readonly<Record<string, number>> | null = null,
+  ) {
+    this.categories = new Set(categories)
+    this.conditions = conditions
+    this.emissions = Object.fromEntries(
+      Object.entries(emissions ?? {}).map(([pollutant, value]) => [pollutant, Rational.from_float_approximate(value)]),
+    )
+    this.allowedEffects =
+      allowedEffects === null
+        ? null
+        : new Set(
+            Array.isArray(allowedEffects)
+              ? allowedEffects
+              : Object.entries(allowedEffects)
+                  .filter(([, enabled]) => enabled)
+                  .map(([effect]) => effect),
+          )
     this.icon = new Icon(this)
   }
-  less(other) {
+  less(other: Building): boolean {
     if (!this.speed.equal(other.speed)) {
       return this.speed.less(other.speed)
     }
     return this.moduleSlots < other.moduleSlots
   }
-  canCraft(recipe) {
+  canCraft(recipe: Recipe): boolean {
     for (let category of recipe.categories) {
       if (this.categories.has(category)) {
         return true
@@ -315,10 +263,10 @@ class Building {
     }
     return false
   }
-  allowedOn(location) {
+  allowedOn(location: Planet): boolean {
     return location.allowsConditions(this.conditions)
   }
-  allowsModule(module) {
+  allowsModule(module: Module | null): boolean {
     if (module === null || this.allowedEffects === null) {
       return true
     }
@@ -329,10 +277,10 @@ class Building {
     }
     return true
   }
-  getCount(spec, recipe, rate) {
+  getCount(spec: ModelFactorySpecification, recipe: Recipe, rate: Rational): Rational {
     return rate.div(this.getRecipeRate(spec, recipe))
   }
-  getRecipeRate(spec, recipe) {
+  getRecipeRate(spec: ModelFactorySpecification, recipe: Recipe): Rational {
     let modules = spec.getModuleSpec(recipe)
     let speedEffect
     if (modules) {
@@ -342,18 +290,18 @@ class Building {
     }
     return recipe.time.reciprocate().mul(this.speed).mul(speedEffect)
   }
-  canBeacon() {
+  canBeacon(): boolean {
     return this.moduleSlots > 0
   }
-  prodEffect(spec) {
+  prodEffect(_spec: ModelFactorySpecification): Rational {
     return this.prodBonus
   }
-  drain() {
+  drain(): Rational {
     return this.power.div(thirty)
   }
-  renderTooltip() {
+  renderTooltip(): HTMLElement {
     let self = this
-    let t = d3.create("div").classed("frame", true)
+    let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
     header.append(() => new Text(self.name))
@@ -367,36 +315,34 @@ class Building {
     line = t.append("div")
     line.append("b").text("Module slots: ")
     line.append("span").text(String(this.moduleSlots))
-    return t.node()
+    return requireElement(t.node(), "tooltip")
   }
 }
 
-class Miner extends Building {
-  [key: string]: any
+export class Miner extends Building {
   constructor(
-    key,
-    name,
-    col,
-    row,
-    categories,
-    miningSpeed,
-    moduleSlots,
-    power,
-    fuel,
-    conditions = [],
-    allowedEffects = null,
-    emissions = null,
+    key: string,
+    name: string,
+    col: number,
+    row: number,
+    categories: readonly string[],
+    readonly miningSpeed: Rational,
+    moduleSlots: number,
+    power: Rational,
+    fuel: string | null,
+    conditions: readonly SurfaceConditionData[] = [],
+    allowedEffects: readonly string[] | null = null,
+    emissions: Readonly<Record<string, number>> | null = null,
   ) {
     super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions, allowedEffects, emissions)
-    this.miningSpeed = miningSpeed
   }
-  less(other) {
-    return this.miningSpeed.less(other.miningSpeed)
+  override less(other: Building): boolean {
+    return other instanceof Miner ? this.miningSpeed.less(other.miningSpeed) : super.less(other)
   }
-  drain() {
+  override drain(): Rational {
     return zero
   }
-  getRecipeRate(spec, recipe) {
+  override getRecipeRate(spec: ModelFactorySpecification, recipe: Recipe): Rational {
     let modules = spec.getModuleSpec(recipe)
     let speedEffect
     if (modules) {
@@ -404,18 +350,22 @@ class Miner extends Building {
     } else {
       speedEffect = one
     }
-    let rate = this.miningSpeed.div(recipe.miningTime).mul(speedEffect)
+    const miningTime = recipe.miningTime
+    if (miningTime === undefined) {
+      throw new Error(`Mining recipe ${recipe.key} is missing mining_time`)
+    }
+    let rate = this.miningSpeed.div(miningTime).mul(speedEffect)
     if (recipe.categories.has("basic-fluid")) {
       rate = rate.mul(spec.getResourceYield(recipe))
     }
     return rate
   }
-  prodEffect(spec) {
+  override prodEffect(spec: ModelFactorySpecification): Rational {
     return spec.miningProd
   }
-  renderTooltip() {
+  override renderTooltip(): HTMLElement {
     let self = this
-    let t = d3.create("div").classed("frame", true)
+    let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
     header.append(() => new Text(self.name))
@@ -429,41 +379,69 @@ class Miner extends Building {
     line = t.append("div")
     line.append("b").text("Module slots: ")
     line.append("span").text(String(this.moduleSlots))
-    return t.node()
+    return requireElement(t.node(), "tooltip")
   }
 }
 
-class OffshorePump extends Building {
-  [key: string]: any
-  constructor(key, name, col, row, pumpingSpeed, conditions = []) {
+export class OffshorePump extends Building {
+  constructor(
+    key: string,
+    name: string,
+    col: number,
+    row: number,
+    readonly pumpingSpeed: Rational,
+    conditions: readonly SurfaceConditionData[] = [],
+  ) {
     super(key, name, col, row, ["offshore-pumping"], zero, zero, 0, zero, null, conditions)
-    this.pumpingSpeed = pumpingSpeed
   }
-  less(other) {
-    return this.pumpingSpeed.less(other.pumpingSpeed)
+  override less(other: Building): boolean {
+    return other instanceof OffshorePump ? this.pumpingSpeed.less(other.pumpingSpeed) : super.less(other)
   }
-  getRecipeRate(spec, recipe) {
+  override getRecipeRate(_spec: ModelFactorySpecification, _recipe: Recipe): Rational {
     return this.pumpingSpeed
   }
-  renderTooltip() {
+  override renderTooltip(): HTMLElement {
     let self = this
-    let t = d3.create("div").classed("frame", true)
+    let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
     header.append(() => new Text(self.name))
     let line = t.append("div")
     line.append("b").text("Pumping speed: ")
     line.append("span").text(`${spec.format.rate(this.pumpingSpeed)}/${spec.format.rateName}`)
-    return t.node()
+    return requireElement(t.node(), "tooltip")
   }
 }
 
 let rocketLaunchDuration = Rational.from_floats(2434, 60)
 
-function getRocketLaunchStats(spec, launchConfig = null) {
-  let partRecipe = spec.recipes.get("rocket-part")
-  let partFactory = spec.getBuilding(partRecipe)
-  let partItem = spec.items.get("rocket-part")
+export interface RocketLaunchConfiguration {
+  readonly partsPerLaunch: Rational
+  readonly launchCycle: Rational
+  readonly buffered: boolean
+}
+
+export interface RocketLaunchStats {
+  readonly part: Rational
+  readonly launch: Rational
+  readonly partsPerLaunch: Rational
+  readonly craftsPerLaunch: Rational
+  readonly craftingRate: Rational
+  readonly effectivePartsPerCraft: Rational
+  readonly craftingLaunchRate: Rational
+  readonly animationLaunchRate: Rational
+  readonly launchLimited: boolean
+  readonly buffered: boolean
+}
+
+function getRocketLaunchStats(
+  spec: ModelFactorySpecification,
+  launchConfig: RocketLaunchConfiguration | null = null,
+): RocketLaunchStats {
+  const partRecipe = requireRecipe(spec.recipes, "rocket-part")
+  const partFactory = spec.getBuilding(partRecipe)
+  if (partFactory === null) throw new Error("Rocket-part recipe has no compatible silo")
+  const partItem = requireItem(spec.items, "rocket-part")
   // gives() already includes module and researched recipe productivity.
   let effectivePartsPerCraft = partRecipe.gives(partItem)
   // The base rate at which the silo can complete rocket-part crafts.
@@ -507,34 +485,43 @@ function getRocketLaunchStats(spec, launchConfig = null) {
   }
 }
 
-class RocketLaunch extends Building {
-  [key: string]: any
-  constructor(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel, launchConfig) {
+export class RocketLaunch extends Building {
+  constructor(
+    key: string,
+    name: string,
+    col: number,
+    row: number,
+    categories: readonly string[],
+    speed: Rational,
+    prodBonus: Rational,
+    moduleSlots: number,
+    power: Rational,
+    fuel: string | null,
+    readonly launchConfig: RocketLaunchConfiguration | null,
+  ) {
     super(key, name, col, row, categories, speed, prodBonus, moduleSlots, power, fuel)
-    this.launchConfig = launchConfig
   }
-  getRecipeRate(spec, recipe) {
+  override getRecipeRate(spec: ModelFactorySpecification, _recipe: Recipe): Rational {
     return getRocketLaunchStats(spec, this.launchConfig).launch
   }
 }
 
-class RocketSilo extends Building {
-  [key: string]: any
+export class RocketSilo extends Building {
   constructor(
-    key,
-    name,
-    col,
-    row,
-    categories,
-    speed,
-    prodBonus,
-    moduleSlots,
-    power,
-    fuel,
-    conditions,
-    allowedEffects,
-    emissions,
-    launchConfig,
+    key: string,
+    name: string,
+    col: number,
+    row: number,
+    categories: readonly string[],
+    speed: Rational,
+    prodBonus: Rational,
+    moduleSlots: number,
+    power: Rational,
+    fuel: string | null,
+    conditions: readonly SurfaceConditionData[],
+    allowedEffects: readonly string[] | null,
+    emissions: Readonly<Record<string, number>> | null,
+    readonly launchConfig: RocketLaunchConfiguration | null,
   ) {
     super(
       key,
@@ -551,27 +538,26 @@ class RocketSilo extends Building {
       allowedEffects,
       emissions,
     )
-    this.launchConfig = launchConfig
   }
-  getRecipeRate(spec, recipe) {
+  override getRecipeRate(spec: ModelFactorySpecification, _recipe: Recipe): Rational {
     return getRocketLaunchStats(spec, this.launchConfig).part
   }
-  getLaunchStats(spec) {
+  getLaunchStats(spec: ModelFactorySpecification): RocketLaunchStats {
     return getRocketLaunchStats(spec, this.launchConfig)
   }
 }
 
-function renderTooltipBase(this: any) {
+function renderTooltipBase(this: Building): HTMLElement {
   let self = this
-  let t = d3.create("div").classed("frame", true)
+  let t = create("div").classed("frame", true)
   let header = t.append("h3")
   header.append(() => self.icon.make(32, true))
   header.append(() => new Text(self.name))
-  return t.node()
+  return requireElement(t.node(), "tooltip")
 }
 
-export function getBuildings(data, items) {
-  let buildings = []
+export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, Item>): Building[] {
+  const buildings: Building[] = []
   let launchConfig = data.rocket_launch
     ? {
         partsPerLaunch: Rational.from_float_approximate(data.rocket_launch.parts_per_launch),
@@ -579,7 +565,7 @@ export function getBuildings(data, items) {
         buffered: data.rocket_launch.buffered,
       }
     : null
-  let reactorDef = items.get("nuclear-reactor")
+  const reactorDef = requireItem(items, "nuclear-reactor")
   let reactor = new Building(
     "nuclear-reactor",
     reactorDef.name,
@@ -594,14 +580,9 @@ export function getBuildings(data, items) {
   )
   reactor.renderTooltip = renderTooltipBase
   buildings.push(reactor)
-  let boilerItem = items.get("boiler")
-  let boilerDef
-  for (let d of data.boilers) {
-    if (d.key === "boiler") {
-      boilerDef = d
-      break
-    }
-  }
+  const boilerItem = requireItem(items, "boiler")
+  const boilerDef = data.boilers.find((entry) => entry.key === "boiler")
+  if (boilerDef === undefined) throw new Error("Dataset is missing the base boiler")
   let boiler_energy = Rational.from_float(boilerDef.energy_consumption)
   let boiler = new Building(
     "boiler",
@@ -618,7 +599,7 @@ export function getBuildings(data, items) {
   )
   boiler.renderTooltip = renderTooltipBase
   buildings.push(boiler)
-  let siloDef = items.get("rocket-silo")
+  const siloDef = requireItem(items, "rocket-silo")
   let launch = new RocketLaunch(
     "rocket-silo",
     siloDef.name,
@@ -635,10 +616,7 @@ export function getBuildings(data, items) {
   launch.renderTooltip = renderTooltipBase
   buildings.push(launch)
   for (let d of data.crafting_machines) {
-    let fuel = null
-    if (d.energy_source && d.energy_source.type === "burner") {
-      fuel = d.energy_source.fuel_category
-    }
+    const fuel = d.energy_source?.type === "burner" ? (d.energy_source.fuel_category ?? null) : null
     let prod = zero
     if (d.prod_bonus) {
       prod = Rational.from_float_approximate(d.prod_bonus)
@@ -649,11 +627,11 @@ export function getBuildings(data, items) {
         d.localized_name.en,
         d.icon_col,
         d.icon_row,
-        d.crafting_categories,
-        Rational.from_float_approximate(d.crafting_speed),
+        d.crafting_categories ?? [],
+        Rational.from_float_approximate(d.crafting_speed ?? 1),
         prod,
-        d.module_slots,
-        Rational.from_float_approximate(d.energy_usage),
+        d.module_slots ?? 0,
+        Rational.from_float_approximate(d.energy_usage ?? 0),
         fuel,
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
@@ -661,18 +639,18 @@ export function getBuildings(data, items) {
       ),
     )
   }
-  for (let d of data.rocket_silo) {
+  for (let d of data.rocket_silo ?? []) {
     buildings.push(
       new RocketSilo(
         d.key,
         d.localized_name.en,
         d.icon_col,
         d.icon_row,
-        d.crafting_categories,
-        Rational.from_float_approximate(d.crafting_speed),
+        d.crafting_categories ?? [],
+        Rational.from_float_approximate(d.crafting_speed ?? 1),
         zero,
-        d.module_slots,
-        Rational.from_float_approximate(d.energy_usage),
+        d.module_slots ?? 0,
+        Rational.from_float_approximate(d.energy_usage ?? 0),
         null,
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
@@ -681,7 +659,7 @@ export function getBuildings(data, items) {
       ),
     )
   }
-  for (let d of data.offshore_pumps) {
+  for (let d of data.offshore_pumps ?? []) {
     // Pumping speed is given in units/tick.
     let speed = Rational.from_float_approximate(d.pumping_speed).mul(Rational.from_float(60))
     buildings.push(
@@ -689,10 +667,7 @@ export function getBuildings(data, items) {
     )
   }
   for (let d of data.mining_drills) {
-    let fuel = null
-    if (d.energy_source && d.energy_source.type === "burner") {
-      fuel = d.energy_source.fuel_category
-    }
+    const fuel = d.energy_source?.type === "burner" ? (d.energy_source.fuel_category ?? null) : null
     buildings.push(
       new Miner(
         d.key,
@@ -701,8 +676,8 @@ export function getBuildings(data, items) {
         d.icon_row,
         d.resource_categories,
         Rational.from_float_approximate(d.mining_speed),
-        d.module_slots,
-        Rational.from_float_approximate(d.energy_usage),
+        d.module_slots ?? 0,
+        Rational.from_float_approximate(d.energy_usage ?? 0),
         fuel,
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
@@ -737,7 +712,7 @@ export function getBuildings(data, items) {
 // -----------------------------------------------------------------------------
 
 let hundred = Rational.from_float(100)
-function percent(x) {
+function percent(x: Rational): string {
   let sign = ""
   if (!x.less(zero)) {
     sign = "+"
@@ -745,20 +720,24 @@ function percent(x) {
   return `${sign}${x.mul(hundred).toDecimal()}%`
 }
 
-class Module {
-  [key: string]: any
-  constructor(key, name, col, row, category, order, productivity, quality, speed, power, pollution) {
+export class Module {
+  readonly effectTypes = new Set<string>()
+  readonly icon: Icon
+
+  constructor(
+    readonly key: string,
+    readonly name: string,
+    readonly icon_col: number,
+    readonly icon_row: number,
+    readonly category: string | undefined,
+    readonly order: string,
+    readonly productivity: Rational,
+    readonly quality: Rational,
+    readonly speed: Rational,
+    readonly power: Rational,
+    readonly pollution: Rational,
+  ) {
     // Pollution is retained in the dataset but does not affect production rates.
-    this.key = key
-    this.name = name
-    this.category = category
-    this.order = order
-    this.productivity = productivity
-    this.quality = quality
-    this.speed = speed
-    this.power = power
-    this.pollution = pollution
-    this.effectTypes = new Set()
     if (!power.isZero()) {
       this.effectTypes.add("consumption")
     }
@@ -775,14 +754,12 @@ class Module {
       this.effectTypes.add("pollution")
     }
 
-    this.icon_col = col
-    this.icon_row = row
     this.icon = new Icon(this)
   }
   // This naming scheme is some older cruft, which works in the vanilla
   // dataset, but it's possible other datasets would render it unworkable.
-  shortName() {
-    return this.key[0] + this.key[this.key.length - 1]
+  shortName(): string {
+    return `${this.key.at(0) ?? ""}${this.key.at(-1) ?? ""}`
   }
   requiredEffectTypes(): Set<string> {
     const effects = new Set<string>(this.effectTypes)
@@ -793,7 +770,7 @@ class Module {
     }
     return effects
   }
-  canUse(recipe, building = null) {
+  canUse(recipe: Recipe, building: Building | null = null): boolean {
     if (building !== null && !building.allowsModule(this)) {
       return false
     }
@@ -805,7 +782,7 @@ class Module {
     }
     return true
   }
-  canBeacon() {
+  canBeacon(): boolean {
     for (let effect of this.requiredEffectTypes()) {
       if (!beaconAllowedEffects.has(effect)) {
         return false
@@ -813,15 +790,15 @@ class Module {
     }
     return true
   }
-  hasProdEffect() {
+  hasProdEffect(): boolean {
     return !this.productivity.isZero()
   }
-  hasQualityEffect() {
+  hasQualityEffect(): boolean {
     return !this.quality.isZero() || this.category === "quality"
   }
-  renderTooltip() {
+  renderTooltip(): HTMLElement {
     let self = this
-    let t = d3.create("div").classed("frame", true)
+    let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
     header.append(() => new Text(self.name))
@@ -851,49 +828,79 @@ class Module {
       line.append("b").text("Pollution: ")
       line.append("span").text(percent(this.pollution))
     }
-    return t.node()
+    return requireElement(t.node(), "tooltip")
   }
 }
 
-export function moduleDropdown(selector, data) {
+export interface ModuleDropdownOption {
+  readonly cell: { readonly name: string }
+  readonly module: Module | null
+  checked(): boolean
+  choose(): void
+}
+
+export interface ModuleDropdownCell {
+  readonly inputRows: readonly (readonly ModuleDropdownOption[])[]
+}
+
+export function moduleDropdown<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
+  selector: Selection<GElement, TDatum, PElement, PDatum>,
+  data:
+    | readonly ModuleDropdownCell[]
+    | ((datum: TDatum, index: number, groups: GElement[]) => readonly ModuleDropdownCell[]),
+): void {
+  selector.each(function (datum, index, groups) {
+    const cells = typeof data === "function" ? data(datum, index, groups) : data
+    renderModuleDropdown(this, cells)
+  })
+}
+
+function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCell[]): void {
+  const selector = select(element)
   let moduleDropdownSpan = selector
-    .selectAll("span.module-wrapper")
+    .selectAll<HTMLSpanElement, ModuleDropdownCell>("span.module-wrapper")
     .data(data)
     .join((enter) => {
-      let s = enter.append("span").classed("module-wrapper", true)
-      s.each(function (this: HTMLElement) {
-        makeDropdown(d3.select(this))
+      const wrappers = enter.append("span").classed("module-wrapper", true)
+      wrappers.each(function (this: Element) {
+        makeDropdown(select(this))
       })
-      return s
+      return wrappers
     })
-  let moduleDropdown = moduleDropdownSpan.selectAll("div.dropdown")
+  let moduleDropdown = moduleDropdownSpan.selectAll<HTMLDivElement, ModuleDropdownCell>("div.dropdown")
   moduleDropdown
-    .selectAll("div.moduleRow")
-    .data((d) => d.inputRows)
+    .selectAll<HTMLDivElement, readonly ModuleDropdownOption[]>("div.moduleRow")
+    .data<readonly ModuleDropdownOption[]>((cell) => cell.inputRows)
     .join("div")
     .classed("moduleRow", true)
-    .selectAll("span.input")
-    .data((d) => d)
+    .selectAll<HTMLSpanElement, ModuleDropdownOption>("span.input")
+    .data<ModuleDropdownOption>((options) => options)
     .join(
       (enter) => {
-        let s = enter.append("span").classed("input", true)
-        let label = addInputs(
-          s,
-          (d) => d.cell.name,
-          (d) => d.checked(),
-          (d) => d.choose(),
+        const inputs = enter.append("span").classed("input", true)
+        const label = addInputs<ModuleDropdownOption>(
+          inputs,
+          (option) => option.cell.name,
+          (option) => option.checked(),
+          (option) => option.choose(),
         )
-        label.append(function (this: HTMLElement, d) {
-          if (d.module === null) {
-            return sprites.get("slot_icon_module").icon.make(32)
-          } else {
-            return d.module.icon.make(32, false, this.parentNode.parentNode.parentNode)
+        label.append(function (this: Element, option: ModuleDropdownOption) {
+          if (option.module === null) {
+            const sprite = sprites.get("slot_icon_module")
+            if (sprite === undefined) {
+              throw new Error("Missing slot_icon_module sprite")
+            }
+            return sprite.icon.make(32)
           }
+          const tooltipTarget = this.parentElement?.parentElement?.parentElement ?? undefined
+          return option.module.icon.make(32, false, tooltipTarget)
         })
-        return s
+        return inputs
       },
       (update) => {
-        update.selectAll("input").property("checked", (d) => d.checked())
+        update
+          .selectAll<HTMLInputElement, ModuleDropdownOption>("input")
+          .property("checked", (option: ModuleDropdownOption) => option.checked())
         return update
       },
     )
@@ -906,25 +913,28 @@ const MIN_POLLUTION_EFFECT = Rational.from_floats(1, 5) // 20%
 // ModuleSpec represents the set of modules (including beacons) configured for
 // a given recipe.
 export class ModuleSpec {
-  [key: string]: any
-  constructor(recipe, spec) {
-    this.recipe = recipe
-    this.owner = spec
-    this.building = null
-    this.modules = []
-    this.moduleSource = "default" as ConfigurationSource
-    this.beaconModules = spec.defaultBeacon.map((module) => (module === null || module.canBeacon() ? module : null))
-    this.beaconCount = spec.defaultBeaconCount
+  building: Building | null = null
+  readonly modules: (Module | null)[] = []
+  moduleSource: ConfigurationSource = "default"
+  readonly beaconModules: (Module | null)[]
+  beaconCount: Rational
+
+  constructor(
+    readonly recipe: Recipe,
+    readonly owner: ModelFactorySpecification,
+  ) {
+    this.beaconModules = owner.defaultBeacon.map((module) => (module === null || module.canBeacon() ? module : null))
+    this.beaconCount = owner.defaultBeaconCount
   }
-  setBuilding(building, spec) {
+  setBuilding(building: Building, spec: ModelFactorySpecification): void {
     this.building = building
     if (this.modules.length > building.moduleSlots) {
       this.modules.length = building.moduleSlots
     }
     let toAdd = spec.getDefaultModule(this.recipe, building)
     for (let i = 0; i < this.modules.length; i++) {
-      let module = this.modules[i]
-      if (module !== null && !module.canUse(this.recipe, building)) {
+      const module = this.modules[i]
+      if (module !== undefined && module !== null && !module.canUse(this.recipe, building)) {
         this.modules[i] = toAdd
       }
     }
@@ -932,17 +942,17 @@ export class ModuleSpec {
       this.modules.push(toAdd)
     }
     for (let i = 0; i < this.beaconModules.length; i++) {
-      let module = this.beaconModules[i]
-      if (module !== null && (!module.canBeacon() || !module.canUse(this.recipe, building))) {
+      const module = this.beaconModules[i]
+      if (module !== undefined && module !== null && (!module.canBeacon() || !module.canUse(this.recipe, building))) {
         this.beaconModules[i] = null
       }
     }
   }
-  getModule(index) {
+  getModule(index: number): Module | null | undefined {
     return this.modules[index]
   }
   // Returns true if the module change requires a recalculation.
-  setModule(index, module, source: ConfigurationSource = "user") {
+  setModule(index: number, module: Module | null, source: ConfigurationSource = "user"): boolean {
     if (index >= this.modules.length) {
       return false
     }
@@ -950,9 +960,10 @@ export class ModuleSpec {
       return false
     }
     let oldModule = this.modules[index]
-    let needRecalc =
-      (oldModule && (oldModule.hasProdEffect() || oldModule.hasQualityEffect())) ||
-      (module && (module.hasProdEffect() || module.hasQualityEffect()))
+    const needRecalc = Boolean(
+      (oldModule !== undefined && oldModule !== null && (oldModule.hasProdEffect() || oldModule.hasQualityEffect())) ||
+      (module !== null && (module.hasProdEffect() || module.hasQualityEffect())),
+    )
     this.modules[index] = module
     if (source !== "default") {
       this.moduleSource = source
@@ -964,15 +975,15 @@ export class ModuleSpec {
     }
     return needRecalc
   }
-  setBeaconModule(module, i) {
+  setBeaconModule(module: Module | null, i: number): void {
     this.beaconModules[i] =
       module === null || (module.canBeacon() && module.canUse(this.recipe, this.building)) ? module : null
   }
-  setBeaconCount(count) {
+  setBeaconCount(count: Rational): void {
     this.beaconCount = count
   }
 
-  speedEffect() {
+  speedEffect(): Rational {
     let speed = one
     for (let module of this.modules) {
       if (!module) {
@@ -987,18 +998,14 @@ export class ModuleSpec {
         }
         let beacon = module.speed.mul(this.beaconCount).mul(beaconEffect)
         if (!usesLegacyCalculation()) {
-          let i = this.beaconCount.ceil().toFloat() - 1
-          if (i >= beaconProfile.length) {
-            i = beaconProfile.length - 1
-          }
-          beacon = beacon.mul(beaconProfile[i])
+          beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
         }
         speed = speed.add(beacon)
       }
     }
     return Rational.max(speed, MIN_SPEED_EFFECT)
   }
-  prodEffect(spec) {
+  prodEffect(spec: ModelFactorySpecification): Rational {
     let prod = one
     for (let module of this.modules) {
       if (!module) {
@@ -1006,10 +1013,13 @@ export class ModuleSpec {
       }
       prod = prod.add(module.productivity)
     }
+    if (this.building === null) {
+      throw new Error(`Module specification for ${this.recipe.key} has no building`)
+    }
     prod = prod.add(this.building.prodEffect(spec))
     return prod
   }
-  powerEffect(spec) {
+  powerEffect(_spec: ModelFactorySpecification): Rational {
     let power = one
     for (let module of this.modules) {
       if (!module) {
@@ -1024,18 +1034,14 @@ export class ModuleSpec {
         }
         let beacon = module.power.mul(this.beaconCount).mul(beaconEffect)
         if (!usesLegacyCalculation()) {
-          let i = this.beaconCount.ceil().toFloat() - 1
-          if (i >= beaconProfile.length) {
-            i = beaconProfile.length - 1
-          }
-          beacon = beacon.mul(beaconProfile[i])
+          beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
         }
         power = power.add(beacon)
       }
     }
     return Rational.max(power, MIN_POWER_EFFECT)
   }
-  pollutionEffect() {
+  pollutionEffect(): Rational {
     let pollution = one
     for (let module of this.modules) {
       if (module) pollution = pollution.add(module.pollution)
@@ -1045,9 +1051,7 @@ export class ModuleSpec {
         if (module === null) continue
         let beacon = module.pollution.mul(this.beaconCount).mul(beaconEffect)
         if (!usesLegacyCalculation()) {
-          let i = this.beaconCount.ceil().toFloat() - 1
-          if (i >= beaconProfile.length) i = beaconProfile.length - 1
-          beacon = beacon.mul(beaconProfile[i])
+          beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
         }
         pollution = pollution.add(beacon)
       }
@@ -1056,21 +1060,29 @@ export class ModuleSpec {
   }
 }
 
-export let moduleRows = null
-export let shortModules = null
+export let moduleRows: (Module | null)[][] = [[null]]
+export let shortModules = new Map<string, Module>()
 
-let beaconProfile
-let beaconEffect
+let beaconProfile: Rational[] | null = null
+let beaconEffect = one
 let beaconAllowedEffects = new Set(["consumption", "speed", "pollution"])
 
-export function getBeaconPower(data): Rational {
+function getBeaconProfileEffect(count: Rational): Rational {
+  if (beaconProfile === null || beaconProfile.length === 0) {
+    return one
+  }
+  const index = Math.min(Math.max(count.ceil().toFloat() - 1, 0), beaconProfile.length - 1)
+  return beaconProfile[index] ?? one
+}
+
+export function getBeaconPower(data: CalculatorData): Rational {
   return Rational.from_float_approximate(data.beacon.energy_usage ?? 0)
 }
 
-export function getModules(data, items) {
-  let modules = new Map()
+export function getModules(data: CalculatorData, items: ReadonlyMap<string, Item>): Map<string, Module> {
+  const modules = new Map<string, Module>()
   for (let d of data.modules) {
-    let item = items.get(d.item_key)
+    const item = requireItem(items, d.item_key)
     let effect = d.effect
     let category = d.category
     let order = item.order
@@ -1098,18 +1110,20 @@ export function getModules(data, items) {
   }
   let sortedModules = sorted(modules.values(), (m) => m.order)
   moduleRows = [[null]]
-  shortModules = new Map()
+  shortModules = new Map<string, Module>()
   let category = null
   for (let module of sortedModules) {
     if (module.category !== category) {
       category = module.category
       moduleRows.push([])
     }
-    moduleRows[moduleRows.length - 1].push(module)
+    const currentRow = moduleRows.at(-1)
+    if (currentRow === undefined) throw new Error("Module row initialization failed")
+    currentRow.push(module)
     let shortName = module.shortName()
     if (shortModules.has(shortName)) {
       // This does not occur in the vanilla data, but let's plan ahead.
-      module.shortName = function () {
+      module.shortName = function (): string {
         return this.key
       }
       shortName = module.key
@@ -1133,30 +1147,26 @@ export function getModules(data, items) {
 // Planets and surfaces
 // -----------------------------------------------------------------------------
 
-class SurfaceProperty {
-  [key: string]: any
-}
-
-class Planet {
-  [key: string]: any
-  constructor(key, name, order, col, row, resources, properties, pollutantType = null) {
-    this.key = key
-    this.name = name
-    this.order = order
-    this.resources = resources
-    this.properties = properties
-    this.pollutantType = pollutantType
-    this.disable = new Set()
-
-    this.icon_col = col
-    this.icon_row = row
+export class Planet {
+  readonly disable = new Set<Recipe>()
+  readonly icon: Icon
+  constructor(
+    readonly key: string,
+    readonly name: string,
+    readonly order: string,
+    readonly icon_col: number,
+    readonly icon_row: number,
+    readonly resources: Set<Recipe>,
+    readonly properties: Map<string, number>,
+    readonly pollutantType: string | null = null,
+  ) {
     this.icon = new Icon(this)
   }
-  allowsConditions(conditions) {
+  allowsConditions(conditions: readonly SurfaceConditionData[]): boolean {
     for (let condition of conditions ?? []) {
       let value = this.properties.get(condition.property)
       if (value === undefined) {
-        value = defaultProperties.get(condition.property)
+        value = defaultProperties.get(condition.property) ?? 0
       }
       let aboveMinimum = true
       let belowMaximum = true
@@ -1172,16 +1182,16 @@ class Planet {
     }
     return true
   }
-  allowsRecipe(recipe) {
+  allowsRecipe(recipe: Recipe): boolean {
     if (recipe.isResource()) {
       return this.resources.has(recipe)
     }
     return this.allowsConditions(recipe.conditions)
   }
-  allowsBuilding(building) {
+  allowsBuilding(building: Building): boolean {
     return building.allowedOn(this)
   }
-  allows(recipe, buildings) {
+  allows(recipe: Recipe, buildings: readonly Building[]): boolean {
     if (!this.allowsRecipe(recipe)) {
       return false
     }
@@ -1192,11 +1202,11 @@ class Planet {
   }
 }
 
-let defaultProperties
+let defaultProperties = new Map<string, number>()
 
 const RECYCLING_ROOT_KEYS = new Set(["scrap"])
 
-function traverseRecycling(recipe, found) {
+function traverseRecycling(recipe: Recipe, found: Set<Recipe>): void {
   for (let { item } of recipe.products) {
     for (let subrecipe of item.uses) {
       if (subrecipe.key.endsWith("-recycling")) {
@@ -1209,31 +1219,37 @@ function traverseRecycling(recipe, found) {
   }
 }
 
-export function getPlanets(data, recipes, buildings) {
+export function getPlanets(
+  data: CalculatorData,
+  recipes: ReadonlyMap<string, Recipe>,
+  buildings: readonly Building[],
+): Map<string, Planet> | null {
   if (!data.planets) {
     // For legacy 1.1 datasets.
     return null
   }
-  defaultProperties = new Map()
-  for (let { name, default_value } of data.surface_properties) {
+  defaultProperties = new Map<string, number>()
+  for (let { name, default_value } of data.surface_properties ?? []) {
     defaultProperties.set(name, default_value)
   }
 
-  let planets = new Map()
+  const planets = new Map<string, Planet>()
   for (let d of data.planets) {
-    let resources = new Set()
-    let roots = new Set()
+    const resources = new Set<Recipe>()
+    const roots = new Set<Recipe>()
     for (let key of (d.resources.resource ?? []).concat(d.resources.offshore ?? []).concat(d.resources.plants ?? [])) {
-      let r = recipes.get(key)
+      const r = requireRecipe(recipes, key)
       resources.add(r)
       if (RECYCLING_ROOT_KEYS.has(key)) {
         roots.add(r)
       }
     }
-    let properties = new Map()
+    const properties = new Map<string, number>()
     for (let key in d.surface_properties) {
-      let value = d.surface_properties[key]
-      properties.set(key, value)
+      const value = d.surface_properties[key]
+      if (value !== undefined) {
+        properties.set(key, value)
+      }
     }
     let planet = new Planet(
       d.key,
@@ -1250,7 +1266,7 @@ export function getPlanets(data, recipes, buildings) {
         planet.disable.add(recipe)
       }
       if (roots.size > 0) {
-        let recycling = new Set()
+        const recycling = new Set<Recipe>()
         for (let root of roots) {
           traverseRecycling(root, recycling)
         }
@@ -1262,4 +1278,21 @@ export function getPlanets(data, recipes, buildings) {
     planets.set(planet.key, planet)
   }
   return planets
+}
+
+function requireElement<T extends Element>(element: T | null, label: string): T {
+  if (element === null) throw new Error(`Unable to create ${label}`)
+  return element
+}
+
+function requireItem(items: ReadonlyMap<string, Item>, key: string): Item {
+  const item = items.get(key)
+  if (item === undefined) throw new Error(`Dataset is missing required item ${key}`)
+  return item
+}
+
+function requireRecipe(recipes: ReadonlyMap<string, Recipe>, key: string): Recipe {
+  const recipe = recipes.get(key)
+  if (recipe === undefined) throw new Error(`Dataset is missing required recipe ${key}`)
+  return recipe
 }

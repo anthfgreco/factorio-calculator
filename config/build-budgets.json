@@ -1,0 +1,8 @@
+{
+  "maximumInitialJavaScriptBytes": 650000,
+  "maximumInitialGzipBytes": 190000,
+  "maximumInitialCssBytes": 120000,
+  "maximumInitialRequests": 10,
+  "maximumSingleChunkBytes": 1500000,
+  "requiredDeferredModuleFragments": ["visualization", "graph", "dagre", "d3"]
+}

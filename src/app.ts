@@ -1,7 +1,8 @@
 import { select } from "d3"
-const d3: any = { select }
+import { bindCalculatorSpecification } from "./application/store.js"
 import { parseCalculatorData } from "./data.js"
-import type { FactoryViewPort } from "./factory.js"
+import { Matrix } from "./math.js"
+import type { FactorySpecification, FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"
 import {
   configureModelRuntime,
@@ -15,7 +16,8 @@ import {
   getRecipeProductivityResearch,
 } from "./models.js"
 import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
-import { getItems, getRecipes } from "./recipes.js"
+import { Item, Recipe, getItems, getRecipes } from "./recipes.js"
+import type { Totals } from "./solver.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
 import { ensureDeferredResourcesRendered, ensureDeferredSettingsRendered, renderSettings } from "./settings.js"
 import {
@@ -43,7 +45,32 @@ import {
 // Debug output
 // -----------------------------------------------------------------------------
 
-function renderMatrix(d, A, m) {
+interface DebugMetadata {
+  readonly items: readonly Item[]
+  readonly targets: readonly { readonly item: Item; readonly recipe: Recipe }[]
+  readonly recipes: readonly Recipe[]
+}
+
+function isDebugMetadata(value: unknown): value is DebugMetadata {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return (
+    Array.isArray(candidate.items) &&
+    candidate.items.every((item) => item instanceof Item) &&
+    Array.isArray(candidate.targets) &&
+    candidate.targets.every(
+      (target) =>
+        typeof target === "object" &&
+        target !== null &&
+        (target as { item?: unknown }).item instanceof Item &&
+        (target as { recipe?: unknown }).recipe instanceof Recipe,
+    ) &&
+    Array.isArray(candidate.recipes) &&
+    candidate.recipes.every((recipe) => recipe instanceof Recipe)
+  )
+}
+
+function renderMatrix(d: ReturnType<typeof select>, A: Matrix, m: DebugMetadata): void {
   let table = d.append("table").attr("border", 1)
   let header = table.append("tr")
   header.append("th")
@@ -70,8 +97,9 @@ function renderMatrix(d, A, m) {
   for (let r = 0; r < A.rows; r++) {
     let row = table.append("tr")
     let label = row.append("td")
-    if (r < m.recipes.length) {
-      label.append(() => m.recipes[r].icon.make(32)).classed("item-icon", true)
+    const recipe = m.recipes[r]
+    if (recipe !== undefined) {
+      label.append(() => recipe.icon.make(32)).classed("item-icon", true)
     } else if (r === A.rows - 2) {
       label.append(() => new Text("tax"))
     } else {
@@ -84,18 +112,18 @@ function renderMatrix(d, A, m) {
   }
 }
 
-export function renderDebug() {
-  let debugTab = d3.select("#debug_tab")
+export function renderDebug(): void {
+  let debugTab = select("#debug_tab")
 
-  let lastTableau = d3.select("#debug_tableau")
+  let lastTableau = select("#debug_tableau")
   lastTableau.selectChildren().remove()
-  let lastSolution = d3.select("#debug_solution")
+  let lastSolution = select("#debug_solution")
   lastSolution.selectChildren().remove()
 
-  if (spec.lastTableau === null) {
-    d3.select("#debug_message").text("No tableau required.")
+  if (spec.lastTableau === null || spec.lastSolution === null || !isDebugMetadata(spec.lastMetadata)) {
+    select("#debug_message").text("No tableau required.")
   } else {
-    d3.select("#debug_message").text("Displaying previous tableau.")
+    select("#debug_message").text("Displaying previous tableau.")
     renderMatrix(lastTableau, spec.lastTableau, spec.lastMetadata)
     renderMatrix(lastSolution, spec.lastSolution, spec.lastMetadata)
   }
@@ -109,7 +137,7 @@ type VisualizationModule = typeof import("./visualization.js")
 
 let visualizationModule: VisualizationModule | null = null
 let visualizationPromise: Promise<VisualizationModule> | null = null
-let pendingVisualization: { totals: any; ignore: Set<any> } | null = null
+let pendingVisualization: { totals: Totals; ignore: Set<Item> } | null = null
 
 function loadVisualization(): Promise<VisualizationModule> {
   if (visualizationModule !== null) {
@@ -127,7 +155,7 @@ function loadVisualization(): Promise<VisualizationModule> {
   return visualizationPromise
 }
 
-function renderVisualization(totals: any, ignore: Set<any>): void {
+function renderVisualization(totals: Totals, ignore: Set<Item>): void {
   if (visualizationModule !== null) {
     visualizationModule.renderTotals(totals, ignore)
     return
@@ -142,33 +170,16 @@ function renderVisualization(totals: any, ignore: Set<any>): void {
   })
 }
 
-let visualizationPreloadScheduled = false
-
-function preloadVisualization(): void {
-  if (visualizationPreloadScheduled) {
-    return
-  }
-  visualizationPreloadScheduled = true
-  const scheduleIdleLoad = () => {
-    globalThis.setTimeout(() => {
-      const load = () => void loadVisualization()
-      if ("requestIdleCallback" in window) {
-        window.requestIdleCallback(load, { timeout: 5000 })
-      } else {
-        load()
-      }
-    }, 1000)
-  }
-  if (document.readyState === "complete") {
-    scheduleIdleLoad()
-  } else {
-    window.addEventListener("load", scheduleIdleLoad, { once: true })
-  }
-}
-
 // -----------------------------------------------------------------------------
 // Browser factory view
 // -----------------------------------------------------------------------------
+
+function requireBrowserBuildTarget(target: ReturnType<FactoryViewPort["createBuildTarget"]>): BuildTarget {
+  if (!(target instanceof BuildTarget)) {
+    throw new Error("The browser renderer received a non-browser production target")
+  }
+  return target
+}
 
 export const browserFactoryView: FactoryViewPort = {
   createBuildTarget(index, itemKey, item, itemGroups) {
@@ -176,14 +187,16 @@ export const browserFactoryView: FactoryViewPort = {
   },
 
   mountBuildTarget(target) {
-    d3.select("#targets").insert(() => target.element, "#plusButton")
+    const browserTarget = requireBrowserBuildTarget(target)
+    select("#targets").insert(() => browserTarget.element, "#plusButton")
   },
 
   removeBuildTarget(target) {
-    d3.select(target.element).remove()
+    const browserTarget = requireBrowserBuildTarget(target)
+    select(browserTarget.element).remove()
   },
 
-  renderSolution(specification: any, totals) {
+  renderSolution(specification: FactorySpecification, totals: Totals) {
     displayItems(specification, totals)
     if (currentTab === "graph") {
       renderVisualization(totals, specification.ignore)
@@ -191,7 +204,7 @@ export const browserFactoryView: FactoryViewPort = {
     reapTooltips()
   },
 
-  renderCalculationError(specification: any, error) {
+  renderCalculationError(specification: FactorySpecification, error: unknown) {
     displayCalculationError(specification, error)
     reapTooltips()
   },
@@ -209,14 +222,15 @@ export const browserFactoryView: FactoryViewPort = {
 // Application bootstrap
 // -----------------------------------------------------------------------------
 
-function reset() {
+function reset(): void {
   clearUrlHash()
   resetDisplay()
   resetSpec()
+  bindCalculatorSpecification(spec)
   window.spec = spec
 }
 
-export function changeMod() {
+export function changeMod(): void {
   let currentSettings = loadSettings("#" + formatSettings())
   currentSettings.delete("data")
   let modName = currentMod()
@@ -230,9 +244,9 @@ let OIL_EXCLUSION = new Map([
   ["coal", ["advanced-oil-processing", "basic-oil-processing"]],
 ])
 
-function fixLegacySettings(settings) {
+function fixLegacySettings(settings: Map<string, string>): void {
   if ((settings.has("use_3") || settings.has("min") || settings.has("furnace")) && !settings.has("buildings")) {
-    let parts = []
+    const parts: string[] = []
     if (settings.has("min")) {
       let n = settings.get("min")
       if (n === "4") {
@@ -244,22 +258,23 @@ function fixLegacySettings(settings) {
       parts.push("assembling-machine-3")
       settings.delete("use_3")
     }
-    if (settings.has("furnace")) {
-      parts.push(settings.get("furnace"))
+    const furnace = settings.get("furnace")
+    if (furnace !== undefined) {
+      parts.push(furnace)
       settings.delete("furnace")
     }
     settings.set("buildings", parts.join(","))
   }
   if ((settings.has("k") || settings.has("p")) && !settings.has("disable")) {
-    let parts = []
+    const parts: string[] = []
     if (settings.has("k")) {
       settings.delete("k")
       parts.push("kovarex-processing")
     }
     if (settings.has("p")) {
       let p = settings.get("p")
-      for (let r of OIL_EXCLUSION.get(p)) {
-        parts.push(r)
+      for (const recipeKey of OIL_EXCLUSION.get(p ?? "") ?? []) {
+        parts.push(recipeKey)
       }
       settings.delete("p")
     }
@@ -284,47 +299,58 @@ function fetchData(filename: string): Promise<unknown> {
   return request
 }
 
-function loadData(modName, settings) {
-  let mod = MODIFICATIONS.get(modName)
+let loadGeneration = 0
+
+function loadData(modName: string, settings: Map<string, string>): void {
+  const generation = ++loadGeneration
+  const mod = MODIFICATIONS.get(modName)
+  if (mod === undefined) throw new Error(`Unknown dataset: ${modName}`)
   setLegacyCalculation(mod.legacy)
-  let filename = "data/" + mod.filename
-  fetchData(filename).then(function (rawData: unknown) {
-    let data = parseCalculatorData(rawData)
-    let items = getItems(data)
-    let recipes = getRecipes(data, items)
-    let buildings = getBuildings(data, items)
-    let planets = getPlanets(data, recipes, buildings)
-    let modules = getModules(data, items)
-    let belts = getBelts(data)
-    let fuel = getFuel(data, items)
-    let recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
-    getSprites(data)
-    let itemGroups = getItemGroups(items, data)
-    spec.setData(
-      items,
-      recipes,
-      planets,
-      modules,
-      buildings,
-      belts,
-      fuel,
-      itemGroups,
-      recipeProductivityResearch,
-      getBeaconPower(data),
-    )
+  const filename = "data/" + mod.filename
+  void fetchData(filename)
+    .then((rawData: unknown) => {
+      if (generation !== loadGeneration) return
+      const data = parseCalculatorData(rawData)
+      const items = getItems(data)
+      const recipes = getRecipes(data, items)
+      const buildings = getBuildings(data, items)
+      const planets = getPlanets(data, recipes, buildings)
+      const modules = getModules(data, items)
+      const belts = getBelts(data)
+      const fuel = getFuel(data, items)
+      const recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
+      getSprites(data)
+      const itemGroups = getItemGroups(items, data)
+      spec.setData(
+        items,
+        recipes,
+        planets,
+        modules,
+        buildings,
+        belts,
+        fuel,
+        itemGroups,
+        recipeProductivityResearch,
+        getBeaconPower(data),
+      )
 
-    fixLegacySettings(settings)
-    renderSettings(settings)
+      fixLegacySettings(settings)
+      renderSettings(settings)
 
-    spec.updateSolution()
-    finishUrlInitialization()
-    preloadVisualization()
-  })
+      spec.updateSolution()
+      finishUrlInitialization()
+    })
+    .catch((error: unknown) => {
+      if (generation !== loadGeneration) return
+      spec.lastTotals = null
+      spec.lastError = error
+      spec.display()
+    })
 }
 
 let initialized = false
 
-function handleUrlHashChange() {
+function handleUrlHashChange(): void {
   const newHash = window.location.hash
   if (newHash === `#${formatSettings()}`) {
     return
@@ -335,7 +361,7 @@ function handleUrlHashChange() {
   loadData(currentMod(), settings)
 }
 
-export function init() {
+export function init(): void {
   if (initialized) {
     return
   }
@@ -363,4 +389,12 @@ export function init() {
 
   window.addEventListener("hashchange", handleUrlHashChange)
   window.addEventListener("popstate", handleUrlHashChange)
+}
+
+export function dispose(): void {
+  if (!initialized) return
+  initialized = false
+  loadGeneration++
+  window.removeEventListener("hashchange", handleUrlHashChange)
+  window.removeEventListener("popstate", handleUrlHashChange)
 }

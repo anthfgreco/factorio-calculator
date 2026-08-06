@@ -1,50 +1,21 @@
 import { useLayoutEffect } from "react"
 
-import { init } from "../app.js"
-import {
-  applyProgressionPreset,
-  changeCountPrecision,
-  changeFactoryDensity,
-  changeFormat,
-  changeMprod,
-  changePlanningSetting,
-  changeRatePrecision,
-  changeTitle,
-  changeVisDir,
-  changeVisRender,
-  changeVisType,
-  clickTab,
-  clickVisualize,
-  copyShareLink,
-  plusHandler,
-  toggleDebug,
-} from "../state.js"
+import { calculatorStore } from "../application/store.js"
+import { dispose, init } from "../app.js"
 import { CalculatorShell } from "./CalculatorShell.js"
-import type { CalculatorActions } from "./types.js"
-
-const actions: CalculatorActions = {
-  addTarget: plusHandler,
-  openTab: clickTab,
-  openVisualization: clickVisualize,
-  copyShareLink: () => void copyShareLink(),
-  applyProgressionPreset,
-  changeFactoryDensity,
-  changeTitle,
-  changeRatePrecision,
-  changeCountPrecision,
-  changeFormat,
-  changeMiningProductivity: changeMprod,
-  changePlanningSetting,
-  changeVisualizationType: changeVisType,
-  changeVisualizationRender: changeVisRender,
-  changeVisualizationDirection: changeVisDir,
-  toggleDebug,
-}
+import { useCalculatorStore } from "./useCalculatorStore.js"
 
 export function CalculatorApp() {
+  const snapshot = useCalculatorStore()
+
   useLayoutEffect(() => {
+    calculatorStore.start()
     init()
+    return () => {
+      dispose()
+      calculatorStore.dispose()
+    }
   }, [])
 
-  return <CalculatorShell actions={actions} />
+  return <CalculatorShell commands={calculatorStore.commands} snapshot={snapshot} />
 }

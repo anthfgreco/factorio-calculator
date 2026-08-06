@@ -3,22 +3,47 @@ import { dirname, extname, relative, resolve } from "node:path"
 
 const root = resolve(import.meta.dirname, "..")
 const sourceRoot = resolve(root, "src")
-const importPattern = /(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g
+const importPattern = /(?:import|export)\s+(type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']/g
 
 const allowedImports = new Map([
+  ["application/contracts.ts", new Set()],
+  ["application/store.ts", new Set(["application/contracts.ts", "factory.ts", "math.ts", "state.ts"])],
   ["data.ts", new Set()],
   ["math.ts", new Set()],
-  ["solver.ts", new Set(["math.ts"])],
-  ["planning.ts", new Set(["math.ts"])],
+  ["solver/contracts.ts", new Set(["math.ts"])],
+  ["solver/errors.ts", new Set(["solver/contracts.ts"])],
+  ["solver.ts", new Set(["math.ts", "solver/contracts.ts", "solver/errors.ts"])],
+  ["planning/contracts.ts", new Set(["math.ts", "models.ts", "recipes.ts"])],
+  ["planning.ts", new Set(["math.ts", "models.ts", "planning/contracts.ts", "recipes.ts"])],
   ["color-schemes.ts", new Set()],
   ["presentation.ts", new Set()],
-  ["models.ts", new Set(["data.ts", "math.ts", "presentation.ts"])],
+  ["models/item-groups.ts", new Set(["data.ts", "recipes.ts"])],
+  ["models/productivity-research.ts", new Set(["data.ts", "math.ts", "presentation.ts", "recipes.ts"])],
+  [
+    "models.ts",
+    new Set(["data.ts", "math.ts", "models/item-groups.ts", "models/productivity-research.ts", "presentation.ts"]),
+  ],
   ["priorities.ts", new Set(["math.ts"])],
   ["recipes.ts", new Set(["data.ts", "math.ts", "models.ts", "presentation.ts", "priorities.ts", "solver.ts"])],
   ["factory.ts", new Set(["math.ts", "models.ts", "planning.ts", "priorities.ts", "recipes.ts", "solver.ts"])],
-  ["state.ts", new Set(["factory.ts", "math.ts"])],
-  ["graph.ts", new Set(["factory.ts", "math.ts", "presentation.ts"])],
-  ["visualization.ts", new Set(["factory.ts", "graph.ts", "math.ts", "presentation.ts", "state.ts"])],
+  ["state.ts", new Set(["application/contracts.ts", "factory.ts", "math.ts", "models.ts"])],
+  ["graph/types.ts", new Set(["math.ts", "models.ts", "recipes.ts"])],
+  ["graph.ts", new Set(["factory.ts", "math.ts", "presentation.ts", "recipes.ts", "graph/types.ts"])],
+  [
+    "visualization.ts",
+    new Set([
+      "factory.ts",
+      "graph.ts",
+      "graph/types.ts",
+      "math.ts",
+      "models.ts",
+      "presentation.ts",
+      "recipes.ts",
+      "solver.ts",
+      "state.ts",
+    ]),
+  ],
+  ["settings/productivity-research.ts", new Set(["math.ts", "models.ts"])],
   [
     "settings.ts",
     new Set([
@@ -30,13 +55,21 @@ const allowedImports = new Map([
       "priorities.ts",
       "recipes.ts",
       "state.ts",
+      "settings/productivity-research.ts",
     ]),
   ],
   [
     "ui.ts",
     new Set(["data.ts", "factory.ts", "math.ts", "planning.ts", "presentation.ts", "recipes.ts", "settings.ts"]),
   ],
-  ["url-state.ts", new Set(["data.ts", "factory.ts", "math.ts", "settings.ts", "state.ts"])],
+  ["url/codec.ts", new Set()],
+  ["url/history.ts", new Set()],
+  [
+    "url-state.ts",
+    new Set(["data.ts", "factory.ts", "math.ts", "settings.ts", "state.ts", "url/codec.ts", "url/history.ts"]),
+  ],
+  ["results/grouping.ts", new Set(["recipes.ts", "solver.ts"])],
+  ["results/summary.ts", new Set(["factory.ts", "math.ts", "models.ts", "planning.ts", "recipes.ts", "solver.ts"])],
   [
     "results.ts",
     new Set([
@@ -45,6 +78,8 @@ const allowedImports = new Map([
       "models.ts",
       "planning.ts",
       "presentation.ts",
+      "results/grouping.ts",
+      "results/summary.ts",
       "recipes.ts",
       "settings.ts",
       "state.ts",
@@ -54,11 +89,15 @@ const allowedImports = new Map([
   [
     "app.ts",
     new Set([
+      "application/store.ts",
       "data.ts",
       "factory.ts",
+      "math.ts",
       "models.ts",
       "planning.ts",
       "presentation.ts",
+      "results/grouping.ts",
+      "results/summary.ts",
       "recipes.ts",
       "results.ts",
       "settings.ts",
@@ -71,12 +110,87 @@ const allowedImports = new Map([
   ["react/types.ts", new Set()],
   ["react/HelpPanel.tsx", new Set()],
   ["react/SettingsPanel.tsx", new Set(["react/types.ts"])],
-  ["react/CalculatorShell.tsx", new Set(["react/HelpPanel.tsx", "react/SettingsPanel.tsx", "react/types.ts"])],
-  ["react/CalculatorApp.tsx", new Set(["app.ts", "state.ts", "react/CalculatorShell.tsx", "react/types.ts"])],
+  [
+    "react/CalculatorShell.tsx",
+    new Set(["application/contracts.ts", "react/HelpPanel.tsx", "react/SettingsPanel.tsx", "react/types.ts"]),
+  ],
+  [
+    "react/CalculatorApp.tsx",
+    new Set(["application/store.ts", "app.ts", "react/CalculatorShell.tsx", "react/useCalculatorStore.ts"]),
+  ],
+  ["react/useCalculatorStore.ts", new Set(["application/store.ts"])],
   ["main.tsx", new Set(["react/CalculatorApp.tsx"])],
 ])
 
-const browserIndependent = new Set(["data.ts", "math.ts", "solver.ts", "factory.ts"])
+const browserIndependent = new Set([
+  "data.ts",
+  "math.ts",
+  "solver/contracts.ts",
+  "solver/errors.ts",
+  "solver.ts",
+  "planning/contracts.ts",
+  "factory.ts",
+])
+
+const moduleLayers = new Map([
+  ["foundation", new Set(["data.ts", "math.ts", "solver/contracts.ts", "solver/errors.ts", "solver.ts"])],
+  [
+    "domain",
+    new Set([
+      "color-schemes.ts",
+      "presentation.ts",
+      "models/item-groups.ts",
+      "models/productivity-research.ts",
+      "models.ts",
+      "priorities.ts",
+      "recipes.ts",
+      "planning/contracts.ts",
+      "planning.ts",
+      "factory.ts",
+      "settings/productivity-research.ts",
+      "graph/types.ts",
+      "results/grouping.ts",
+      "results/summary.ts",
+    ]),
+  ],
+  [
+    "application",
+    new Set(["application/contracts.ts", "application/store.ts", "state.ts", "url/codec.ts", "url/history.ts"]),
+  ],
+  ["rendering", new Set(["graph.ts", "visualization.ts", "settings.ts", "ui.ts", "results.ts"])],
+  ["runtime", new Set(["url-state.ts", "app.ts"])],
+  [
+    "react",
+    new Set([
+      "react/types.ts",
+      "react/HelpPanel.tsx",
+      "react/SettingsPanel.tsx",
+      "react/CalculatorShell.tsx",
+      "react/CalculatorApp.tsx",
+      "react/useCalculatorStore.ts",
+      "main.tsx",
+    ]),
+  ],
+])
+
+const allowedLayerImports = new Map([
+  ["foundation", new Set(["foundation"])],
+  ["domain", new Set(["foundation", "domain"])],
+  ["application", new Set(["foundation", "domain", "application"])],
+  ["rendering", new Set(["foundation", "domain", "application", "rendering", "runtime"])],
+  ["runtime", new Set(["foundation", "domain", "application", "rendering", "runtime"])],
+  ["react", new Set(["application", "runtime", "react"])],
+])
+
+const layerByModule = new Map()
+for (const [layer, modules] of moduleLayers) {
+  for (const moduleName of modules) {
+    if (layerByModule.has(moduleName)) {
+      throw new Error(`Architecture layer map contains duplicate module ${moduleName}`)
+    }
+    layerByModule.set(moduleName, layer)
+  }
+}
 const sourceFiles = await findSourceFiles(sourceRoot)
 const sourceByKey = new Map(sourceFiles.map((file) => [moduleKey(file), file]))
 const sourceByStem = new Map(sourceFiles.map((file) => [stripExtension(file), file]))
@@ -87,8 +201,13 @@ for (const file of sourceFiles) {
   const key = moduleKey(file)
   const source = await readFile(file, "utf8")
   const allowed = allowedImports.get(key)
+  const sourceLayer = layerByModule.get(key)
   if (allowed === undefined) {
     violations.push(`${key}: missing from the architecture module map`)
+    continue
+  }
+  if (sourceLayer === undefined) {
+    violations.push(`${key}: missing from the architecture layer map`)
     continue
   }
 
@@ -101,7 +220,8 @@ for (const file of sourceFiles) {
   }
 
   for (const match of source.matchAll(importPattern)) {
-    const specifier = match[1]
+    const typeOnly = match[1] !== undefined
+    const specifier = match[2]
     if (!specifier.startsWith(".")) {
       continue
     }
@@ -110,9 +230,17 @@ for (const file of sourceFiles) {
       continue
     }
     const targetKey = moduleKey(targetFile)
-    graph.get(key).push(targetKey)
-    if (!allowed.has(targetKey)) {
-      violations.push(`${key}: must not import ${targetKey} (${specifier})`)
+    if (!typeOnly) {
+      graph.get(key).push(targetKey)
+      const targetLayer = layerByModule.get(targetKey)
+      if (targetLayer === undefined) {
+        violations.push(`${targetKey}: missing from the architecture layer map`)
+      } else if (!(allowedLayerImports.get(sourceLayer)?.has(targetLayer) ?? false)) {
+        violations.push(`${key} [${sourceLayer}] must not import ${targetKey} [${targetLayer}] (${specifier})`)
+      }
+      if (!allowed.has(targetKey)) {
+        violations.push(`${key}: must not import ${targetKey} (${specifier})`)
+      }
     }
   }
 }
@@ -129,7 +257,7 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log(`Architecture check passed for ${sourceFiles.length} source modules.`)
+console.log(`Architecture check passed for ${sourceFiles.length} source modules across ${moduleLayers.size} layers.`)
 
 async function findSourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true })

@@ -1,70 +1,122 @@
 # Testing and Verification
 
-The repository uses Node's built-in test runner and purpose-built validation scripts. This keeps tests fast, transparent, and easy to execute in minimal agent environments.
+The repository uses strict TypeScript, Node's test runner, purpose-built validation scripts, and a dependency-free Chromium DevTools harness.
 
-## Test levels
+## Validation lanes
 
-### Unit and characterization tests
-
-```bash
-pnpm test
+```text
+check:quick  ~5 seconds   architecture + type debt + strict TypeScript
+test:core    ~3 seconds   exact solver and named Factorio scenarios
+test:e2e    ~20 seconds   critical browser workflows
+verify        release gate
 ```
 
-`scripts/run-tests.mjs` emits TypeScript into `.tmp/tests` and runs `tests/*.test.mjs`.
+Durations are targets, not contracts; update them if measured CI times materially change.
 
-### Strict deterministic-module type checking
-
-```bash
-pnpm typecheck:core
-```
-
-This checks `data.ts`, `math.ts`, and `solver.ts` with stricter null, property, `this`, and implicit-any settings than the browser-facing modules.
-
-### Full source type checking
+## Environment preflight
 
 ```bash
-pnpm typecheck
+pnpm doctor
 ```
 
-### Architecture checking
+Checks the supported Node/pnpm environment, lockfile, required sources, datasets, and local tools. Failures should explain the corrective action.
+
+## Fast static lane
 
 ```bash
-pnpm check:architecture
+pnpm check:quick
 ```
 
-### Dataset/runtime validation
+Runs:
+
+- architecture allowlist and import-cycle validation
+- explicit type-debt rejection
+- full globally strict TypeScript
+
+## Core behavior
+
+```bash
+pnpm test:core
+```
+
+Compiles TypeScript into `.tmp/tests` and runs exact math/solver tests plus focused scenarios under `tests/scenarios/`.
+
+Use named scenarios for game mechanics such as productivity, catalysts, quality, recycling, Gleba freshness/spores, Aquilo heat, asteroid limits, belt stacking, and rocket launch limits. Prefer minimal fixture graphs and exact `Rational` assertions.
+
+## UI and state behavior
+
+```bash
+pnpm test:ui
+```
+
+Covers application-store lifecycle and commands, URL codec/history behavior, runtime state, interface invariants, and focused UI contracts. Source inspection is reserved for true static constraints such as forbidden inline handlers or imports; user behavior should be exercised through public contracts.
+
+## Browser workflows
+
+```bash
+pnpm test:e2e
+```
+
+Starts Vite and drives Chromium through the DevTools protocol without an additional browser-test dependency. It verifies:
+
+- default dataset and successful calculation
+- target addition
+- title/URL persistence through reload
+- progression preset effects
+- visualization code remains unloaded until Visualize is opened
+- critical controls render at a mobile viewport
+- uncaught browser errors fail the test
+
+Set `CHROME_PATH` when Chromium is not in a standard location.
+
+## Dataset validation
 
 ```bash
 pnpm validate:runtime
 ```
 
-This loads all bundled datasets through emitted TypeScript and checks important application invariants.
+Loads every bundled dataset through emitted TypeScript and checks parser, model, recipe, and application invariants.
 
-### Solver benchmark
+## Solver performance
 
 ```bash
 pnpm bench
+pnpm bench:check
 ```
 
-This compiles the deterministic core and reports median wall time for exact 500- and 1,000-step production chains. It is diagnostic rather than a pass/fail gate; compare results on the same machine and runtime.
+`bench` reports median exact-solver times for 500- and 1,000-step production chains. `bench:check` compares them with conservative ceilings in `config/performance-budgets.json` and fails on a substantial regression. Compare local numbers only on the same machine/runtime.
 
-### Release verification
+## Build budgets
+
+```bash
+pnpm build:site
+pnpm validate:build
+```
+
+The Vite manifest is checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred visualization modules.
+
+## Release gate
 
 ```bash
 pnpm verify
 ```
 
-This runs all checks, builds the Vite site, and validates `dist/`.
+The release gate runs environment preflight, fast static checks, core/UI tests, solver performance budgets, production build, runtime validation, and build budgets. Run `pnpm test:e2e` for browser-facing changes and before release when Chromium is available.
 
-## What to test
+## Test quality rules
 
-Prefer a few high-signal tests:
+Prefer:
 
-- exact solver/math results
-- dataset rejection paths
-- recipe/location/machine/module/beacon eligibility
-- typed solver failures and impossible-plan diagnostics
-- state serialization round trips
-- regressions reported by users
+- exact public outcomes
+- small scenario builders
+- malformed-boundary cases
+- URL round trips and old-link fixtures
+- store lifecycle/command behavior
+- a small number of critical browser workflows
 
-Avoid snapshotting large generated datasets or entire DOM trees.
+Avoid:
+
+- assertions that merely search source text for implementation strings
+- whole-DOM or whole-dataset snapshots
+- fixtures larger than the invariant requires
+- timing thresholds tight enough to be CI-flaky

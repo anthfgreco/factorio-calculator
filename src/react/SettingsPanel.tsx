@@ -1,14 +1,22 @@
-import type { SyntheticEvent } from "react"
+import type { ChangeEvent } from "react"
 
-import type { CalculatorActions } from "./types.js"
-import { forwardNativeEvent } from "./types.js"
+import type { CalculatorCommands, CalculatorSnapshot } from "./types.js"
 
 interface SettingsPanelProps {
-  actions: CalculatorActions
+  commands: CalculatorCommands
+  snapshot: CalculatorSnapshot
 }
 
-export function SettingsPanel({ actions }: SettingsPanelProps) {
-  const onPlanningChange = forwardNativeEvent(actions.changePlanningSetting)
+export function SettingsPanel({ commands, snapshot }: SettingsPanelProps) {
+  const onPlanningChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
+    const input = event.currentTarget
+    commands.setPlanningSetting({
+      id: input.id,
+      value: input.value,
+      resourceKey: input.dataset.resourceKey,
+      itemKey: input.dataset.itemKey,
+    })
+  }
 
   return (
     <div id="settings_tab" className="tab">
@@ -47,7 +55,8 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                 type="text"
                 size={30}
                 placeholder="Factorio Calculator"
-                onInput={forwardNativeEvent(actions.changeTitle)}
+                value={snapshot.title === "Factorio Calculator" ? "" : snapshot.title}
+                onInput={(event: ChangeEvent<HTMLInputElement>) => commands.setTitle(event.currentTarget.value)}
               />
             </td>
           </tr>
@@ -66,9 +75,11 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                 id="rprec"
                 className="prec"
                 type="number"
-                defaultValue="3"
+                value={snapshot.settings.ratePrecision}
                 min="0"
-                onChange={forwardNativeEvent(actions.changeRatePrecision)}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  commands.setRatePrecision(event.currentTarget.valueAsNumber)
+                }
               />
             </td>
           </tr>
@@ -80,9 +91,11 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                 id="cprec"
                 className="prec"
                 type="number"
-                defaultValue="1"
+                value={snapshot.settings.countPrecision}
                 min="0"
-                onChange={forwardNativeEvent(actions.changeCountPrecision)}
+                onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                  commands.setCountPrecision(event.currentTarget.valueAsNumber)
+                }
               />
             </td>
           </tr>
@@ -96,8 +109,8 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                   type="radio"
                   name="format"
                   value="decimal"
-                  defaultChecked
-                  onChange={forwardNativeEvent(actions.changeFormat)}
+                  checked={snapshot.settings.displayFormat === "decimal"}
+                  onChange={() => commands.setDisplayFormat("decimal")}
                 />
                 <label htmlFor="decimal_format">Decimals</label>
                 <br />
@@ -106,7 +119,8 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                   type="radio"
                   name="format"
                   value="rational"
-                  onChange={forwardNativeEvent(actions.changeFormat)}
+                  checked={snapshot.settings.displayFormat === "rational"}
+                  onChange={() => commands.setDisplayFormat("rational")}
                 />
                 <label htmlFor="rational_format">Rationals</label>
                 <br />
@@ -138,7 +152,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           <tr className="setting-row">
             <td className="setting-label">Belt stacking</td>
             <td>
-              <select id="belt_stack_size" defaultValue="1" onChange={onPlanningChange}>
+              <select id="belt_stack_size" value={snapshot.settings.beltStackSize} onChange={onPlanningChange}>
                 <option value="1">1 item high</option>
                 <option value="2">2 items high</option>
                 <option value="3">3 items high</option>
@@ -155,7 +169,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                 type="number"
                 min="0"
                 step="0.5"
-                defaultValue="1"
+                value={snapshot.settings.bufferMinutes}
                 size={5}
                 onChange={onPlanningChange}
               />{" "}
@@ -171,7 +185,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                 type="number"
                 min="0"
                 step="0.5"
-                defaultValue="0"
+                value={snapshot.settings.freshnessDelayMinutes}
                 size={5}
                 onChange={onPlanningChange}
               />{" "}
@@ -182,7 +196,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           <tr className="setting-row">
             <td className="setting-label">Quality progression</td>
             <td>
-              <select id="max_quality" defaultValue="4" onChange={onPlanningChange}>
+              <select id="max_quality" value={snapshot.settings.maxQualityLevel} onChange={onPlanningChange}>
                 <option value="0">Normal only</option>
                 <option value="2">Rare unlocked</option>
                 <option value="3">Epic unlocked</option>
@@ -324,10 +338,12 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
                       className="mprod"
                       type="number"
                       step="10"
-                      defaultValue="0"
+                      value={snapshot.settings.miningProductivityPercent}
                       min="0"
                       aria-label="Mining productivity bonus percentage"
-                      onChange={forwardNativeEvent(actions.changeMiningProductivity)}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        commands.setMiningProductivityPercent(event.currentTarget.value)
+                      }
                     />
                     <span aria-hidden="true">%</span>
                   </span>
@@ -362,7 +378,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
 interface ResourceYieldFieldProps {
   label: string
   resourceKey: string
-  onChange: (event: SyntheticEvent<HTMLInputElement>) => void
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void
 }
 
 function ResourceYieldField({ label, resourceKey, onChange }: ResourceYieldFieldProps) {
@@ -381,7 +397,7 @@ interface AsteroidLimitFieldProps {
   id: string
   label: string
   itemKey: string
-  onChange: (event: SyntheticEvent<HTMLInputElement>) => void
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void
 }
 
 function AsteroidLimitField({ id, label, itemKey, onChange }: AsteroidLimitFieldProps) {

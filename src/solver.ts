@@ -1,105 +1,21 @@
 import { Matrix, minusOne, one, Rational, simplex, zero } from "./math.js"
+import { Ingredient } from "./solver/contracts.js"
+import type { SolverIngredient, SolverItem, SolverOutput, SolverRecipe, SolverSpec } from "./solver/contracts.js"
+import { SolverFailure } from "./solver/errors.js"
 
-// -----------------------------------------------------------------------------
-// Ingredient contract
-// -----------------------------------------------------------------------------
-
-/**
- * A normalized item amount used by recipes and solver graph edges.
- *
- * The core intentionally keeps `item` generic: the solver only relies on
- * stable item identity, while the browser domain layer supplies the concrete
- * item model.
- */
-export class Ingredient<TItem = unknown, TAmount = unknown> {
-  constructor(
-    public readonly item: TItem,
-    public readonly amount: TAmount,
-    public readonly productivityAmount: TAmount | null = null,
-  ) {}
-}
-
-// -----------------------------------------------------------------------------
-// Solver contracts
-// -----------------------------------------------------------------------------
-
-export interface SolverIngredient {
-  item: SolverItem
-  amount: Rational
-  productivityAmount?: Rational | null
-}
-
-export interface SolverRecipe {
-  key?: string
-  name: string
-  ingredients: readonly SolverIngredient[]
-  products: readonly SolverIngredient[]
-  getIngredients(): readonly SolverIngredient[]
-  gives(item: SolverItem): Rational
-  isReal(): boolean
-  isDisable?(): boolean
-  isResource?(): boolean
-}
-
-export interface SolverItem {
-  key?: string
-  name?: string
-  recipes: SolverRecipe[]
-  uses: SolverRecipe[]
-  disableRecipe: SolverRecipe
-}
-
-export interface SolverTarget {
-  item: SolverItem
-  recipe: SolverRecipe | null
-  changedBuilding: boolean
-}
-
-export interface SolverPriorityEntry {
-  recipe: SolverRecipe
-  weight: Rational
-}
-
-export interface SolverBuilding {
-  fuel: string | null
-}
-
-export interface SolverFuel {
-  item: SolverItem
-}
-
-export interface SolverSpec {
-  ignore: Set<SolverItem>
-  buildTargets: SolverTarget[]
-  priority: Iterable<Iterable<SolverPriorityEntry>>
-  lastPartial: unknown
-  lastTableau: Matrix | null
-  lastMetadata: unknown
-  lastSolution: Matrix | null
-  getRecipes(item: SolverItem): SolverRecipe[]
-  getRecipeGraph(items: Map<SolverItem, Rational>): Set<SolverRecipe>
-  getProdEffect(recipe: SolverRecipe): Rational
-  getBuilding(recipe: SolverRecipe): SolverBuilding | null
-  getFuelForRecipe(recipe: SolverRecipe): SolverFuel | null
-}
-
-export interface SolverOutput {
-  item: SolverItem
-  rate: Rational
-  recipe: SolverRecipe | null
-}
-
-export class SolverFailure extends Error {
-  readonly code: "missing-recipe" | "infeasible"
-  readonly item: SolverItem | null
-
-  constructor(code: "missing-recipe" | "infeasible", message: string, item: SolverItem | null = null) {
-    super(message)
-    this.name = "SolverFailure"
-    this.code = code
-    this.item = item
-  }
-}
+export { Ingredient } from "./solver/contracts.js"
+export type {
+  SolverBuilding,
+  SolverFuel,
+  SolverIngredient,
+  SolverItem,
+  SolverOutput,
+  SolverPriorityEntry,
+  SolverRecipe,
+  SolverSpec,
+  SolverTarget,
+} from "./solver/contracts.js"
+export { SolverFailure } from "./solver/errors.js"
 
 // -----------------------------------------------------------------------------
 // Cycle detection
@@ -173,7 +89,8 @@ function visit(
 }
 
 function isSelfCycle(component: readonly SolverRecipe[]): boolean {
-  let recipe = component[0]
+  const recipe = component[0]
+  if (recipe === undefined) return false
   let products = new Set<SolverItem>(recipe.products.map(({ item }) => item))
   return recipe.getIngredients().some(({ item }) => products.has(item))
 }
@@ -188,7 +105,8 @@ export function getCycleRecipes(spec: SolverSpec, recipes: Set<SolverRecipe>): S
   let result = new Set<SolverRecipe>()
   seen = new Set<SolverRecipe>()
   for (let index = ordered.length - 1; index >= 0; index--) {
-    let root = ordered[index]
+    const root = ordered[index]
+    if (root === undefined) continue
     if (seen.has(root)) {
       continue
     }
@@ -259,7 +177,8 @@ export class Totals {
     for (let [recipe, recipeRate] of rates) {
       let ingredients = recipe.getIngredients()
       for (let index = 0; index < ingredients.length; index++) {
-        let ingredient = ingredients[index]
+        const ingredient = ingredients[index]
+        if (ingredient === undefined) continue
         let totalRate = this.items.get(ingredient.item)
         if (totalRate === undefined || totalRate.isZero()) {
           continue
@@ -286,6 +205,12 @@ export class Totals {
       }
     }
   }
+}
+
+function requireMapValue<TKey, TValue>(map: ReadonlyMap<TKey, TValue>, key: TKey, label: string): TValue {
+  const value = map.get(key)
+  if (value === undefined) throw new Error(`Missing ${label}`)
+  return value
 }
 
 // -----------------------------------------------------------------------------
@@ -315,7 +240,7 @@ class OutputRecipe implements SolverRecipe {
 }
 
 class SurplusRecipe extends OutputRecipe {
-  readonly name = "surplus"
+  override readonly name = "surplus"
 }
 
 interface UnfinishedTarget {
@@ -370,11 +295,19 @@ function traverse(
         item,
       )
     }
-    if (itemRecipes.length > 1 || itemRecipes[0].products.length > 1 || cyclic.has(itemRecipes[0])) {
+    const onlyRecipe = itemRecipes[0]
+    if (onlyRecipe === undefined) {
+      throw new SolverFailure(
+        "missing-recipe",
+        `No enabled production recipe can make ${item.name ?? item.key ?? "unknown item"}.`,
+        item,
+      )
+    }
+    if (itemRecipes.length > 1 || onlyRecipe.products.length > 1 || cyclic.has(onlyRecipe)) {
       result.remainder(item, rate)
       return result
     }
-    recipe = itemRecipes[0]
+    recipe = onlyRecipe
   } else if (recipe.products.length > 1 || cyclic.has(recipe)) {
     result.remainder(item, rate)
     result.unfinishedTarget(item, rate, recipe)
@@ -478,19 +411,27 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
 
   for (let [row, recipe] of recipeArray.entries()) {
     for (let product of recipe.products) {
-      tableau.setIndex(row, itemColumns.get(product.item)!, effectiveProductAmount(spec, recipe, product))
+      tableau.setIndex(
+        row,
+        requireMapValue(itemColumns, product.item, "product item column"),
+        effectiveProductAmount(spec, recipe, product),
+      )
     }
     for (let ingredient of recipe.getIngredients()) {
-      tableau.addIndex(row, itemColumns.get(ingredient.item)!, zero.sub(ingredient.amount))
+      tableau.addIndex(
+        row,
+        requireMapValue(itemColumns, ingredient.item, "ingredient item column"),
+        zero.sub(ingredient.amount),
+      )
     }
     tableau.setIndex(row, taxColumn, minusOne)
     tableau.setIndex(row, taxColumn + row + 1, one)
   }
 
   for (let [index, target] of partialSolution.targets.entries()) {
-    let row = recipeRows.get(target.recipe)!
+    const row = requireMapValue(recipeRows, target.recipe, "target recipe row")
     let col = items.length + index
-    let itemCol = itemColumns.get(target.item)!
+    const itemCol = requireMapValue(itemColumns, target.item, "target item column")
     tableau.setIndex(row, col, tableau.index(row, itemCol))
     tableau.setIndex(rows - 1, col, zero.sub(target.rate))
   }
@@ -499,7 +440,7 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
   tableau.setIndex(rows - 1, columns - 2, one)
 
   for (let [item, rate] of partialSolution.remaining) {
-    tableau.setIndex(rows - 1, itemColumns.get(item)!, zero.sub(rate))
+    tableau.setIndex(rows - 1, requireMapValue(itemColumns, item, "remaining item column"), zero.sub(rate))
   }
 
   let minimum: Rational | null = null
@@ -551,7 +492,7 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
     }
   }
   for (let recipe of maxPriorityRecipes.values()) {
-    tableau.setIndex(recipeRows.get(recipe)!, columns - 1, priorityCost)
+    tableau.setIndex(requireMapValue(recipeRows, recipe, "priority recipe row"), columns - 1, priorityCost)
   }
 
   spec.lastTableau = tableau.copy()

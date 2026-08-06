@@ -1,6 +1,18 @@
-import { Formatter, half, one, Rational, zero } from "./math.js"
-import { ModuleSpec, type ConfigurationSource, type Fuel, type FuelCollection } from "./models.js"
-import type { PriorityList } from "./priorities.js"
+import { Formatter, half, Matrix, one, Rational, zero } from "./math.js"
+import {
+  Belt,
+  Building,
+  type ConfigurationSource,
+  type Fuel,
+  type FuelCollection,
+  type ItemGroups,
+  Miner,
+  Module,
+  ModuleSpec,
+  Planet,
+  type RecipeProductivityResearch,
+} from "./models.js"
+import { PriorityList, type PrioritizedRecipe } from "./priorities.js"
 import {
   applyPriorities,
   buildDefaultPriorityArray,
@@ -16,8 +28,17 @@ import {
   isItemDisabled as itemIsDisabled,
   isFactoryTarget as recipeIsFactoryTarget,
 } from "./recipes.js"
-import { solve } from "./solver.js"
-import { getQualityTargetMultiplier } from "./planning.js"
+import { DisabledRecipe, Item, Recipe } from "./recipes.js"
+import {
+  solve,
+  type SolverItem,
+  type SolverOutput,
+  type SolverRecipe,
+  type SolverSpec,
+  type SolverTarget,
+  type Totals,
+} from "./solver.js"
+import { getQualityTargetMultiplier, type QualityTargetFeasibility } from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Calculator defaults
@@ -30,6 +51,47 @@ export const DEFAULT_FUEL = "coal"
 export const DEFAULT_BUILDING_KEYS = new Set(["assembling-machine-1", "electric-furnace", "electric-mining-drill"])
 
 // -----------------------------------------------------------------------------
+// Factory application contracts
+// -----------------------------------------------------------------------------
+
+export type FactoryRecipe = Recipe | DisabledRecipe
+
+export interface FactoryBuildTarget {
+  index: number
+  itemKey: string
+  item: Item
+  recipe: Recipe | null
+  changedBuilding: boolean
+  buildings: Rational
+  rate: Rational
+  qualityLevel: number
+  readonly defaultRecipe: Recipe | null
+  getRate(): Rational
+  getBuildingCountInput(): string
+  setBuildings(value: string, recipe: Recipe | null): void
+  setRate(value: string): void
+  setQuality(level: number | string): void
+  displayRecipes(): void
+  rateChanged(): void
+  invalidateQualityUndo?(recipe: Recipe): void
+}
+
+export interface RecipeConfigurationSnapshot {
+  readonly hasBuildingOverride: boolean
+  readonly buildingOverride: Building | null
+  readonly buildingOverrideSource: ConfigurationSource
+  readonly revision: number
+  readonly moduleSpec: {
+    readonly object: ModuleSpec
+    readonly building: Building | null
+    readonly modules: readonly (Module | null)[]
+    readonly moduleSource: ConfigurationSource
+    readonly beaconModules: readonly (Module | null)[]
+    readonly beaconCount: Rational
+  } | null
+}
+
+// -----------------------------------------------------------------------------
 // Factory rendering port
 // -----------------------------------------------------------------------------
 
@@ -40,11 +102,11 @@ export const DEFAULT_BUILDING_KEYS = new Set(["assembling-machine-1", "electric-
  * renderers. Headless tests omit the port entirely.
  */
 export interface FactoryViewPort {
-  createBuildTarget(index: number, itemKey: string, item: unknown, itemGroups: unknown): any
-  mountBuildTarget(target: any): void
-  removeBuildTarget(target: any): void
-  renderSolution(specification: unknown, totals: unknown): void
-  renderCalculationError(specification: unknown, error: unknown): void
+  createBuildTarget(index: number, itemKey: string, item: Item, itemGroups: ItemGroups): FactoryBuildTarget
+  mountBuildTarget(target: FactoryBuildTarget): void
+  removeBuildTarget(target: FactoryBuildTarget): void
+  renderSolution(specification: FactorySpecification, totals: Totals): void
+  renderCalculationError(specification: FactorySpecification, error: unknown): void
   persistUrlState(): void
   renderDebug(): void
 }
@@ -53,101 +115,79 @@ export interface FactoryViewPort {
 // Building groups
 // -----------------------------------------------------------------------------
 
-export function getCategories(value) {
-  let categories = value.categories ?? value.category
-  if (categories === undefined || categories === null) {
-    return []
-  }
-  if (typeof categories === "string") {
-    return [categories]
-  }
-  return categories
+export interface CategoryOwner {
+  readonly categories?: Iterable<string> | string
+  readonly category?: string | null
 }
 
-export function buildingCanCraft(building, recipe) {
-  let buildingCategories = getCategories(building)
-  for (let category of getCategories(recipe)) {
-    if (typeof buildingCategories.has === "function") {
-      if (buildingCategories.has(category)) {
-        return true
-      }
-    } else if ([...buildingCategories].includes(category)) {
-      return true
-    }
-  }
-  return false
+export function getCategories(value: CategoryOwner): string[] {
+  const categories = value.categories ?? value.category
+  if (categories === undefined || categories === null) return []
+  return typeof categories === "string" ? [categories] : [...categories]
+}
+
+export function buildingCanCraft(building: Building, recipe: Recipe): boolean {
+  return getCategories(recipe).some((category) => building.categories.has(category))
 }
 
 class BuildingSet {
-  [key: string]: any
-  categories = new Set()
-  buildings = new Set()
+  readonly categories = new Set<string>()
+  readonly buildings = new Set<Building>()
 
-  constructor(building = null) {
+  constructor(building: Building | null = null) {
     if (building !== null) {
-      for (let category of building.categories) {
-        this.categories.add(category)
-      }
+      for (const category of building.categories) this.categories.add(category)
       this.buildings.add(building)
     }
   }
 
-  merge(other) {
-    for (let category of other.categories) {
-      this.categories.add(category)
-    }
-    for (let building of other.buildings) {
-      this.buildings.add(building)
-    }
+  merge(other: BuildingSet): void {
+    for (const category of other.categories) this.categories.add(category)
+    for (const building of other.buildings) this.buildings.add(building)
   }
 
-  overlaps(other) {
+  overlaps(other: BuildingSet): boolean {
     return [...this.categories].some((category) => other.categories.has(category))
   }
 }
 
-export function buildingSort(buildings) {
-  buildings.sort((a, b) => {
-    if (a.less(b)) {
-      return -1
-    }
-    if (b.less(a)) {
-      return 1
-    }
-    return 0
-  })
+export function buildingSort(buildings: Building[]): void {
+  buildings.sort((a, b) => (a.less(b) ? -1 : b.less(a) ? 1 : 0))
 }
 
-class BuildingGroup {
-  [key: string]: any
-  constructor(buildingSet) {
+export class BuildingGroup {
+  readonly buildings: Building[]
+  building: Building
+  selectedBuildings: Set<Building>
+
+  constructor(buildingSet: Iterable<Building>) {
     this.buildings = [...buildingSet]
     buildingSort(this.buildings)
-    this.building = this.getDefault()
-    this.selectedBuildings = new Set([this.building])
+    const defaultBuilding = this.getDefault()
+    if (defaultBuilding === null) throw new Error("Building group cannot be empty")
+    this.building = defaultBuilding
+    this.selectedBuildings = new Set([defaultBuilding])
   }
 
-  getDefault() {
-    return this.buildings.find((building) => DEFAULT_BUILDING_KEYS.has(building.key)) ?? this.buildings.at(-1)
+  getDefault(): Building | null {
+    return this.buildings.find((building) => DEFAULT_BUILDING_KEYS.has(building.key)) ?? this.buildings.at(-1) ?? null
   }
 
-  getBuilding(recipe, available: (building: any) => boolean = () => true) {
-    let fallback = null
-    let selected = null
-    for (let building of this.buildings) {
+  getBuilding(recipe: Recipe, available: (building: Building) => boolean = () => true): Building | null {
+    let fallback: Building | null = null
+    let selected: Building | null = null
+    for (const building of this.buildings) {
       if (buildingCanCraft(building, recipe) && available(building)) {
         fallback = building
-        if (this.selectedBuildings.has(building)) {
-          selected = building
-        }
+        if (this.selectedBuildings.has(building)) selected = building
       }
     }
     return selected ?? fallback
   }
 }
 
-function mergeBuildingSet(sets: Set<any>, buildingSet: any) {
-  for (let other of [...sets]) {
+function mergeBuildingSet(sets: Set<BuildingSet>, buildingSet: BuildingSet): void {
+  for (const other of [...sets]) {
     if (buildingSet.overlaps(other)) {
       buildingSet.merge(other)
       sets.delete(other)
@@ -156,34 +196,26 @@ function mergeBuildingSet(sets: Set<any>, buildingSet: any) {
   sets.add(buildingSet)
 }
 
-export function getBuildingGroups(buildings, recipes) {
-  let sets = new Set<any>()
-  for (let building of buildings) {
-    mergeBuildingSet(sets, new BuildingSet(building))
-  }
+export function getBuildingGroups(
+  buildings: readonly Building[],
+  recipes: Iterable<Recipe>,
+): Map<string, BuildingGroup> {
+  const sets = new Set<BuildingSet>()
+  for (const building of buildings) mergeBuildingSet(sets, new BuildingSet(building))
 
-  // Multi-category recipes link equivalent crafting-machine groups.
-  for (let recipe of recipes) {
-    let categories = [...getCategories(recipe)]
-    if (categories.length < 2) {
-      continue
-    }
-    let set = new BuildingSet()
-    for (let category of categories) {
-      set.categories.add(category)
-    }
+  for (const recipe of recipes) {
+    const categories = getCategories(recipe)
+    if (categories.length < 2) continue
+    const set = new BuildingSet()
+    for (const category of categories) set.categories.add(category)
     mergeBuildingSet(sets, set)
   }
 
-  let groups = new Map()
-  for (let { categories, buildings: groupBuildings } of sets) {
-    if (groupBuildings.size === 0) {
-      continue
-    }
-    let group = new BuildingGroup(groupBuildings)
-    for (let category of categories) {
-      groups.set(category, group)
-    }
+  const groups = new Map<string, BuildingGroup>()
+  for (const { categories, buildings: groupBuildings } of sets) {
+    if (groupBuildings.size === 0) continue
+    const group = new BuildingGroup(groupBuildings)
+    for (const category of categories) groups.set(category, group)
   }
   return groups
 }
@@ -192,16 +224,17 @@ export function getBuildingGroups(buildings, recipes) {
 // Location policy
 // -----------------------------------------------------------------------------
 
-export function syncLocationDisabledRecipes(specification) {
-  let selected = [...specification.selectedPlanets]
-  let unavailable =
-    selected.length === 0
-      ? new Set()
+export function syncLocationDisabledRecipes(specification: FactorySpecification): void {
+  const selected = [...specification.selectedPlanets]
+  const first = selected[0]
+  const unavailable =
+    first === undefined
+      ? new Set<Recipe>()
       : selected
           .slice(1)
           .reduce(
             (intersection, location) => new Set([...intersection].filter((recipe) => location.disable.has(recipe))),
-            new Set(selected[0].disable),
+            new Set(first.disable),
           )
 
   specification.planetaryBaseline = unavailable
@@ -217,46 +250,54 @@ export function syncLocationDisabledRecipes(specification) {
   }
 }
 
-export function isDefaultLocationSelection(specification): boolean {
+export function isDefaultLocationSelection(specification: FactorySpecification): boolean {
   if (!specification.planets || specification.planets.size === 1) {
     return true
   }
-  let selected = [...specification.selectedPlanets]
-  return selected.length === 1 && selected[0].key === DEFAULT_PLANET
+  const selected = [...specification.selectedPlanets]
+  return selected.length === 1 && selected[0]?.key === DEFAULT_PLANET
 }
 
-export function getUserRecipeOverrides(specification) {
+export function getUserRecipeOverrides(specification: FactorySpecification): {
+  disable: Set<Recipe>
+  enable: Set<Recipe>
+} {
   if (!specification.planetaryBaseline) {
-    return { disable: specification.disable, enable: new Set() }
+    return { disable: specification.disable, enable: new Set<Recipe>() }
   }
+  const baseline = specification.planetaryBaseline
   return {
-    disable: new Set([...specification.disable].filter((recipe) => !specification.planetaryBaseline.has(recipe))),
-    enable: new Set([...specification.planetaryBaseline].filter((recipe) => !specification.disable.has(recipe))),
+    disable: new Set([...specification.disable].filter((recipe) => !baseline.has(recipe))),
+    enable: new Set([...baseline].filter((recipe) => !specification.disable.has(recipe))),
   }
 }
 
-export function selectOnlyLocation(specification, location): void {
+export function selectOnlyLocation(specification: FactorySpecification, location: Planet): void {
   specification.selectedPlanets.clear()
   specification.selectedPlanets.add(location)
   syncLocationDisabledRecipes(specification)
 }
 
-export function selectLocation(specification, location): void {
+export function selectLocation(specification: FactorySpecification, location: Planet): void {
   specification.selectedPlanets.add(location)
   syncLocationDisabledRecipes(specification)
 }
 
-export function unselectLocation(specification, location): void {
+export function unselectLocation(specification: FactorySpecification, location: Planet): void {
   specification.selectedPlanets.delete(location)
   syncLocationDisabledRecipes(specification)
 }
 
-export function getRecipeLocations(specification, recipe, building = null) {
+export function getRecipeLocations(
+  specification: FactorySpecification,
+  recipe: Recipe,
+  building: Building | null = null,
+): Planet[] {
   if (!specification.selectedPlanets || specification.selectedPlanets.size === 0) {
     return []
   }
 
-  let result = []
+  const result: Planet[] = []
   for (let location of specification.selectedPlanets) {
     if (!location.allowsRecipe(recipe)) {
       continue
@@ -274,15 +315,15 @@ export function getRecipeLocations(specification, recipe, building = null) {
 // Recipe selection commands
 // -----------------------------------------------------------------------------
 
-export function getItemProductionRecipes(item) {
+export function getItemProductionRecipes(item: Item): Recipe[] {
   return item.recipes.filter((recipe) => !recipe.isDisable() && recipe.isReal() && recipe.isNetProducer(item))
 }
 
-export function setRecipeEnabled(spec, recipe, enabled) {
+export function setRecipeEnabled(specification: FactorySpecification, recipe: Recipe, enabled: boolean): void {
   if (enabled) {
-    spec.setEnable(recipe)
+    specification.setEnable(recipe)
   } else {
-    spec.setDisable(recipe)
+    specification.setDisable(recipe)
   }
 }
 
@@ -290,146 +331,100 @@ export function setRecipeEnabled(spec, recipe, enabled) {
 // Factory specification
 // -----------------------------------------------------------------------------
 
+function replaceMap<TKey, TValue>(target: Map<TKey, TValue>, source: ReadonlyMap<TKey, TValue>): void {
+  target.clear()
+  for (const [key, value] of source) target.set(key, value)
+}
+
 export class FactorySpecification {
   view: FactoryViewPort | null
-  items: Map<string, any> | null
-  recipes: Map<string, any> | null
-  modules: Map<string, any> | null
-  planets: Map<string, any> | null
-  buildings: Map<string, any> | null
-  buildingKeys: Map<string, any> | null
-  buildingOverrides: Map<any, any>
-  buildingOverrideSources: Map<any, ConfigurationSource>
-  recipeConfigurationRevisions: Map<any, number>
-  belts: Map<string, any> | null
-  fuels: FuelCollection | null
-  itemGroups: any
-  buildTargets: any[]
-  spec: Map<any, any>
-  defaultModule: any
-  secondaryDefaultModule: any
-  defaultBeacon: any[]
-  defaultBeaconCount: Rational
-  belt: any
-  fuel: Fuel | null
-  miningProd: Rational | null
-  recipeProductivityResearch: Map<string, any>
-  recipeProductivityLevels: Map<string, number>
-  recipeProductivityEffects: Map<any, { researchKey: string; change: Rational }[]>
-  minerSettings: Map<any, { miner: any; purity: any }>
-  ignore: Set<any>
-  disable: Set<any>
-  selectedPlanets: Set<any>
-  planetaryBaseline: Set<any> | null
-  priority: PriorityList | null
-  defaultPriority: Map<any, Rational>[] | null
-  beltStackSize: Rational
-  bufferMinutes: Rational
-  freshnessDelayMinutes: Rational
-  resourceYields: Map<any, Rational>
-  asteroidLimits: Map<string, Rational>
-  recipeLocations: Map<any, any>
-  beaconPower: Rational
-  maxQualityLevel: number
-  format: Formatter
-  lastTotals: any
-  lastError: unknown
-  lastPartial: any
-  lastTableau: any
-  lastMetadata: any
-  lastSolution: any
-  debug: boolean
+  readonly items = new Map<string, Item>()
+  readonly recipes = new Map<string, Recipe>()
+  readonly modules = new Map<string, Module>()
+  planets: Map<string, Planet> | null = null
+  readonly buildings = new Map<string, BuildingGroup>()
+  readonly buildingKeys = new Map<string, Building>()
+  readonly buildingOverrides = new Map<Recipe, Building>()
+  readonly buildingOverrideSources = new Map<Recipe, ConfigurationSource>()
+  readonly recipeConfigurationRevisions = new Map<Recipe, number>()
+  readonly belts = new Map<string, Belt>()
+  fuels: FuelCollection | null = null
+  itemGroups: ItemGroups = []
+  readonly buildTargets: FactoryBuildTarget[] = []
+  readonly spec = new Map<Recipe, ModuleSpec>()
+  defaultModule: Module | null = null
+  secondaryDefaultModule: Module | null = null
+  readonly defaultBeacon: (Module | null)[] = [null, null]
+  defaultBeaconCount = zero
+  belt: Belt | null = null
+  fuel: Fuel | null = null
+  miningProd = zero
+  recipeProductivityResearch = new Map<string, RecipeProductivityResearch>()
+  readonly recipeProductivityLevels = new Map<string, number>()
+  readonly recipeProductivityEffects = new Map<Recipe, { researchKey: string; change: Rational }[]>()
+  readonly minerSettings = new Map<Recipe, { miner: Miner; purity: Rational }>()
+  readonly ignore = new Set<Item>()
+  readonly disable = new Set<Recipe>()
+  readonly selectedPlanets = new Set<Planet>()
+  planetaryBaseline: Set<Recipe> | null = null
+  priority = new PriorityList()
+  defaultPriority: Map<PrioritizedRecipe, Rational>[] = []
+  beltStackSize = one
+  bufferMinutes = one
+  freshnessDelayMinutes = zero
+  readonly resourceYields = new Map<Recipe, Rational>()
+  readonly asteroidLimits = new Map<string, Rational>()
+  readonly recipeLocations = new Map<Recipe, Planet>()
+  beaconPower = zero
+  maxQualityLevel = 4
+  readonly format = new Formatter()
+  lastTotals: Totals | null = null
+  lastError: unknown = null
+  lastPartial: unknown = null
+  lastTableau: Matrix | null = null
+  lastMetadata: unknown = null
+  lastSolution: Matrix | null = null
+  debug = false
+  private readonly stateListeners = new Set<() => void>()
+  private stateRevision = 0
 
   constructor(view: FactoryViewPort | null = null) {
     this.view = view
-    // Game data definitions
-    this.items = null
-    this.recipes = null
-    this.modules = null
-    this.planets = null
-    this.buildings = null
-    this.buildingKeys = null
-    this.buildingOverrides = new Map()
-    this.buildingOverrideSources = new Map()
-    this.recipeConfigurationRevisions = new Map()
-    this.belts = null
-    this.fuels = null
-
-    this.itemGroups = null
-
-    this.buildTargets = []
-
-    // Maps recipe to ModuleSpec
-    this.spec = new Map()
-    this.defaultModule = null
-    this.secondaryDefaultModule = null
-    this.defaultBeacon = [null, null]
-    this.defaultBeaconCount = zero
-
-    this.belt = null
-
-    this.fuel = null
-
-    this.miningProd = null
-    this.recipeProductivityResearch = new Map()
-    this.recipeProductivityLevels = new Map()
-    this.recipeProductivityEffects = new Map()
-    this.minerSettings = new Map()
-
-    this.ignore = new Set()
-    this.disable = new Set()
-    this.selectedPlanets = new Set()
-    this.planetaryBaseline = null
-
-    this.priority = null
-    this.defaultPriority = null
-
-    this.beltStackSize = one
-    this.bufferMinutes = one
-    this.freshnessDelayMinutes = zero
-    this.resourceYields = new Map()
-    this.asteroidLimits = new Map()
-    this.recipeLocations = new Map()
-    this.beaconPower = zero
-    this.maxQualityLevel = 4
-
-    this.format = new Formatter()
-
-    this.lastTotals = null
-    this.lastError = null
-
-    this.lastPartial = null
-    this.lastTableau = null
-    this.lastMetadata = null
-    this.lastSolution = null
-
-    this.debug = false
+  }
+  get revision(): number {
+    return this.stateRevision
+  }
+  subscribe(listener: () => void): () => void {
+    this.stateListeners.add(listener)
+    return () => this.stateListeners.delete(listener)
+  }
+  notifyStateChanged(): void {
+    this.stateRevision++
+    for (const listener of this.stateListeners) listener()
   }
   setData(
-    items,
-    recipes,
-    planets,
-    modules,
-    buildings,
-    belts,
-    fuels,
-    itemGroups,
-    recipeProductivityResearch = new Map(),
-    beaconPower = zero,
-  ) {
-    this.items = items
-    this.recipes = recipes
+    items: ReadonlyMap<string, Item>,
+    recipes: ReadonlyMap<string, Recipe>,
+    planets: Map<string, Planet> | null,
+    modules: ReadonlyMap<string, Module>,
+    buildings: readonly Building[],
+    belts: ReadonlyMap<string, Belt>,
+    fuels: FuelCollection,
+    itemGroups: ItemGroups,
+    recipeProductivityResearch: Map<string, RecipeProductivityResearch> = new Map(),
+    beaconPower: Rational = zero,
+  ): void {
+    replaceMap(this.items, items)
+    replaceMap(this.recipes, recipes)
     this.planets = planets
-    this.modules = modules
-    this.buildings = getBuildingGroups(buildings, recipes.values())
-    this.buildingKeys = new Map()
-    for (let building of buildings) {
-      this.buildingKeys.set(building.key, building)
-    }
-    this.belts = belts
-    this.belt = belts.get(DEFAULT_BELT)
+    replaceMap(this.modules, modules)
+    replaceMap(this.buildings, getBuildingGroups(buildings, recipes.values()))
+    this.buildingKeys.clear()
+    for (const building of buildings) this.buildingKeys.set(building.key, building)
+    replaceMap(this.belts, belts)
+    this.belt = this.belts.get(DEFAULT_BELT) ?? null
     this.fuels = fuels
-    this.fuel = fuels.get(DEFAULT_FUEL)
+    this.fuel = fuels.get(DEFAULT_FUEL) ?? null
     this.miningProd = zero
     this.recipeProductivityResearch = recipeProductivityResearch
     this.recipeProductivityLevels.clear()
@@ -447,63 +442,64 @@ export class FactorySpecification {
     this.itemGroups = itemGroups
     this.beaconPower = beaconPower
     this.defaultPriority = this.getDefaultPriorityArray()
-    this.priority = null
+    this.priority = new PriorityList()
+    this.notifyStateChanged()
   }
-  setDefaultDisable() {
+  setDefaultDisable(): void {
     this.disable.clear()
   }
-  setDisable(recipe) {
+  setDisable(recipe: Recipe): void {
     disableRecipe(this, recipe)
   }
-  setEnable(recipe) {
+  setEnable(recipe: Recipe): void {
     enableRecipe(this, recipe)
   }
-  isDefaultPlanet() {
+  isDefaultPlanet(): boolean {
     return isDefaultLocationSelection(this)
   }
-  getNetDisable() {
+  getNetDisable(): { disable: Set<Recipe>; enable: Set<Recipe> } {
     return getUserRecipeOverrides(this)
   }
-  selectOnePlanet(planet) {
+  selectOnePlanet(planet: Planet): void {
     selectOnlyLocation(this, planet)
   }
-  selectPlanet(planet) {
+  selectPlanet(planet: Planet): void {
     selectLocation(this, planet)
   }
-  unselectPlanet(planet) {
+  unselectPlanet(planet: Planet): void {
     unselectLocation(this, planet)
   }
-  getDefaultPriorityArray() {
+  getDefaultPriorityArray(): Map<PrioritizedRecipe, Rational>[] {
     return buildDefaultPriorityArray(this)
   }
-  setDefaultPriority() {
+  setDefaultPriority(): void {
     restoreDefaultPriorities(this)
   }
-  isValidPriorityKey(key) {
+  isValidPriorityKey(key: string): boolean {
     return validatePriorityKey(this, key)
   }
-  setPriorities(tiers) {
+  setPriorities(tiers: readonly (readonly (readonly [string, Rational])[])[]): void {
     applyPriorities(this, tiers)
   }
-  isDefaultPriority() {
+  isDefaultPriority(): boolean {
     return this.priority.equalArray(this.defaultPriority)
   }
-  getUses(item) {
+  getUses(item: Item): Recipe[] {
     return getEnabledUses(this, item)
   }
-  isItemDisabled(item) {
+  isItemDisabled(item: Item): boolean {
     return itemIsDisabled(this, item)
   }
-  getRecipes(item) {
+  getRecipes(item: Item): FactoryRecipe[] {
     return getEnabledRecipes(this, item)
   }
-  getRecipeGraph(items) {
+  getRecipeGraph(items: ReadonlyMap<Item, Rational>): Set<FactoryRecipe> {
     return buildRecipeGraph(this, items)
   }
-  isFactoryTarget(recipe) {
+  isFactoryTarget(recipe: Recipe): boolean {
     return recipeIsFactoryTarget(this, recipe)
   }
-  isBuildingAvailable(building, recipe) {
+  isBuildingAvailable(building: Building, recipe: Recipe): boolean {
     if (!this.selectedPlanets || this.selectedPlanets.size === 0) {
       return true
     }
@@ -514,7 +510,7 @@ export class FactorySpecification {
     }
     return false
   }
-  getCompatibleBuildings(recipe, availableOnly = true) {
+  getCompatibleBuildings(recipe: Recipe, availableOnly = true): Building[] {
     for (let category of getCategories(recipe)) {
       let group = this.buildings.get(category)
       if (group !== undefined) {
@@ -526,7 +522,7 @@ export class FactorySpecification {
     }
     return []
   }
-  getAutomaticBuilding(recipe) {
+  getAutomaticBuilding(recipe: Recipe): Building | null {
     for (let category of getCategories(recipe)) {
       let group = this.buildings.get(category)
       if (group !== undefined) {
@@ -535,17 +531,17 @@ export class FactorySpecification {
     }
     return null
   }
-  getBuildingOverride(recipe) {
+  getBuildingOverride(recipe: Recipe): Building | null {
     return this.buildingOverrides.get(recipe) ?? null
   }
-  getBuildingOverrideSource(recipe): ConfigurationSource {
+  getBuildingOverrideSource(recipe: Recipe): ConfigurationSource {
     if (!this.buildingOverrides.has(recipe)) return "default"
     return this.buildingOverrideSources.get(recipe) ?? "user"
   }
-  getBuilding(recipe) {
+  getBuilding(recipe: Recipe): Building | null {
     return this.getBuildingOverride(recipe) ?? this.getAutomaticBuilding(recipe)
   }
-  setBuildingOverride(recipe, building, source: ConfigurationSource = "user") {
+  setBuildingOverride(recipe: Recipe, building: Building | null, source: ConfigurationSource = "user"): boolean {
     if (building !== null && (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))) {
       return false
     }
@@ -567,10 +563,10 @@ export class FactorySpecification {
     else this.recordRecipeConfigurationChange(recipe)
     return true
   }
-  recordRecipeConfigurationChange(recipe) {
+  recordRecipeConfigurationChange(recipe: Recipe): void {
     this.recipeConfigurationRevisions.set(recipe, (this.recipeConfigurationRevisions.get(recipe) ?? 0) + 1)
   }
-  notifyRecipeConfigurationChanged(recipe) {
+  notifyRecipeConfigurationChanged(recipe: Recipe): void {
     this.recordRecipeConfigurationChange(recipe)
     for (const target of this.buildTargets) {
       if (target.recipe === recipe) {
@@ -578,7 +574,7 @@ export class FactorySpecification {
       }
     }
   }
-  captureRecipeConfiguration(recipe) {
+  captureRecipeConfiguration(recipe: Recipe): RecipeConfigurationSnapshot {
     const moduleSpec = this.spec.get(recipe)
     return {
       hasBuildingOverride: this.buildingOverrides.has(recipe),
@@ -598,8 +594,9 @@ export class FactorySpecification {
             },
     }
   }
-  restoreRecipeConfiguration(recipe, snapshot) {
+  restoreRecipeConfiguration(recipe: Recipe, snapshot: RecipeConfigurationSnapshot): void {
     if (snapshot.hasBuildingOverride) {
+      if (snapshot.buildingOverride === null) throw new Error("Invalid building override snapshot")
       this.buildingOverrides.set(recipe, snapshot.buildingOverride)
       this.buildingOverrideSources.set(recipe, snapshot.buildingOverrideSource)
     } else {
@@ -614,15 +611,16 @@ export class FactorySpecification {
 
     const moduleSpec = snapshot.moduleSpec.object
     moduleSpec.building = snapshot.moduleSpec.building
-    moduleSpec.modules = [...snapshot.moduleSpec.modules]
+    moduleSpec.modules.splice(0, moduleSpec.modules.length, ...snapshot.moduleSpec.modules)
     moduleSpec.moduleSource = snapshot.moduleSpec.moduleSource
-    moduleSpec.beaconModules = [...snapshot.moduleSpec.beaconModules]
+    moduleSpec.beaconModules.splice(0, moduleSpec.beaconModules.length, ...snapshot.moduleSpec.beaconModules)
     moduleSpec.beaconCount = snapshot.moduleSpec.beaconCount
     this.spec.set(recipe, moduleSpec)
   }
-  getRecipeConfigurationFingerprint(recipe): string {
+  getRecipeConfigurationFingerprint(recipe: Recipe): string {
     const moduleSpec = this.spec.get(recipe)
-    const moduleKey = (module) => (module === null || module === undefined ? null : module.key)
+    const moduleKey = (module: Module | Building | null | undefined): string | null =>
+      module === null || module === undefined ? null : module.key
     return JSON.stringify({
       buildingOverride: this.buildingOverrides.has(recipe) ? (this.buildingOverrides.get(recipe)?.key ?? null) : null,
       buildingOverrideSource: this.getBuildingOverrideSource(recipe),
@@ -633,15 +631,15 @@ export class FactorySpecification {
       beaconCount: moduleSpec?.beaconCount?.toString() ?? null,
     })
   }
-  getRecipeConfigurationRevision(recipe): number {
+  getRecipeConfigurationRevision(recipe: Recipe): number {
     return this.recipeConfigurationRevisions.get(recipe) ?? 0
   }
-  applyQualityTargetConfiguration(recipe, recommendation) {
+  applyQualityTargetConfiguration(recipe: Recipe, recommendation: QualityTargetFeasibility): boolean {
     if (recommendation?.status !== "auto-configurable") return false
     const { building, module, slotCount } = recommendation
     if (!this.setBuildingOverride(recipe, building, "automatic-quality")) return false
     const moduleSpec = this.getModuleSpec(recipe)
-    if (moduleSpec === undefined || moduleSpec.building !== building || !module.canUse(recipe, building)) return false
+    if (moduleSpec === null || moduleSpec.building !== building || !module.canUse(recipe, building)) return false
     for (let index = 0; index < slotCount; index++) {
       if (!moduleSpec.setModule(index, module, "automatic-quality")) {
         // setModule returns false when an effect-neutral module is selected;
@@ -652,18 +650,20 @@ export class FactorySpecification {
     moduleSpec.moduleSource = "automatic-quality"
     return true
   }
-  getBuildingGroup(building) {
-    const category = String(Array.from(building.categories)[0])
-    return this.buildings.get(category)
+  getBuildingGroup(building: Building): BuildingGroup {
+    const category = building.categories.values().next().value
+    const group = category === undefined ? undefined : this.buildings.get(category)
+    if (group === undefined) throw new Error(`No building group found for ${building.key}`)
+    return group
   }
-  setMinimumBuilding(building) {
+  setMinimumBuilding(building: Building): void {
     let group = this.getBuildingGroup(building)
     group.building = building
     group.selectedBuildings = new Set([building])
     this.updateBuildingGroup(group)
   }
-  setAutomaticBuildingPreferences(buildings) {
-    let selections = new Map<any, any[]>()
+  setAutomaticBuildingPreferences(buildings: readonly Building[]): void {
+    const selections = new Map<BuildingGroup, Building[]>()
     for (let building of buildings) {
       let group = this.getBuildingGroup(building)
       let selected = selections.get(group)
@@ -674,20 +674,23 @@ export class FactorySpecification {
       selected.push(building)
     }
 
-    for (let group of new Set<any>(this.buildings.values())) {
-      let selected = selections.get(group) ?? [group.getDefault()]
-      this.setMinimumBuilding(selected[0])
+    for (const group of new Set<BuildingGroup>(this.buildings.values())) {
+      const fallback = group.getDefault()
+      const selected = selections.get(group) ?? (fallback === null ? [] : [fallback])
+      const minimum = selected[0]
+      if (minimum === undefined) continue
+      this.setMinimumBuilding(minimum)
       for (let building of selected.slice(1)) {
         this.setAutomaticBuildingEnabled(building, true)
       }
     }
   }
-  clearBuildingOverrides() {
+  clearBuildingOverrides(): void {
     for (let recipe of [...this.buildingOverrides.keys()]) {
       this.setBuildingOverride(recipe, null)
     }
   }
-  setAutomaticBuildingEnabled(building, enabled) {
+  setAutomaticBuildingEnabled(building: Building, enabled: boolean): boolean {
     let group = this.getBuildingGroup(building)
     if (enabled) {
       group.selectedBuildings.add(building)
@@ -699,10 +702,10 @@ export class FactorySpecification {
     this.updateBuildingGroup(group)
     return true
   }
-  isAutomaticBuildingEnabled(building) {
+  isAutomaticBuildingEnabled(building: Building): boolean {
     return this.getBuildingGroup(building).selectedBuildings.has(building)
   }
-  updateBuildingGroup(group) {
+  updateBuildingGroup(group: BuildingGroup): void {
     for (let [recipe, moduleSpec] of this.spec) {
       let g = null
       for (let category of getCategories(recipe)) {
@@ -719,21 +722,23 @@ export class FactorySpecification {
       }
     }
   }
-  initModuleSpec(recipe, building) {
+  initModuleSpec(recipe: Recipe, building: Building | null): ModuleSpec | null {
     if (!this.spec.has(recipe) && building !== null && building.canBeacon()) {
-      let m = new ModuleSpec(recipe, this)
-      m.setBuilding(building, this)
-      this.spec.set(recipe, m)
-      return m
+      const moduleSpec = new ModuleSpec(recipe, this)
+      moduleSpec.setBuilding(building, this)
+      this.spec.set(recipe, moduleSpec)
+      return moduleSpec
     }
+    return null
   }
-  populateModuleSpec(totals) {
-    for (let [recipe, rate] of totals.rates) {
-      let building = this.getBuilding(recipe)
+  populateModuleSpec(totals: Totals): void {
+    for (const recipe of totals.rates.keys()) {
+      if (!(recipe instanceof Recipe)) continue
+      const building = this.getBuilding(recipe)
       this.initModuleSpec(recipe, building)
     }
   }
-  getModuleSpec(recipe) {
+  getModuleSpec(recipe: Recipe): ModuleSpec | null {
     let building = this.getBuilding(recipe)
     let m = this.spec.get(recipe)
     if (m === undefined) {
@@ -744,9 +749,9 @@ export class FactorySpecification {
     }
     return m
   }
-  getProdEffect(recipe) {
+  getProdEffect(recipe: Recipe): Rational {
     let m = this.getModuleSpec(recipe)
-    let effect = m === undefined ? one : m.prodEffect(this)
+    const effect = m === null ? one : m.prodEffect(this)
     let bonus = effect.sub(one).add(this.getRecipeProductivityBonus(recipe))
     if (recipe.maximumProductivity != null) {
       bonus = Rational.min(bonus, recipe.maximumProductivity)
@@ -768,7 +773,7 @@ export class FactorySpecification {
     }
     return true
   }
-  getRecipeProductivityBonus(recipe): Rational {
+  getRecipeProductivityBonus(recipe: Recipe): Rational {
     let bonus = zero
     for (let effect of this.recipeProductivityEffects.get(recipe) ?? []) {
       let level = this.getRecipeProductivityLevel(effect.researchKey)
@@ -776,7 +781,7 @@ export class FactorySpecification {
     }
     return bonus
   }
-  setDefaultModule(module) {
+  setDefaultModule(module: Module | null): void {
     for (let [recipe, moduleSpec] of this.spec) {
       if (moduleSpec.moduleSource !== "default") continue
       let changed = false
@@ -802,7 +807,7 @@ export class FactorySpecification {
     }
     this.defaultModule = module
   }
-  setSecondaryDefaultModule(module) {
+  setSecondaryDefaultModule(module: Module | null): void {
     if (this.secondaryDefaultModule !== this.defaultModule) {
       for (let [recipe, moduleSpec] of this.spec) {
         if (moduleSpec.moduleSource !== "default") continue
@@ -821,7 +826,7 @@ export class FactorySpecification {
   }
   // Gets the default module for this recipe, given the current
   // default/secondary settings.
-  getDefaultModule(recipe, building = this.getBuilding(recipe)) {
+  getDefaultModule(recipe: Recipe, building: Building | null = this.getBuilding(recipe)): Module | null {
     if (this.defaultModule === null || this.defaultModule.canUse(recipe, building)) {
       return this.defaultModule
     }
@@ -830,10 +835,10 @@ export class FactorySpecification {
     }
     return null
   }
-  isDefaultDefaultBeacon() {
+  isDefaultDefaultBeacon(): boolean {
     return this.defaultBeacon[0] === null && this.defaultBeacon[1] === null
   }
-  setDefaultBeacon(module, i) {
+  setDefaultBeacon(module: Module | null, i: number): void {
     let compatibleModule = module === null || module.canBeacon() ? module : null
     for (let moduleSpec of this.spec.values()) {
       let currentModule = moduleSpec.beaconModules[i]
@@ -846,7 +851,7 @@ export class FactorySpecification {
     }
     this.defaultBeacon[i] = compatibleModule
   }
-  setDefaultBeaconCount(count) {
+  setDefaultBeaconCount(count: Rational): void {
     for (let [recipe, moduleSpec] of this.spec) {
       if (moduleSpec.beaconCount.equal(this.defaultBeaconCount)) {
         moduleSpec.beaconCount = count
@@ -856,37 +861,38 @@ export class FactorySpecification {
   }
   // Returns the recipe-rate at which a single building can produce a recipe.
   // Returns null for recipes that do not have a building.
-  getRecipeRate(recipe) {
+  getRecipeRate(recipe: Recipe): Rational | null {
     let building = this.getBuilding(recipe)
     if (building === null) {
       return null
     }
     return building.getRecipeRate(this, recipe)
   }
-  setMiner(recipe, miner, purity) {
+  setMiner(recipe: Recipe, miner: Miner, purity: Rational): void {
     this.minerSettings.set(recipe, { miner, purity })
   }
-  getCount(recipe, rate) {
+  getCount(recipe: Recipe, rate: Rational): Rational {
     let building = this.getBuilding(recipe)
     if (building === null) {
       return zero
     }
     return building.getCount(this, recipe, rate)
   }
-  getResourceYield(recipe) {
+  getResourceYield(recipe: Recipe): Rational {
     return this.resourceYields.get(recipe) ?? one
   }
-  setResourceYield(recipe, value) {
+  setResourceYield(recipe: Recipe, value: Rational): void {
     this.resourceYields.set(recipe, Rational.max(Rational.from_floats(1, 100), value))
   }
-  setRecipeLocation(recipe, location) {
+  setRecipeLocation(recipe: Recipe, location: Planet | null): void {
     if (location === null) this.recipeLocations.delete(recipe)
     else this.recipeLocations.set(recipe, location)
   }
-  getBeltCount(rate) {
+  getBeltCount(rate: Rational): Rational {
+    if (this.belt === null) throw new Error("No transport belt is selected")
     return rate.div(this.belt.rate.mul(this.beltStackSize))
   }
-  getFuelForBuilding(building) {
+  getFuelForBuilding(building: Building | null): Fuel | null {
     if (building === null || building.fuel === null || this.fuels === null) {
       return null
     }
@@ -896,10 +902,10 @@ export class FactorySpecification {
     }
     return fuel
   }
-  getFuelForRecipe(recipe) {
+  getFuelForRecipe(recipe: Recipe): Fuel | null {
     return this.getFuelForBuilding(this.getBuilding(recipe))
   }
-  getPowerUsage(recipe, rate) {
+  getPowerUsage(recipe: Recipe, rate: Rational): { fuel: string | null; power: Rational } {
     let building = this.getBuilding(recipe)
     if (building === null) {
       return { fuel: null, power: zero }
@@ -919,8 +925,9 @@ export class FactorySpecification {
     power = power.add(building.drain().mul(count.ceil()))
     return { fuel: "electric", power: power }
   }
-  addTarget(itemKey = DEFAULT_ITEM_KEY) {
-    let item = this.items.get(itemKey)
+  addTarget(itemKey = DEFAULT_ITEM_KEY): FactoryBuildTarget {
+    const item = this.items.get(itemKey)
+    if (item === undefined) throw new Error(`Unknown target item: ${itemKey}`)
     if (this.view === null) {
       throw new Error("Build targets require a configured FactoryViewPort")
     }
@@ -929,14 +936,15 @@ export class FactorySpecification {
     this.view.mountBuildTarget(target)
     return target
   }
-  removeTarget(target) {
+  removeTarget(target: FactoryBuildTarget): void {
     this.buildTargets.splice(target.index, 1)
     for (let i = target.index; i < this.buildTargets.length; i++) {
-      this.buildTargets[i].index--
+      const current = this.buildTargets[i]
+      if (current !== undefined) current.index--
     }
     this.view?.removeBuildTarget(target)
   }
-  toggleIgnore(item) {
+  toggleIgnore(item: Item): void {
     let updateTargets = false
     if (this.ignore.has(item)) {
       this.ignore.delete(item)
@@ -948,17 +956,15 @@ export class FactorySpecification {
       this.ignore.add(item)
       if (!this.isItemDisabled(item)) {
         let level = this.priority.getFirstLevel()
-        let makeNew = true
-        for (let r of level) {
+        let makeNew = level === null
+        for (const r of level ?? []) {
           if (r.recipe.isDisable()) {
             makeNew = false
             break
           }
         }
-        if (makeNew) {
-          level = this.priority.addPriorityBefore(level)
-        }
-        let hundred = Rational.from_float(100)
+        if (makeNew || level === null) level = this.priority.addPriorityBefore(level)
+        const hundred = Rational.from_float(100)
         this.priority.addRecipe(item.disableRecipe, hundred, level)
         updateTargets = true
       }
@@ -973,58 +979,106 @@ export class FactorySpecification {
       }
     }
   }
-  solve() {
-    let outputs = []
-    for (let target of this.buildTargets) {
-      let item = target.item
+  private createSolverSpec(): SolverSpec {
+    const owner = this
+    const targets: SolverTarget[] = this.buildTargets.map((target) => ({
+      item: target.item,
+      recipe: target.recipe,
+      changedBuilding: target.changedBuilding,
+    }))
+    return {
+      ignore: new Set<SolverItem>(this.ignore),
+      buildTargets: targets,
+      priority: this.priority,
+      get lastPartial() {
+        return owner.lastPartial
+      },
+      set lastPartial(value: unknown) {
+        owner.lastPartial = value
+      },
+      get lastTableau() {
+        return owner.lastTableau
+      },
+      set lastTableau(value: Matrix | null) {
+        owner.lastTableau = value
+      },
+      get lastMetadata() {
+        return owner.lastMetadata
+      },
+      set lastMetadata(value: unknown) {
+        owner.lastMetadata = value
+      },
+      get lastSolution() {
+        return owner.lastSolution
+      },
+      set lastSolution(value: Matrix | null) {
+        owner.lastSolution = value
+      },
+      getRecipes(item: SolverItem): SolverRecipe[] {
+        if (!(item instanceof Item)) throw new Error("Solver received an unknown item model")
+        return [...owner.getRecipes(item)]
+      },
+      getRecipeGraph(items: Map<SolverItem, Rational>): Set<SolverRecipe> {
+        const domainItems = new Map<Item, Rational>()
+        for (const [item, rate] of items) {
+          if (!(item instanceof Item)) throw new Error("Solver graph contains an unknown item model")
+          domainItems.set(item, rate)
+        }
+        return new Set<SolverRecipe>(owner.getRecipeGraph(domainItems))
+      },
+      getProdEffect(recipe: SolverRecipe): Rational {
+        return recipe instanceof Recipe ? owner.getProdEffect(recipe) : one
+      },
+      getBuilding(recipe: SolverRecipe) {
+        return recipe instanceof Recipe ? owner.getBuilding(recipe) : null
+      },
+      getFuelForRecipe(recipe: SolverRecipe) {
+        return recipe instanceof Recipe ? owner.getFuelForRecipe(recipe) : null
+      },
+    }
+  }
+
+  solve(): Totals {
+    const outputs: SolverOutput[] = []
+    for (const target of this.buildTargets) {
+      const item = target.item
       let rate = target.getRate()
-      let recipe
-      if (target.changedBuilding) {
-        recipe = target.recipe
-      } else {
-        recipe = null
-      }
+      let recipe: Recipe | null = target.changedBuilding ? target.recipe : null
       if (target.qualityLevel > 0) {
-        let qualityRecipe = target.recipe ?? this.getRecipes(item)[0]
-        if (qualityRecipe === undefined) {
+        const qualityRecipe =
+          target.recipe ?? this.getRecipes(item).find((candidate) => candidate instanceof Recipe) ?? null
+        if (qualityRecipe === null) {
           throw new Error(`No recipe is available to produce ${item.name} at the selected quality.`)
         }
         rate = rate.mul(getQualityTargetMultiplier(this, qualityRecipe, target.qualityLevel))
         recipe = qualityRecipe
       }
-      outputs.push([item, rate, recipe])
+      outputs.push({ item, rate, recipe })
     }
-    // JS isn't good at using tuples as Map keys/Set items, so just do this
-    // quadratically. It's fine.
-    let dedupedOutputs = []
-    outer: for (let [origItem, origRate, origRecipe] of outputs) {
-      for (let i = 0; i < dedupedOutputs.length; i++) {
-        let { item, rate, recipe } = dedupedOutputs[i]
-        if (recipe === origRecipe && item === origItem) {
-          rate = rate.add(origRate)
-          dedupedOutputs[i] = { item, rate, recipe }
+
+    const dedupedOutputs: SolverOutput[] = []
+    outer: for (const output of outputs) {
+      for (let index = 0; index < dedupedOutputs.length; index++) {
+        const existing = dedupedOutputs[index]
+        if (existing !== undefined && existing.recipe === output.recipe && existing.item === output.item) {
+          dedupedOutputs[index] = { ...existing, rate: existing.rate.add(output.rate) }
           continue outer
         }
       }
-      dedupedOutputs.push({
-        item: origItem,
-        rate: origRate,
-        recipe: origRecipe,
-      })
+      dedupedOutputs.push(output)
     }
-    let totals = solve(this as any, dedupedOutputs)
-    return totals
+    return solve(this.createSolverSpec(), dedupedOutputs)
   }
-  persistUrlState() {
+  persistUrlState(): void {
     this.view?.persistUrlState()
   }
   // Backward-compatible name used by existing event handlers.
-  setHash() {
+  setHash(): void {
     this.persistUrlState()
   }
   // The top-level calculation function. Called whenever the solution
   // requires recalculation.
-  updateSolution() {
+  updateSolution(): void {
     try {
       this.lastTotals = this.solve()
       this.lastError = null
@@ -1038,6 +1092,7 @@ export class FactorySpecification {
       if (this.debug) {
         this.view?.renderDebug()
       }
+      this.notifyStateChanged()
     }
   }
   // Re-renders the current solution, without re-computing it.
@@ -1047,7 +1102,7 @@ export class FactorySpecification {
   // it requires a new solution. If it only alters building counts (e.g.
   // from changing the speed of a building), then we need merely re-display
   // the existing solution.
-  display() {
+  display(): void {
     // Update build target text boxes, if needed.
     for (let target of this.buildTargets) {
       target.getRate()
@@ -1064,6 +1119,7 @@ export class FactorySpecification {
     if (this.debug) {
       this.view?.renderDebug()
     }
+    this.notifyStateChanged()
   }
 }
 

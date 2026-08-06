@@ -32,17 +32,27 @@ globalThis.document = {
   querySelectorAll: () => inputs,
 }
 
-const { changeFactoryDensity, initializeFactoryDensity } = await import(pathToFileURL(resolve(build, "state.js")).href)
+const { changeFactoryDensity, initializeFactoryDensity, setFactoryDensity } = await import(
+  pathToFileURL(resolve(build, "state.js")).href
+)
 
-test("Factory table density restores and persists the local display preference", () => {
+test("Factory table density restores and persists through the typed value API", () => {
   initializeFactoryDensity()
   assert.equal(document.documentElement.dataset.factoryDensity, "compact")
   assert.equal(inputs[0].checked, false)
   assert.equal(inputs[1].checked, true)
 
-  changeFactoryDensity({ target: inputs[0] })
+  setFactoryDensity("comfortable")
   assert.equal(document.documentElement.dataset.factoryDensity, "comfortable")
   assert.equal(storage.get("factorio-calculator-factory-density"), "comfortable")
   assert.equal(inputs[0].checked, true)
   assert.equal(inputs[1].checked, false)
+})
+
+test("Legacy density event adapter delegates only valid input values", () => {
+  changeFactoryDensity({ target: inputs[1] })
+  assert.equal(document.documentElement.dataset.factoryDensity, "compact")
+
+  changeFactoryDensity({ target: new FakeInput("unsupported") })
+  assert.equal(document.documentElement.dataset.factoryDensity, "compact")
 })

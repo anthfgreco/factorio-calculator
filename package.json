@@ -5,21 +5,28 @@
   "type": "module",
   "scripts": {
     "dev": "vite --open /calc.html",
+    "doctor": "node scripts/doctor.mjs",
     "bench": "node scripts/bench-solver.mjs",
-    "build": "pnpm check && pnpm build:site && pnpm validate:build",
+    "bench:check": "node scripts/bench-solver.mjs --check",
+    "build": "pnpm verify",
     "build:site": "vite build",
-    "check": "pnpm check:architecture && pnpm typecheck:core && pnpm typecheck && pnpm test && pnpm validate:runtime",
+    "check": "pnpm check:quick && pnpm test:core && pnpm test:ui && pnpm validate:runtime",
     "check:architecture": "node scripts/check-architecture.mjs",
+    "check:type-debt": "node scripts/check-type-debt.mjs",
+    "check:quick": "pnpm check:architecture && pnpm check:type-debt && pnpm typecheck",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "preview": "vite preview --open /calc.html",
     "test": "node scripts/run-tests.mjs",
+    "test:core": "node scripts/run-tests.mjs core",
+    "test:ui": "node scripts/run-tests.mjs ui",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:core": "tsc -p tsconfig.core.json --noEmit",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "validate:runtime": "node scripts/validate-runtime.mjs",
-    "validate:build": "node scripts/validate-build.mjs",
-    "verify": "pnpm build",
+    "validate:build": "node scripts/validate-build.mjs && node scripts/check-build-budgets.mjs",
+    "verify": "pnpm doctor && pnpm check:quick && pnpm test:core && pnpm test:ui && pnpm bench:check && pnpm build:site && pnpm validate:runtime && pnpm validate:build",
     "zip": "zx ./zip.ts"
   },
   "dependencies": {
@@ -42,7 +49,7 @@
     "zx": "^8.8.5"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": "24.x"
   },
   "packageManager": "pnpm@11.15.1"
 }

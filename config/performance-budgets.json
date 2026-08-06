@@ -1,0 +1,12 @@
+{
+  "solverScenarios": {
+    "501": {
+      "maximumMedianMilliseconds": 750,
+      "minimumRecipesPerSecond": 650
+    },
+    "1001": {
+      "maximumMedianMilliseconds": 1500,
+      "minimumRecipesPerSecond": 650
+    }
+  }
+}

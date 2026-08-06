@@ -317,7 +317,7 @@ export class Matrix {
     for (let row = 0; row < this.rows; row++) {
       let line: string[] = []
       for (let col = 0; col < this.cols; col++) {
-        line.push(this.index(row, col).toDecimal(3).padStart(widths[col]))
+        line.push(this.index(row, col).toDecimal(3).padStart(widths[col]!))
       }
       lines.push(line.join(" "))
     }
@@ -329,7 +329,11 @@ export class Matrix {
   }
 
   index(row: number, col: number): Rational {
-    return this.mat[row * this.cols + col]
+    const value = this.mat[row * this.cols + col]
+    if (value === undefined) {
+      throw new RangeError(`Matrix index out of bounds: row ${row}, column ${col}`)
+    }
+    return value
   }
 
   setIndex(row: number, col: number, value: Rational): void {
@@ -365,7 +369,7 @@ export class Matrix {
       for (let col = 0; col < this.cols; col++) {
         mat.push(this.index(row, col))
       }
-      mat.push(column[row])
+      mat.push(column[row]!)
     }
     return new Matrix(this.rows, this.cols + 1, mat)
   }
@@ -388,7 +392,7 @@ export class Matrix {
       throw new Error(`Expected ${this.rows} column values, received ${column.length}`)
     }
     for (let row = 0; row < this.rows; row++) {
-      this.setIndex(row, col, column[row])
+      this.setIndex(row, col, column[row]!)
     }
   }
 
@@ -450,7 +454,7 @@ export class Matrix {
       pivotRow++
     }
     for (let row = 0; row < pivots.length; row++) {
-      let col = pivots[row]
+      let col = pivots[row]!
       let pivotValue = this.index(row, col)
       this.setIndex(row, col, one)
       for (let nextCol = col + 1; nextCol < this.cols; nextCol++) {
@@ -606,5 +610,5 @@ export function powerRepresentation(value: Rational): { power: Rational; suffix:
     power = power.div(thousand)
     suffixIndex++
   }
-  return { power, suffix: powerSuffixes[suffixIndex] }
+  return { power, suffix: powerSuffixes[suffixIndex]! }
 }

@@ -1,17 +1,30 @@
-import { color, select, style } from "d3"
-const d3: any = { color, select, style }
+import { color, select, style, type Selection } from "d3"
 import * as d3sankey from "./vendor/d3-sankey/index.js"
 import { spec } from "./factory.js"
+import { Item, Recipe } from "./recipes.js"
 import { one } from "./math.js"
 import { PX_HEIGHT, PX_WIDTH, sheetHash, sheetHeight, sheetWidth } from "./presentation.js"
+import type {
+  GraphBeltLine,
+  GraphCurve,
+  GraphData,
+  GraphDirection,
+  GraphJustification,
+  GraphLink,
+  GraphNode,
+  GraphPoint,
+  IconCoordinates,
+  ItemColorMap,
+  RecipeColorMap,
+} from "./graph/types.js"
 
 // -----------------------------------------------------------------------------
 // Graph interactions
 // -----------------------------------------------------------------------------
 
-let clickedNode: any = null
+let clickedNode: GraphNode | null = null
 
-export function graphClickHandler(_event: Event, node: any) {
+export function graphClickHandler(_event: Event, node: GraphNode): void {
   if (node === clickedNode) {
     node.unhighlight()
     clickedNode = null
@@ -21,11 +34,11 @@ export function graphClickHandler(_event: Event, node: any) {
   }
 }
 
-export function graphMouseOverHandler(_event: Event, node: any) {
+export function graphMouseOverHandler(_event: Event, node: GraphNode): void {
   node.highlight()
 }
 
-export function graphMouseLeaveHandler(_event: Event, node: any) {
+export function graphMouseLeaveHandler(_event: Event, node: GraphNode): void {
   if (node !== clickedNode) {
     node.unhighlight()
   }
@@ -35,117 +48,113 @@ export function graphMouseLeaveHandler(_event: Event, node: any) {
 // Circular graph paths
 // -----------------------------------------------------------------------------
 
-export class CirclePath {
-  [key: string]: any
-  constructor(nx, ny, pairs) {
-    let { x, y } = pairs[0]
-    let r = null
-    let sweep = null
-    // (x, y): The coordinate.
-    // (nx, ny): The unit vector tangent to the curve at this point.
-    // r: The radius of the circle leading to this point.
-    // sweep: 1 = clockwise, 0 = counter-clockwise
-    // r and sweep are null for the first point, as there is no circle
-    // leading to it.
-    let points = [{ x, y, nx, ny, r, sweep }]
+export type Vector2 = readonly [number, number]
+
+type CurveInputPoint = Pick<GraphPoint, "x" | "y">
+
+type Sweep = 0 | 1 | null
+
+interface CirclePoint extends GraphPoint {
+  readonly nx: number
+  readonly ny: number
+  readonly r: number | null
+  readonly sweep: Sweep
+}
+
+export class CirclePath implements GraphCurve {
+  points: CirclePoint[]
+
+  constructor(nx: number, ny: number, pairs: readonly CurveInputPoint[]) {
+    const first = pairs[0]
+    if (first === undefined) throw new Error("A graph curve requires at least one point")
+    let { x, y } = first
+    const points: CirclePoint[] = [{ x, y, nx, ny, r: null, sweep: null }]
     let prevX = x
     let prevY = y
-    for (let { x, y } of pairs.slice(1)) {
-      let dx = (x - prevX) / 2
-      let dy = (y - prevY) / 2
-      let t = nx * dx + ny * dy
-      let r1 = -ny * dx + nx * dy
-      // If deflection is less than one pixel, draw a straight line.
-      if (-0.5 < r1 && r1 < 0.5) {
-        let r = null
-        let sweep = null
-        // Still update n vector.
-        let [normdx, normdy] = norm([dx, dy])
-        let dot = nx * normdx + ny * normdy
-        nx = 2 * dot * normdx - nx
-        ny = 2 * dot * normdy - ny
-        points.push({ x, y, nx, ny, r, sweep })
+    for (const pair of pairs.slice(1)) {
+      ;({ x, y } = pair)
+      const dx = (x - prevX) / 2
+      const dy = (y - prevY) / 2
+      const tangentProjection = nx * dx + ny * dy
+      let normalProjection = -ny * dx + nx * dy
+      if (-0.5 < normalProjection && normalProjection < 0.5) {
+        const [normalX, normalY] = norm([dx, dy])
+        const dot = nx * normalX + ny * normalY
+        nx = 2 * dot * normalX - nx
+        ny = 2 * dot * normalY - ny
+        points.push({ x, y, nx, ny, r: null, sweep: null })
         prevX = x
         prevY = y
         continue
       }
-      let sweep = 1
-      let npx = -ny
-      let npy = nx
-      if (r1 < 0) {
+      let sweep: Exclude<Sweep, null> = 1
+      let normalX = -ny
+      let normalY = nx
+      if (normalProjection < 0) {
         sweep = 0
-        r1 = -r1
-        npx = -npx
-        npy = -npy
+        normalProjection = -normalProjection
+        normalX = -normalX
+        normalY = -normalY
       }
-      let r = r1 + t ** 2 / r1
-      let cx = npx * r
-      let cy = npy * r
-      // compute new tangent
-      npx = (cx - 2 * dx) / r
-      npy = (cy - 2 * dy) / r
-      nx = npy
-      ny = -npx
+      const radius = normalProjection + tangentProjection ** 2 / normalProjection
+      const centerX = normalX * radius
+      const centerY = normalY * radius
+      normalX = (centerX - 2 * dx) / radius
+      normalY = (centerY - 2 * dy) / radius
+      nx = normalY
+      ny = -normalX
       if (sweep === 0) {
         nx = -nx
         ny = -ny
       }
-      points.push({ x, y, nx, ny, r, sweep })
+      points.push({ x, y, nx, ny, r: radius, sweep })
       prevX = x
       prevY = y
     }
     this.points = points
   }
 
-  path() {
-    let { x, y } = this.points[0]
-    let parts = [`M ${x},${y}`]
-    for (let { x, y, r, sweep } of this.points.slice(1)) {
+  path(): string {
+    const first = this.points[0]
+    if (first === undefined) return ""
+    const parts = [`M ${first.x},${first.y}`]
+    for (const { x, y, r, sweep } of this.points.slice(1)) {
       if (r === null || Number.isNaN(r)) {
         parts.push(`L ${x},${y}`)
-        continue
+      } else {
+        parts.push(`A ${r} ${r} 0 0 ${sweep ?? 0} ${x} ${y}`)
       }
-      parts.push(`A ${r} ${r} 0 0 ${sweep} ${x} ${y}`)
     }
     return parts.join(" ")
   }
 
-  offset(offset) {
-    let tx = this.points[0].nx
-    let ty = this.points[0].ny
-    let points = []
-    for (let { x, y, nx, ny } of this.points) {
-      points.push({ x: x + -ny * offset, y: y + nx * offset })
-    }
-    return new CirclePath(tx, ty, points)
+  offset(offset: number): CirclePath {
+    const first = this.points[0]
+    if (first === undefined) throw new Error("Cannot offset an empty graph curve")
+    const points = this.points.map(({ x, y, nx, ny }) => ({ x: x + -ny * offset, y: y + nx * offset }))
+    return new CirclePath(first.nx, first.ny, points)
   }
 
-  transpose() {
-    let points = []
-    for (let { x, y, nx, ny, r, sweep } of this.points) {
-      if (sweep === 0) {
-        sweep = 1
-      } else if (sweep === 1) {
-        sweep = 0
-      }
-      points.push({
-        x: y,
-        y: x,
-        nx: ny,
-        ny: nx,
-        r: r,
-        sweep: sweep,
-      })
-    }
-    let obj = Object.create(CirclePath.prototype)
-    obj.points = points
-    return obj
+  transpose(): CirclePath {
+    const first = this.points[0]
+    if (first === undefined) throw new Error("Cannot transpose an empty graph curve")
+    const points: CirclePoint[] = this.points.map(({ x, y, nx, ny, r, sweep }) => ({
+      x: y,
+      y: x,
+      nx: ny,
+      ny: nx,
+      r,
+      sweep: sweep === 0 ? 1 : sweep === 1 ? 0 : null,
+    }))
+    const transposed = new CirclePath(first.ny, first.nx, points)
+    transposed.points = points
+    return transposed
   }
 }
 
-function norm([x, y]) {
-  let d = Math.sqrt(x ** 2 + y ** 2)
-  return [x / d, y / d]
+function norm([x, y]: Vector2): Vector2 {
+  const distance = Math.sqrt(x ** 2 + y ** 2)
+  return [x / distance, y / distance]
 }
 
 const MIN_RADIUS = 10
@@ -177,17 +186,17 @@ const MIN_RADIUS = 10
 //      approaches to be feasible.
 
 // Vector from start point to end point in reference frame of tangent vector.
-function toFrame(tx, ty, x, y) {
+function toFrame(tx: number, ty: number, x: number, y: number): Vector2 {
   let dotx = tx * x + ty * y
   let doty = -ty * x + tx * y
   return [dotx, doty]
 }
 
-function fromFrame(tx, ty, x, y) {
+function fromFrame(tx: number, ty: number, x: number, y: number): Vector2 {
   return toFrame(tx, -ty, x, y)
 }
 
-function frameSlope(tx, ty, x1, y1, x2, y2) {
+function frameSlope(tx: number, ty: number, x1: number, y1: number, x2: number, y2: number): number | null {
   let dx = x2 - x1
   let dy = y2 - y1
   let [fx, fy] = toFrame(tx, ty, dx, dy)
@@ -197,14 +206,14 @@ function frameSlope(tx, ty, x1, y1, x2, y2) {
   return fy / fx
 }
 
-function linePath(tx, ty, x1, y1, x2, y2) {
+function linePath(tx: number, ty: number, x1: number, y1: number, x2: number, y2: number): CirclePath {
   return new CirclePath(tx, ty, [
     { x: x1, y: y1 },
     { x: x2, y: y2 },
   ])
 }
 
-function doubleArcPath(tx, ty, x1, y1, x2, y2) {
+function doubleArcPath(tx: number, ty: number, x1: number, y1: number, x2: number, y2: number): CirclePath {
   let midx = (x1 + x2) / 2
   let midy = (y1 + y2) / 2
   return new CirclePath(tx, ty, [
@@ -215,14 +224,22 @@ function doubleArcPath(tx, ty, x1, y1, x2, y2) {
 }
 
 // Vector transpose functions in SVG coord space (i.e. inverted y axis).
-function R(x, y) {
+function R(x: number, y: number): Vector2 {
   return [-y, x]
 }
-function L(x, y) {
+function L(x: number, y: number): Vector2 {
   return [y, -x]
 }
 
-function doubleArcAdjustPath(tx, ty, x1, y1, x2, y2, width) {
+function doubleArcAdjustPath(
+  tx: number,
+  ty: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  width: number,
+): CirclePath {
   let dx = x2 - x1
   let dy = y2 - y1
   let [fx, fy] = toFrame(tx, ty, dx, dy)
@@ -276,7 +293,15 @@ function doubleArcAdjustPath(tx, ty, x1, y1, x2, y2, width) {
   ])
 }
 
-function lineAdjustPath(tx, ty, x1, y1, x2, y2, width) {
+function lineAdjustPath(
+  tx: number,
+  ty: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  width: number,
+): CirclePath {
   let dx = x2 - x1
   let dy = y2 - y1
   let [fx, fy] = toFrame(tx, ty, dx, dy)
@@ -320,7 +345,15 @@ function lineAdjustPath(tx, ty, x1, y1, x2, y2, width) {
   ])
 }
 
-export function makeCurve(tx, ty, x1, y1, x2, y2, width = 0) {
+export function makeCurve(
+  tx: number,
+  ty: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  width = 0,
+): CirclePath {
   let dx = x2 - x1
   let dy = y2 - y1
   let [fx, fy] = toFrame(tx, ty, dx, dy)
@@ -356,43 +389,47 @@ export const colorList = [
 export const iconSize = 32
 export const colonWidth = 12
 
-function itemNeighbors(item) {
-  let touching = new Set()
+function itemNeighbors(item: Item): Set<Item> {
+  const touching = new Set<Item>()
   let recipes = item.recipes.concat(item.uses)
   for (let recipe of recipes) {
     let ingredients = recipe.getIngredients().concat(recipe.products)
     for (let ing of ingredients) {
-      touching.add(ing.item)
+      if (ing.item instanceof Item) touching.add(ing.item)
     }
   }
   return touching
 }
 
-function itemDegree(item) {
+function itemDegree(item: Item): number {
   return itemNeighbors(item).size
 }
 
-export function getColorMaps(nodes, links) {
-  let itemColors = new Map()
-  let recipeColors = new Map()
-  let items = []
+export function getColorMaps(
+  nodes: readonly GraphNode[],
+  links: readonly GraphLink[],
+): readonly [ItemColorMap, RecipeColorMap] {
+  const itemColors: ItemColorMap = new Map()
+  const recipeColors: RecipeColorMap = new Map()
+  const items: Item[] = []
   for (let link of links) {
     items.push(link.item)
   }
   items.sort(function (a, b) {
     return itemDegree(b) - itemDegree(a)
   })
-  let remainingItems = new Set<any>(items)
+  const remainingItems = new Set<Item>(items)
   while (remainingItems.size > 0) {
-    let chosenItem = null
-    let usedColors = null
+    let chosenItem: Item | null = null
+    let usedColors: Set<number> = new Set()
     let max = -1
     for (let item of remainingItems) {
       let neighbors = itemNeighbors(item)
-      let colors = new Set()
+      const colors = new Set<number>()
       for (let neighbor of neighbors) {
         if (itemColors.has(neighbor)) {
-          colors.add(itemColors.get(neighbor))
+          const neighborColor = itemColors.get(neighbor)
+          if (neighborColor !== undefined) colors.add(neighborColor)
         }
       }
       if (colors.size > max) {
@@ -401,6 +438,7 @@ export function getColorMaps(nodes, links) {
         chosenItem = item
       }
     }
+    if (chosenItem === null) break
     remainingItems.delete(chosenItem)
     let color = 0
     while (usedColors.has(color)) {
@@ -412,9 +450,12 @@ export function getColorMaps(nodes, links) {
   // actually used.
   let recipeColor = 0
   for (let node of nodes) {
-    let recipe = node.recipe
-    if (recipe.products.length === 1 && itemColors.has(recipe.products[0].item)) {
-      recipeColors.set(recipe, itemColors.get(recipe.products[0].item))
+    const recipe = node.recipe
+    const onlyProduct = recipe.products.length === 1 ? recipe.products[0] : undefined
+    const productColor =
+      onlyProduct !== undefined && onlyProduct.item instanceof Item ? itemColors.get(onlyProduct.item) : undefined
+    if (productColor !== undefined) {
+      recipeColors.set(recipe, productColor)
     } else {
       recipeColors.set(recipe, recipeColor++)
     }
@@ -422,14 +463,33 @@ export function getColorMaps(nodes, links) {
   return [itemColors, recipeColors]
 }
 
-export function imageViewBox(obj) {
+export function imageViewBox(obj: IconCoordinates): string {
   var x1 = obj.icon_col * PX_WIDTH + 0.5
   var y1 = obj.icon_row * PX_HEIGHT + 0.5
   return `${x1} ${y1} ${PX_WIDTH - 1} ${PX_HEIGHT - 1}`
 }
 
-export function renderNode(rects, nodeMargin, justification, recipeColors, ignore) {
-  rects.each((d) => {
+function colorIndex<TKey>(colors: ReadonlyMap<TKey, number>, key: TKey): number {
+  return colors.get(key) ?? 0
+}
+
+function darkenColor(value: string): string {
+  return color(value)?.darker().toString() ?? value
+}
+
+function recipeIcon(node: GraphNode): IconCoordinates {
+  if (!(node.recipe instanceof Recipe)) throw new Error(`Graph node ${node.name} has no recipe icon`)
+  return node.recipe
+}
+
+export function renderNode(
+  rects: Selection<Element, GraphNode, Element, unknown>,
+  nodeMargin: number,
+  justification: GraphJustification,
+  recipeColors: RecipeColorMap,
+  ignore: ReadonlySet<unknown>,
+): void {
+  rects.each((d: GraphNode) => {
     if (justification === "left") {
       d.labelX = d.x0
     } else {
@@ -439,65 +499,71 @@ export function renderNode(rects, nodeMargin, justification, recipeColors, ignor
   // main rect
   rects
     .append("rect")
-    .attr("x", (d) => d.x0)
-    .attr("y", (d) => d.y0)
-    .attr("height", (d) => d.y1 - d.y0)
-    .attr("width", (d) => d.x1 - d.x0)
-    .attr("fill", (d) => d3.color(colorList[recipeColors.get(d.recipe) % colorList.length]).darker())
-    .attr("stroke", (d) => colorList[recipeColors.get(d.recipe) % colorList.length])
-    .each(function (this: SVGElement, d) {
-      d.element = this
+    .attr("x", (d: GraphNode) => d.x0)
+    .attr("y", (d: GraphNode) => d.y0)
+    .attr("height", (d: GraphNode) => d.y1 - d.y0)
+    .attr("width", (d: GraphNode) => d.x1 - d.x0)
+    .attr("fill", (d: GraphNode) => {
+      const value = colorList[colorIndex(recipeColors, d.recipe) % colorList.length] ?? colorList[0] ?? "#000"
+      return darkenColor(value)
+    })
+    .attr("stroke", (d: GraphNode) => colorList[colorIndex(recipeColors, d.recipe) % colorList.length] ?? "#000")
+    .each(function (this: Element, d: GraphNode) {
+      if (this instanceof SVGElement) d.element = this
     })
   // plain text node (output, surplus)
   rects
-    .filter((d) => d.rate === null)
+    .filter((d: GraphNode) => d.rate === null)
     .append("text")
-    .attr("x", (d) => (d.x0 + d.x1) / 2)
-    .attr("y", (d) => (d.y0 + d.y1) / 2)
+    .attr("x", (d: GraphNode) => (d.x0 + d.x1) / 2)
+    .attr("y", (d: GraphNode) => (d.y0 + d.y1) / 2)
     .attr("dy", "0.35em")
     .attr("text-anchor", "middle")
-    .text((d) => d.text())
-  let labeledNode = rects.filter((d) => d.rate !== null)
+    .text((d: GraphNode) => d.text())
+  let labeledNode = rects.filter((d: GraphNode) => d.rate !== null)
   // recipe icon
   labeledNode
     .append("svg")
-    .attr("viewBox", (d) => imageViewBox(d.recipe))
-    .attr("x", (d) => d.labelX + nodeMargin + 0.5)
-    .attr("y", (d) => (d.y0 + d.y1) / 2 - iconSize / 2 + 0.5)
+    .attr("viewBox", (d: GraphNode) => imageViewBox(recipeIcon(d)))
+    .attr("x", (d: GraphNode) => d.labelX + nodeMargin + 0.5)
+    .attr("y", (d: GraphNode) => (d.y0 + d.y1) / 2 - iconSize / 2 + 0.5)
     .attr("width", iconSize)
     .attr("height", iconSize)
     .append("image")
-    .classed("ignore", (d) => ignore.has(d.recipe))
+    .classed("ignore", (d: GraphNode) => ignore.has(d.recipe))
     .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
     .attr("width", sheetWidth)
     .attr("height", sheetHeight)
   // node text (building count, or plain rate if no building)
   labeledNode
     .append("text")
-    .attr("x", (d) => d.labelX + nodeMargin + iconSize + (d.building === null ? 0 : colonWidth + iconSize) /*+ 5*/)
-    .attr("y", (d) => (d.y0 + d.y1) / 2)
+    .attr(
+      "x",
+      (d: GraphNode) => d.labelX + nodeMargin + iconSize + (d.building === null ? 0 : colonWidth + iconSize) /*+ 5*/,
+    )
+    .attr("y", (d: GraphNode) => (d.y0 + d.y1) / 2)
     .attr("dy", "0.35em")
-    .text((d) => d.text())
-  let buildingNode = rects.filter((d) => d.building !== null)
+    .text((d: GraphNode) => d.text())
+  let buildingNode = rects.filter((d: GraphNode) => d.building !== null)
   // colon
   buildingNode
     .append("circle")
     .classed("colon", true)
-    .attr("cx", (d) => d.labelX + nodeMargin + iconSize + colonWidth / 2)
-    .attr("cy", (d) => (d.y0 + d.y1) / 2 - 4)
+    .attr("cx", (d: GraphNode) => d.labelX + nodeMargin + iconSize + colonWidth / 2)
+    .attr("cy", (d: GraphNode) => (d.y0 + d.y1) / 2 - 4)
     .attr("r", 1)
   buildingNode
     .append("circle")
     .classed("colon", true)
-    .attr("cx", (d) => d.labelX + nodeMargin + iconSize + colonWidth / 2)
-    .attr("cy", (d) => (d.y0 + d.y1) / 2 + 4)
+    .attr("cx", (d: GraphNode) => d.labelX + nodeMargin + iconSize + colonWidth / 2)
+    .attr("cy", (d: GraphNode) => (d.y0 + d.y1) / 2 + 4)
     .attr("r", 1)
   // building icon
   buildingNode
     .append("svg")
-    .attr("viewBox", (d) => imageViewBox(d.building))
-    .attr("x", (d) => d.labelX + iconSize + colonWidth + nodeMargin + 0.5)
-    .attr("y", (d) => (d.y0 + d.y1) / 2 - iconSize / 2 + 0.5)
+    .attr("viewBox", (d: GraphNode) => imageViewBox(d.building ?? recipeIcon(d)))
+    .attr("x", (d: GraphNode) => d.labelX + iconSize + colonWidth + nodeMargin + 0.5)
+    .attr("y", (d: GraphNode) => (d.y0 + d.y1) / 2 - iconSize / 2 + 0.5)
     .attr("width", iconSize)
     .attr("height", iconSize)
     .append("image")
@@ -516,7 +582,7 @@ const sankeyNodeMargin = 2
 const columnWidth = 200
 const maxNodeHeight = 175
 
-function selfPath(d) {
+function selfPath(d: GraphLink): CirclePath {
   let x0 = d.source.x1
   let y0 = d.y0
   let x1 = d.source.x1
@@ -535,7 +601,7 @@ function selfPath(d) {
   ])
 }
 
-function backwardPath(d) {
+function backwardPath(d: GraphLink): CirclePath {
   // start point
   let x0 = d.source.x1
   let y0 = d.y0
@@ -570,7 +636,7 @@ function backwardPath(d) {
   return new CirclePath(1, 0, points)
 }
 
-function linkPath(d) {
+function linkPath(d: GraphLink): CirclePath {
   if (d.direction === "self") {
     return selfPath(d)
   } else if (d.direction === "backward") {
@@ -583,12 +649,14 @@ function linkPath(d) {
   return makeCurve(1, 0, x0, y0, x1, y1, d.width)
 }
 
-export function renderSankey(data, direction, ignore) {
+export function renderSankey(data: GraphData, direction: GraphDirection, ignore: ReadonlySet<unknown>): void {
   let maxNodeWidth = 0
-  let testSVG = d3.select("body").append("svg").classed("sankey test", true)
-  let text = testSVG.append("text")
-  for (let node of data.nodes) {
-    let nodeWidth = node.labelWidth(text, sankeyNodeMargin)
+  let testSVG = select("body").append("svg").classed("sankey test", true)
+  const text = testSVG.append("text")
+  const textNode = text.node()
+  if (!(textNode instanceof SVGTextElement)) throw new Error("Unable to create graph measurement text")
+  for (const node of data.nodes) {
+    const nodeWidth = node.labelWidth(textNode, sankeyNodeMargin)
     if (nodeWidth > maxNodeWidth) {
       maxNodeWidth = nodeWidth
     }
@@ -597,22 +665,15 @@ export function renderSankey(data, direction, ignore) {
   text.remove()
   testSVG.remove()
 
-  let nw, np
-  if (direction === "down") {
-    nw = nodePadding
-    np = maxNodeWidth
-  } else if (direction === "right") {
-    nw = maxNodeWidth
-    np = nodePadding
-  }
-  let sankey: any = d3sankey.sankey()
+  const [nw, np] = direction === "down" ? [nodePadding, maxNodeWidth] : [maxNodeWidth, nodePadding]
+  let sankey = d3sankey.sankey<GraphNode, GraphLink>()
   sankey = sankey
     .nodeWidth(nw)
     .nodePadding(np)
     .nodeAlign(d3sankey.sankeyRight)
     .maxNodeHeight(maxNodeHeight)
     .linkLength(columnWidth)
-  let { nodes, links } = sankey(data)
+  const { nodes, links } = sankey(data)
   let [itemColors, recipeColors] = getColorMaps(nodes, links)
 
   for (let link of links) {
@@ -620,7 +681,7 @@ export function renderSankey(data, direction, ignore) {
     if (direction === "down") {
       link.curve = link.curve.transpose()
     }
-    let belts = []
+    const belts: GraphLink["belts"] = []
     if (link.beltCount !== null) {
       let dy = link.width / link.beltCount.toFloat()
       // Only render belts if there are at least three pixels per belt.
@@ -642,13 +703,13 @@ export function renderSankey(data, direction, ignore) {
     }
   }
 
-  let svg = d3.select("svg#graph").classed("sankey", true)
+  let svg = select("svg#graph").classed("sankey", true)
   svg.selectAll("g").remove()
 
   // Node rects
   let rects = svg.append("g").classed("nodes", true).selectAll("g").data(nodes).join("g").classed("node", true)
 
-  let nodeJust = "left"
+  let nodeJust: GraphJustification = "left"
   if (direction === "down") {
     nodeJust = "center"
   }
@@ -662,7 +723,7 @@ export function renderSankey(data, direction, ignore) {
     .data(links)
     .join("g")
     .classed("link", true)
-    .each(function (this: SVGGElement, d) {
+    .each(function (this: Element, d: GraphLink) {
       d.elements.push(this)
     })
   //.style("mix-blend-mode", "multiply")
@@ -670,38 +731,38 @@ export function renderSankey(data, direction, ignore) {
     .append("path")
     .attr("fill", "none")
     .attr("stroke-opacity", 0.3)
-    .attr("d", (d) => d.curve.path())
-    .attr("stroke", (d) => colorList[itemColors.get(d.item) % colorList.length])
-    .attr("stroke-width", (d) => Math.max(1, d.width))
+    .attr("d", (d: GraphLink) => d.curve.path())
+    .attr("stroke", (d: GraphLink) => colorList[colorIndex(itemColors, d.item) % colorList.length] ?? "#000")
+    .attr("stroke-width", (d: GraphLink) => Math.max(1, d.width))
   link
     .append("g")
     .selectAll("path")
-    .data((d) => [d.curve.offset(-d.width / 2), d.curve.offset(d.width / 2)])
+    .data((d: GraphLink) => [d.curve.offset(-d.width / 2), d.curve.offset(d.width / 2)])
     .join("path")
     .classed("highlighter", true)
     .attr("fill", "none")
-    .attr("d", (d) => d.path())
+    .attr("d", (curve: GraphCurve) => curve.path())
     .attr("stroke", "none")
     .attr("stroke-width", 1)
   link
     .append("g")
     .classed("belts", true)
     .selectAll("path")
-    .data((d) => d.belts)
+    .data((d: GraphLink) => d.belts)
     .join("path")
     .classed("belt", true)
     .attr("fill", "none")
     .attr("stroke-opacity", 0.3)
-    .attr("d", (d) => d.curve.path())
-    .attr("stroke", (d) => colorList[itemColors.get(d.item) % colorList.length])
+    .attr("d", (belt: GraphBeltLine) => belt.curve.path())
+    .attr("stroke", (belt: GraphBeltLine) => colorList[colorIndex(itemColors, belt.item) % colorList.length] ?? "#000")
     .attr("stroke-width", 1)
-  link.append("title").text((d) => `${d.source.name} \u2192 ${d.target.name}\n${spec.format.rate(d.rate)}`)
+  link.append("title").text((d: GraphLink) => `${d.source.name} \u2192 ${d.target.name}\n${spec.format.rate(d.rate)}`)
   let linkIcon = link
-    .filter((d) => d.extra)
+    .filter((d: GraphLink) => d.extra)
     .append("svg")
-    .attr("viewBox", (d) => imageViewBox(d.item))
-    .attr("x", (d) => d.source.x1 + 2.25)
-    .attr("y", (d) => d.y0 - iconSize / 4 + 0.25)
+    .attr("viewBox", (d: GraphLink) => imageViewBox(d.item))
+    .attr("x", (d: GraphLink) => d.source.x1 + 2.25)
+    .attr("y", (d: GraphLink) => d.y0 - iconSize / 4 + 0.25)
     .attr("width", iconSize / 2)
     .attr("height", iconSize / 2)
   linkIcon
@@ -710,20 +771,20 @@ export function renderSankey(data, direction, ignore) {
     .attr("width", sheetWidth)
     .attr("height", sheetHeight)
   if (direction === "down") {
-    linkIcon.attr("x", (d) => d.y0 - iconSize / 4 + 0.25).attr("y", (d) => d.source.y1 + 2.25)
+    linkIcon.attr("x", (d: GraphLink) => d.y0 - iconSize / 4 + 0.25).attr("y", (d: GraphLink) => d.source.y1 + 2.25)
   }
   let linkLabel = link
     .append("text")
-    .attr("x", (d) => d.source.x1 + 2 + (d.extra ? iconSize / 2 : 0))
-    .attr("y", (d) => d.y0)
+    .attr("x", (d: GraphLink) => d.source.x1 + 2 + (d.extra ? iconSize / 2 : 0))
+    .attr("y", (d: GraphLink) => d.y0)
     .attr("dy", "0.35em")
     .attr("text-anchor", "start")
-    .text((d) => (d.extra ? "\u00d7 " : "") + spec.format.rate(d.rate) + "/" + spec.format.rateName)
+    .text((d: GraphLink) => (d.extra ? "\u00d7 " : "") + spec.format.rate(d.rate) + "/" + spec.format.rateName)
   if (direction === "down") {
     linkLabel
       .attr("x", null)
       .attr("y", null)
-      .attr("transform", (d) => {
+      .attr("transform", (d: GraphLink) => {
         let x = d.y0
         let y = d.source.y1 + 2 + (d.extra ? 16 : 0)
         return `translate(${x},${y}) rotate(90)`
@@ -731,18 +792,21 @@ export function renderSankey(data, direction, ignore) {
   }
 
   // Overlay transparent rect on top of each node, for click events.
-  let rectElements = svg.selectAll("g.node rect").nodes()
-  let overlayData = []
+  const rectElements = svg.selectAll<SVGGraphicsElement>("g.node rect").nodes()
+  const overlayData: { readonly rect: DOMRect; readonly node: GraphNode }[] = []
   // Flash the graph tab to be visible, so that the graph is laid out and
   // the BBox is not empty.
-  let graphTab = d3.select("#graph_tab")
-  let origDisplay = d3.style(graphTab.node(), "display")
+  let graphTab = select("#graph_tab")
+  const graphTabNode = graphTab.node()
+  if (!(graphTabNode instanceof Element)) throw new Error("Graph tab is unavailable")
+  const origDisplay = style(graphTabNode, "display")
   graphTab.style("display", "block")
   for (let i = 0; i < nodes.length; i++) {
-    let rect = rectElements[i].getBBox()
-    let node = nodes[i]
-    let recipe = node.recipe
-    overlayData.push({ rect, node, recipe })
+    const rectElement = rectElements[i]
+    const node = nodes[i]
+    if (rectElement === undefined || node === undefined) continue
+    const rect = rectElement.getBBox()
+    overlayData.push({ rect, node })
   }
   graphTab.style("display", origDisplay)
   svg
@@ -753,17 +817,19 @@ export function renderSankey(data, direction, ignore) {
     .join("rect")
     .attr("stroke", "none")
     .attr("fill", "transparent")
-    .attr("x", (d) => d.rect.x)
-    .attr("y", (d) => d.rect.y)
-    .attr("width", (d) => d.rect.width)
-    .attr("height", (d) => d.rect.height)
-    .on("mouseover", (event, d) => graphMouseOverHandler(event, d.node))
-    .on("mouseleave", (event, d) => graphMouseLeaveHandler(event, d.node))
-    .on("click", (event, d) => graphClickHandler(event, d.node))
+    .attr("x", (d: (typeof overlayData)[number]) => d.rect.x)
+    .attr("y", (d: (typeof overlayData)[number]) => d.rect.y)
+    .attr("width", (d: (typeof overlayData)[number]) => d.rect.width)
+    .attr("height", (d: (typeof overlayData)[number]) => d.rect.height)
+    .on("mouseover", (event: Event, d: (typeof overlayData)[number]) => graphMouseOverHandler(event, d.node))
+    .on("mouseleave", (event: Event, d: (typeof overlayData)[number]) => graphMouseLeaveHandler(event, d.node))
+    .on("click", (event: Event, d: (typeof overlayData)[number]) => graphClickHandler(event, d.node))
     .append("title")
     .text(
-      (d) =>
+      (d: (typeof overlayData)[number]) =>
         d.node.name +
-        (d.node.count.isZero() ? "" : `\n${d.node.building.name} \u00d7 ${spec.format.count(d.node.count)}`),
+        (d.node.count.isZero() || d.node.building === null
+          ? ""
+          : `\n${d.node.building.name} \u00d7 ${spec.format.count(d.node.count)}`),
     )
 }

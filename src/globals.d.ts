@@ -1,8 +1,10 @@
+import type { FactorySpecification } from "./factory.js"
+
 declare global {
-  const spec: any
+  const spec: FactorySpecification
 
   interface Window {
-    spec: any
+    spec: FactorySpecification
   }
 }
 

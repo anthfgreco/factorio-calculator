@@ -150,6 +150,7 @@ export interface BeaconData {
 }
 
 export interface ResourceData extends SpriteReference {
+  order?: string
   key: string
   localized_name: LocalizedName
   category?: string
@@ -172,6 +173,30 @@ export interface PlanetData extends SpriteReference {
   pollutant_type?: string
   resources: PlanetResourceData
   surface_properties: Record<string, number>
+}
+
+export interface BoilerData {
+  key: string
+  energy_consumption: number
+  target_temperature: number
+}
+
+export interface FluidData {
+  item_key: string
+  default_temperature: number
+  heat_capacity: number
+}
+
+export interface OffshorePumpData extends SpriteReference {
+  key: string
+  localized_name: LocalizedName
+  pumping_speed: number
+  surface_conditions?: SurfaceCondition[]
+}
+
+export interface SurfacePropertyData {
+  name: string
+  default_value: number
 }
 
 export interface RocketLaunchData {
@@ -206,12 +231,16 @@ export interface CalculatorData {
   crafting_machines: MachineData[]
   mining_drills: MiningDrillData[]
   rocket_silo?: MachineData[]
+  offshore_pumps?: OffshorePumpData[]
+  surface_properties?: SurfacePropertyData[]
   rocket_launch?: RocketLaunchData
   belts: BeltData[]
   fuel: FuelData[]
   modules: ModuleData[]
   recipe_productivity_research?: RecipeProductivityResearchData[]
   resources: ResourceData[]
+  boilers: BoilerData[]
+  fluids: FluidData[]
   plants?: PlantData[]
   spoilage?: SpoilageData[]
   agricultural_tower?: AgriculturalTowerData[]
@@ -459,20 +488,23 @@ export function parseCalculatorData(value: unknown): CalculatorData {
   if (data.planets !== undefined) validatePlanets(data.planets)
   requireRecord(data.groups, "groups")
   requireRecord(data.sprites, "sprites")
-  return data as unknown as CalculatorData
+  // Validation above establishes the runtime dataset contract at this untrusted JSON boundary.
+  return data as CalculatorData
 }
 
 // -----------------------------------------------------------------------------
 // Stable sorting
 // -----------------------------------------------------------------------------
 
-export function sorted(collection: Iterable<any> | readonly any[], key?: (value: any) => any): any[] {
-  const values = Array.isArray(collection) ? [...collection] : Array.from(collection)
+export type SortKey = string | number | bigint | boolean
+
+export function sorted<T>(collection: Iterable<T> | readonly T[], key?: (value: T) => SortKey): T[] {
+  const values: T[] = Array.isArray(collection) ? [...collection] : Array.from(collection)
   const indexes = values.map((_, index) => index)
-  const keyValues: any[] = key ? values.map(key) : values
+  const keyValues: readonly SortKey[] = key ? values.map(key) : values.map((value) => String(value))
   indexes.sort((a, b) => {
-    const x = keyValues[a]
-    const y = keyValues[b]
+    const x = keyValues[a]!
+    const y = keyValues[b]!
     if (x < y) {
       return -1
     }
@@ -481,7 +513,7 @@ export function sorted(collection: Iterable<any> | readonly any[], key?: (value:
     }
     return 0
   })
-  return indexes.map((index) => values[index])
+  return indexes.map((index) => values[index]!)
 }
 
 // -----------------------------------------------------------------------------
@@ -579,55 +611,65 @@ export function itemMatchesSearch(item: SearchableItem, query: string) {
 // Location display queries
 // -----------------------------------------------------------------------------
 
-interface LocationRecipeLike {
-  isNetProducer(item: LocationItemLike): boolean
+interface LocationRecipeLike<TItem> {
+  isNetProducer(item: TItem): boolean
 }
 
-interface LocationItemLike {
-  recipes: LocationRecipeLike[]
+interface LocationItemLike<TRecipe> {
+  recipes: TRecipe[]
 }
 
-interface LocationLike {
+interface LocationLike<TRecipe> {
   key: string
   name: string
-  order: number
-  disable: Set<LocationRecipeLike>
+  order: string | number
+  disable: Set<TRecipe>
 }
 
-interface LocationSpecificationLike {
-  planets?: Map<string, LocationLike>
-  planetaryBaseline?: Set<LocationRecipeLike>
-  ignore: Set<LocationItemLike>
-  disable: Set<LocationRecipeLike>
-  selectedPlanets: Iterable<LocationLike>
+interface LocationSpecificationLike<TItem, TRecipe, TLocation> {
+  planets?: Map<string, TLocation> | null
+  planetaryBaseline?: Set<TRecipe> | null
+  ignore: Set<TItem>
+  disable: Set<TRecipe>
+  selectedPlanets: Iterable<TLocation>
 }
 
-function sortedLocations(locations: Iterable<LocationLike>): LocationLike[] {
-  return [...locations].sort((a, b) => a.order - b.order)
+function sortedLocations<TRecipe, TLocation extends LocationLike<TRecipe>>(
+  locations: Iterable<TLocation>,
+): TLocation[] {
+  return [...locations].sort((a, b) => String(a.order).localeCompare(String(b.order)))
 }
 
-function locationName(location: LocationLike, indefinite = false) {
+function locationName<TRecipe>(location: LocationLike<TRecipe>, indefinite = false) {
   if (indefinite && location.key === "space-platform") {
     return "a Space platform"
   }
   return location.name
 }
 
-export function formatLocationList(locations: Iterable<LocationLike>, conjunction = "or", indefinite = false): string {
+export function formatLocationList<TRecipe>(
+  locations: Iterable<LocationLike<TRecipe>>,
+  conjunction = "or",
+  indefinite = false,
+): string {
   const names = [...locations].map((location) => locationName(location, indefinite))
   if (names.length === 0) {
     return ""
   }
   if (names.length === 1) {
-    return names[0]
+    return names[0]!
   }
   if (names.length === 2) {
-    return `${names[0]} ${conjunction} ${names[1]}`
+    return `${names[0]!} ${conjunction} ${names[1]!}`
   }
-  return `${names.slice(0, -1).join(", ")}, ${conjunction} ${names[names.length - 1]}`
+  return `${names.slice(0, -1).join(", ")}, ${conjunction} ${names[names.length - 1]!}`
 }
 
-export function getUnavailableLocationInfo(spec: LocationSpecificationLike, item: LocationItemLike) {
+export function getUnavailableLocationInfo<
+  TItem extends LocationItemLike<TRecipe>,
+  TRecipe extends LocationRecipeLike<TItem>,
+  TLocation extends LocationLike<TRecipe>,
+>(spec: LocationSpecificationLike<TItem, TRecipe, TLocation>, item: TItem) {
   const planets = spec.planets
   const planetaryBaseline = spec.planetaryBaseline
   if (!planets || planets.size <= 1 || !planetaryBaseline || spec.ignore.has(item)) {

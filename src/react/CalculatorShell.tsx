@@ -1,26 +1,27 @@
-import { Fragment } from "react"
+import { Fragment, type ChangeEvent } from "react"
 
 import { HelpPanel } from "./HelpPanel.js"
 import { SettingsPanel } from "./SettingsPanel.js"
-import type { CalculatorActions } from "./types.js"
-import { forwardNativeEvent } from "./types.js"
+import { isProgressionPreset } from "../application/contracts.js"
+import type { CalculatorCommands, CalculatorSnapshot } from "./types.js"
 
 interface CalculatorShellProps {
-  actions: CalculatorActions
+  commands: CalculatorCommands
+  snapshot: CalculatorSnapshot
 }
 
-export function CalculatorShell({ actions }: CalculatorShellProps) {
+export function CalculatorShell({ commands, snapshot }: CalculatorShellProps) {
   return (
     <>
-      <TargetsPanel actions={actions} />
-      <PlannerToolbar actions={actions} />
-      <TabBar actions={actions} />
-      <VisualizationPanel actions={actions} />
+      <TargetsPanel commands={commands} snapshot={snapshot} />
+      <PlannerToolbar commands={commands} snapshot={snapshot} />
+      <TabBar commands={commands} snapshot={snapshot} />
+      <VisualizationPanel commands={commands} snapshot={snapshot} />
       <FactoryPanel />
-      <SettingsPanel actions={actions} />
+      <SettingsPanel commands={commands} snapshot={snapshot} />
       <ResourcesPanel />
       <HelpPanel />
-      <DebugPanel actions={actions} />
+      <DebugPanel commands={commands} snapshot={snapshot} />
       <footer id="footer">
         <a href="https://github.com/anthfgreco/factorio-calculator">Source on GitHub</a>
       </footer>
@@ -28,7 +29,7 @@ export function CalculatorShell({ actions }: CalculatorShellProps) {
   )
 }
 
-function TargetsPanel({ actions }: CalculatorShellProps) {
+function TargetsPanel({ commands }: CalculatorShellProps) {
   return (
     <section className="targets-panel" aria-labelledby="targets_title">
       <div className="targets-heading">
@@ -48,7 +49,7 @@ function TargetsPanel({ actions }: CalculatorShellProps) {
             className="add-target-button ui"
             data-tooltip="Add another production target."
             type="button"
-            onClick={actions.addTarget}
+            onClick={() => commands.addTarget()}
           >
             + Add target
           </button>
@@ -58,9 +59,10 @@ function TargetsPanel({ actions }: CalculatorShellProps) {
   )
 }
 
-function PlannerToolbar({ actions }: CalculatorShellProps) {
-  const showDebug = import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")
-
+function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
+  const showDebug =
+    import.meta.env?.DEV === true ||
+    (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug"))
   return (
     <div className="planner-toolbar">
       <div id="location_toolbar" className="location-toolbar" hidden>
@@ -72,7 +74,14 @@ function PlannerToolbar({ actions }: CalculatorShellProps) {
       </div>
       <div className="progression-presets" role="group" aria-label="Progression preset">
         <label htmlFor="progression_preset">Preset</label>
-        <select id="progression_preset" defaultValue="" onChange={forwardNativeEvent(actions.applyProgressionPreset)}>
+        <select
+          id="progression_preset"
+          defaultValue=""
+          onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+            const value = event.currentTarget.value
+            if (isProgressionPreset(value)) commands.applyProgressionPreset(value)
+          }}
+        >
           <option value="">Custom</option>
           <option value="early">Early game</option>
           <option value="pre-rocket">Pre-rocket</option>
@@ -83,15 +92,20 @@ function PlannerToolbar({ actions }: CalculatorShellProps) {
       </div>
       <div className="planner-actions">
         <span id="share_status" role="status" aria-live="polite" />
-        <button id="copy_share_link" className="ui planner-action" type="button" onClick={actions.copyShareLink}>
+        <button
+          id="copy_share_link"
+          className="ui planner-action"
+          type="button"
+          onClick={() => void commands.copyShareLink()}
+        >
           Copy plan link
         </button>
         {showDebug ? (
           <button
             id="debug_button"
-            className="ui planner-action toolbar-tab-button"
+            className={`ui planner-action toolbar-tab-button ${snapshot.activeTab === "debug" ? "active" : ""}`}
             type="button"
-            onClick={() => actions.openTab("debug")}
+            onClick={() => commands.selectTab("debug")}
           >
             Debug
           </button>
@@ -101,22 +115,47 @@ function PlannerToolbar({ actions }: CalculatorShellProps) {
   )
 }
 
-function TabBar({ actions }: CalculatorShellProps) {
+function TabBar({ commands, snapshot }: CalculatorShellProps) {
   return (
     <div className="tabs">
-      <button className="tab_button" id="totals_button" type="button" onClick={() => actions.openTab("totals")}>
+      <button
+        className={`tab_button ${snapshot.activeTab === "totals" ? "active" : ""}`}
+        id="totals_button"
+        type="button"
+        onClick={() => commands.selectTab("totals")}
+      >
         Factory
       </button>
-      <button className="tab_button" id="graph_button" type="button" onClick={actions.openVisualization}>
+      <button
+        className={`tab_button ${snapshot.activeTab === "graph" ? "active" : ""}`}
+        id="graph_button"
+        type="button"
+        onClick={commands.openVisualization}
+      >
         Visualize
       </button>
-      <button className="tab_button" id="resources_button" type="button" onClick={() => actions.openTab("resources")}>
+      <button
+        className={`tab_button ${snapshot.activeTab === "resources" ? "active" : ""}`}
+        id="resources_button"
+        type="button"
+        onClick={() => commands.selectTab("resources")}
+      >
         Resources
       </button>
-      <button className="tab_button" id="settings_button" type="button" onClick={() => actions.openTab("settings")}>
+      <button
+        className={`tab_button ${snapshot.activeTab === "settings" ? "active" : ""}`}
+        id="settings_button"
+        type="button"
+        onClick={() => commands.selectTab("settings")}
+      >
         Settings
       </button>
-      <button className="tab_button" id="help_button" type="button" onClick={() => actions.openTab("help")}>
+      <button
+        className={`tab_button ${snapshot.activeTab === "help" ? "active" : ""}`}
+        id="help_button"
+        type="button"
+        onClick={() => commands.selectTab("help")}
+      >
         Help
       </button>
       <div id="factory_tab_tools" className="tab-tools">
@@ -127,7 +166,8 @@ function TabBar({ actions }: CalculatorShellProps) {
             type="radio"
             name="factory_density"
             value="comfortable"
-            onChange={forwardNativeEvent(actions.changeFactoryDensity)}
+            checked={snapshot.factoryDensity === "comfortable"}
+            onChange={() => commands.setFactoryDensity("comfortable")}
           />
           <label htmlFor="factory_density_comfortable">Relaxed</label>
           <input
@@ -135,7 +175,8 @@ function TabBar({ actions }: CalculatorShellProps) {
             type="radio"
             name="factory_density"
             value="compact"
-            onChange={forwardNativeEvent(actions.changeFactoryDensity)}
+            checked={snapshot.factoryDensity === "compact"}
+            onChange={() => commands.setFactoryDensity("compact")}
           />
           <label htmlFor="factory_density_compact">Compact</label>
         </div>
@@ -144,7 +185,7 @@ function TabBar({ actions }: CalculatorShellProps) {
   )
 }
 
-function VisualizationPanel({ actions }: CalculatorShellProps) {
+function VisualizationPanel({ commands, snapshot }: CalculatorShellProps) {
   return (
     <div id="graph_tab" className="tab graph">
       <div className="visualization-toolbar" aria-label="Visualization controls">
@@ -153,20 +194,22 @@ function VisualizationPanel({ actions }: CalculatorShellProps) {
           label="View"
           name="type"
           options={[
-            { id: "sankey_type", value: "sankey", label: "Flow", defaultChecked: true },
+            { id: "sankey_type", value: "sankey", label: "Flow" },
             { id: "boxline_type", value: "boxline", label: "Recipe graph" },
           ]}
-          onChange={actions.changeVisualizationType}
+          value={snapshot.settings.visualizationType}
+          onChange={commands.setVisualizationType}
         />
         <VisualizationRadioGroup
           id="graph_render"
           label="Viewport"
           name="render"
           options={[
-            { id: "zoom_render", value: "zoom", label: "Zoom & pan", defaultChecked: true },
+            { id: "zoom_render", value: "zoom", label: "Zoom & pan" },
             { id: "fix_render", value: "fix", label: "Fit" },
           ]}
-          onChange={actions.changeVisualizationRender}
+          value={snapshot.settings.visualizationRender}
+          onChange={commands.setVisualizationRender}
         />
         <VisualizationRadioGroup
           id="graph_direction"
@@ -176,7 +219,8 @@ function VisualizationPanel({ actions }: CalculatorShellProps) {
             { id: "right_direction", value: "right", label: "Left to right" },
             { id: "down_direction", value: "down", label: "Top to bottom" },
           ]}
-          onChange={actions.changeVisualizationDirection}
+          value={snapshot.settings.visualizationDirection}
+          onChange={commands.setVisualizationDirection}
         />
         <div className="visualization-meta">
           <span id="visualization_summary" className="visualization-summary" />
@@ -198,7 +242,6 @@ interface VisualizationOption {
   id: string
   value: string
   label: string
-  defaultChecked?: boolean
 }
 
 interface VisualizationRadioGroupProps {
@@ -206,10 +249,11 @@ interface VisualizationRadioGroupProps {
   label: string
   name: string
   options: VisualizationOption[]
-  onChange: (event: Event) => void
+  value: string
+  onChange: (value: string) => void
 }
 
-function VisualizationRadioGroup({ id, label, name, options, onChange }: VisualizationRadioGroupProps) {
+function VisualizationRadioGroup({ id, label, name, options, value, onChange }: VisualizationRadioGroupProps) {
   return (
     <div className="visualization-control">
       <span className="visualization-label">{label}</span>
@@ -221,9 +265,9 @@ function VisualizationRadioGroup({ id, label, name, options, onChange }: Visuali
               type="radio"
               name={name}
               value={option.value}
-              defaultChecked={option.defaultChecked}
+              checked={option.value === value}
               autoComplete="off"
-              onChange={forwardNativeEvent(onChange)}
+              onChange={() => onChange(option.value)}
             />
             <label htmlFor={option.id}>{option.label}</label>
           </Fragment>
@@ -265,12 +309,17 @@ function ResourcesPanel() {
   )
 }
 
-function DebugPanel({ actions }: CalculatorShellProps) {
+function DebugPanel({ commands, snapshot }: CalculatorShellProps) {
   return (
     <div id="debug_tab" className="tab">
       <div id="debug_message" />
       <label htmlFor="render_debug">Render debug tab:</label>{" "}
-      <input id="render_debug" type="checkbox" onChange={forwardNativeEvent(actions.toggleDebug)} />
+      <input
+        id="render_debug"
+        type="checkbox"
+        checked={snapshot.settings.debugEnabled}
+        onChange={(event: ChangeEvent<HTMLInputElement>) => commands.setDebugEnabled(event.currentTarget.checked)}
+      />
       <br />
       Last tableau:
       <div id="debug_tableau" />

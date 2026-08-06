@@ -1,36 +1,35 @@
-import { create, select, selectAll } from "d3"
-const d3: any = { create, select, selectAll }
-import { spec } from "./factory.js"
+import { create, select, selectAll, type BaseType, type Selection } from "d3"
+import { spec, type FactoryBuildTarget } from "./factory.js"
 import { one, Rational, zero } from "./math.js"
+import type { ItemGroups, Planet } from "./models.js"
+import { Item, Recipe } from "./recipes.js"
 import { addInputs, makeDropdown, reapTooltips } from "./presentation.js"
 import { formatLocationList, getUnavailableLocationInfo, itemMatchesSearch } from "./data.js"
 import { refreshRecipeSettings } from "./settings.js"
-import { getQualityTargetFeasibility, getRecipeQualityChance, qualityProbability, QUALITY_TIERS } from "./planning.js"
+import {
+  getQualityTargetFeasibility,
+  getRecipeQualityChance,
+  qualityProbability,
+  QUALITY_TIERS,
+  type QualityTargetFeasibility,
+} from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Build targets
 // -----------------------------------------------------------------------------
 
-function hasRecipeCategories(recipe) {
-  if (recipe === null || recipe === undefined) {
-    return false
-  }
-  let categories = recipe.categories
-  if (categories !== undefined && categories !== null) {
-    if (typeof categories.size === "number") {
-      return categories.size > 0
-    }
-    return categories.length > 0
-  }
-  return recipe.category !== undefined && recipe.category !== null
+type UiSelection = Selection<Element, unknown, BaseType, unknown>
+
+function hasRecipeCategories(recipe: Recipe | null | undefined): boolean {
+  return recipe !== null && recipe !== undefined && (recipe.categories.size > 0 || recipe.category !== null)
 }
 
 const SELECTED_INPUT = "selected"
 
 // events
 
-function itemHandler(target) {
-  return function (item) {
+function itemHandler(target: BuildTarget): (item: Item) => void {
+  return function (item: Item) {
     target.itemKey = item.key
     target.item = item
     target.displayRecipes()
@@ -38,32 +37,38 @@ function itemHandler(target) {
   }
 }
 
-function removeHandler(target) {
+function removeHandler(target: BuildTarget): () => void {
   return function () {
     spec.removeTarget(target)
     spec.updateSolution()
   }
 }
 
-function changeBuildingCountHandler(target) {
+function changeBuildingCountHandler(target: BuildTarget): () => void {
   return function () {
     target.buildingsChanged()
     spec.updateSolution()
   }
 }
 
-function changeRateHandler(target) {
+function changeRateHandler(target: BuildTarget): () => void {
   return function () {
     target.rateChanged()
     spec.updateSolution()
   }
 }
 
-function getTargetQualityRecipe(target) {
-  return target.recipe ?? spec.getRecipes(target.item)[0] ?? null
+function getTargetQualityRecipe(target: BuildTarget): Recipe | null {
+  return target.recipe ?? spec.getRecipes(target.item).find((candidate) => candidate instanceof Recipe) ?? null
 }
 
-function applyAutomaticQualityConfiguration(target, recipe, qualityLevel, previousQuality, recommendation) {
+function applyAutomaticQualityConfiguration(
+  target: BuildTarget,
+  recipe: Recipe,
+  qualityLevel: number,
+  previousQuality: number,
+  recommendation: Extract<QualityTargetFeasibility, { status: "auto-configurable" }>,
+): boolean {
   if (!spec.applyQualityTargetConfiguration(recipe, recommendation)) {
     target.setQuality(previousQuality)
     target.showQualityUnavailable(qualityLevel)
@@ -75,7 +80,7 @@ function applyAutomaticQualityConfiguration(target, recipe, qualityLevel, previo
   return true
 }
 
-export function handleTargetQualityChange(target, requestedQuality) {
+export function handleTargetQualityChange(target: BuildTarget, requestedQuality: number): void {
   const previousQuality = target.qualityLevel
   target.setQuality(requestedQuality)
   const qualityLevel = target.qualityLevel
@@ -115,7 +120,7 @@ export function handleTargetQualityChange(target, requestedQuality) {
   target.showQualityUnavailable(qualityLevel)
 }
 
-function configureQualityFromNotice(target) {
+function configureQualityFromNotice(target: BuildTarget): void {
   const recipe = getTargetQualityRecipe(target)
   if (recipe === null || target.qualityLevel <= 0) return
 
@@ -129,57 +134,65 @@ function configureQualityFromNotice(target) {
   }
 }
 
-function resetSearch(dropdown) {
+function resetSearch(dropdown: Element): void {
   let search = dropdown.getElementsByClassName("search")[0] as HTMLInputElement | undefined
   if (search !== undefined) {
     search.value = ""
   }
 
   // unhide all child nodes
-  let elems = dropdown.querySelectorAll("label, hr")
-  for (let elem of elems) {
+  const elems = dropdown.querySelectorAll<HTMLElement>("label, hr")
+  for (const elem of elems) {
     elem.style.display = ""
   }
 }
 
-function searchTargets(this: HTMLInputElement, event) {
-  let search = this
-  let searchText = search.value
-  let dropdown = d3.select(search.parentNode)
+function searchTargets(this: HTMLInputElement, event: KeyboardEvent): void {
+  const search = this
+  const searchText = search.value
+  const parent = search.parentElement
+  if (parent === null) return
+  const dropdown = select(parent)
 
   if (!searchText.trim()) {
-    resetSearch(search.parentNode)
+    resetSearch(parent)
     return
   }
 
   // handle enter key press (select target if only one is visible)
-  if (event.keyCode === 13) {
-    let labels = dropdown.selectAll("label").filter(function (this: HTMLElement) {
-      return this.style.display !== "none"
+  if (event.key === "Enter") {
+    const labels = dropdown.selectAll("label").filter(function (this: Element) {
+      return this instanceof HTMLElement && this.style.display !== "none"
     })
     // don't do anything if more than one icon is visible
     if (labels.size() === 1) {
-      let input = document.getElementById(labels.attr("for")) as HTMLInputElement
-      input.checked = true
-      input.dispatchEvent(new Event("change"))
+      const label = labels.node()
+      if (label instanceof HTMLLabelElement) {
+        const input = document.getElementById(label.htmlFor)
+        if (input instanceof HTMLInputElement) {
+          input.checked = true
+          input.dispatchEvent(new Event("change"))
+        }
+      }
     }
     return
   }
 
   // hide non-matching labels & icons
   let currentHrHasContent = false
-  let lastHrWithContent = null
-  dropdown.selectAll("hr, label").each(function (this: HTMLElement, item) {
+  const searchState: { lastHrWithContent: HTMLElement | null } = { lastHrWithContent: null }
+  dropdown.selectAll("hr, label").each(function (this: Element, item: unknown) {
+    if (!(this instanceof HTMLElement)) return
     if (this.tagName === "HR") {
       if (currentHrHasContent) {
         this.style.display = ""
-        lastHrWithContent = this
+        searchState.lastHrWithContent = this
       } else {
         this.style.display = "none"
       }
       currentHrHasContent = false
     } else {
-      if (!itemMatchesSearch(item, searchText)) {
+      if (!(item instanceof Item) || !itemMatchesSearch(item, searchText)) {
         this.style.display = "none"
       } else {
         this.style.display = ""
@@ -187,83 +200,111 @@ function searchTargets(this: HTMLInputElement, event) {
       }
     }
   })
-  if (!currentHrHasContent && lastHrWithContent !== null) {
-    lastHrWithContent.style.display = "none"
+  if (!currentHrHasContent && searchState.lastHrWithContent !== null) {
+    searchState.lastHrWithContent.style.display = "none"
   }
 }
 
 let targetCount = 0
 let recipeSelectorCount = 0
 
-export class BuildTarget {
-  [key: string]: any
-  constructor(index, itemKey, item, itemGroups) {
+export class BuildTarget implements FactoryBuildTarget {
+  index: number
+  itemKey: string
+  item: Item
+  recipe: Recipe | null = null
+  defaultRecipe: Recipe | null = null
+  changedBuilding = true
+  buildings = one
+  rate = zero
+  qualityLevel = 0
+  qualityNoticeKind: "warning" | null = null
+  qualityConflictPreviousQuality: number | null = null
+  readonly element: HTMLElement
+  readonly recipeSelector: UiSelection
+  readonly qualitySelector: HTMLSelectElement
+  readonly buildingInput: HTMLInputElement
+  readonly rateInput: HTMLInputElement
+  readonly locationWarning: UiSelection
+  readonly qualityNotice: UiSelection
+  readonly qualityNoticeMessage: UiSelection
+  readonly qualityNoticeAction: UiSelection
+  compatibleLocations: Planet[] = []
+
+  constructor(index: number, itemKey: string, item: Item, itemGroups: ItemGroups) {
     this.index = index
     this.itemKey = itemKey
     this.item = item
-    // When item has multiple recipes.
-    this.recipe = null
-    this.defaultRecipe = null
-    this.changedBuilding = true
-    this.buildings = one
-    this.rate = zero
-    this.qualityLevel = 0
-    this.qualityNoticeKind = null
-    this.qualityConflictPreviousQuality = null
 
-    let element = d3.create("li").classed("target production-target-row", true)
+    let element = create("li").classed("target production-target-row", true)
     element
       .append("button")
       .classed("targetButton ui", true)
       .text("×")
       .attr("data-tooltip", "Remove this production target.")
       .on("click", removeHandler(this))
-    this.element = element.node()
+    const elementNode = element.node()
+    if (!(elementNode instanceof HTMLElement)) throw new Error("Unable to create production target")
+    this.element = elementNode
 
     const targetInputName = `target-${targetCount}`
     let itemOptionsRendered = false
-    let dropdown: any
     const itemColumn = element.append("span").classed("production-target-item", true)
 
-    const renderItemOptions = (selection: any) => {
+    const renderItemOptions = (selection: Selection<HTMLElement, unknown, null, undefined>): void => {
       if (itemOptionsRendered) {
         return
       }
       itemOptionsRendered = true
       selection.selectAll("*").remove()
-      selection.append("input").classed("search", true).attr("placeholder", "Search").on("keyup", searchTargets)
+      selection
+        .append("input")
+        .classed("search", true)
+        .attr("placeholder", "Search")
+        .on("keyup", function (this: Element, event: KeyboardEvent) {
+          if (this instanceof HTMLInputElement) searchTargets.call(this, event)
+        })
       let group = selection.selectAll("div").data(itemGroups).join("div")
-      group.filter((d, i) => i > 0).append("hr")
+      group.filter((_d: Item[][], i: number) => i > 0).append("hr")
       let items = group
         .selectAll("div")
-        .data((d) => d)
+        .data((d: Item[][]) => d)
         .join("div")
         .selectAll("span")
-        .data((d) => d)
+        .data((d: Item[]) => d)
         .join("span")
-      let itemLabel = addInputs(items, targetInputName, (d) => d === this.item, itemHandler(this))
-      itemLabel.append((d) => d.icon.make(32, false, selection.node()))
+      let itemLabel = addInputs<Item>(items, targetInputName, (d: Item) => d === this.item, itemHandler(this))
+      itemLabel.append((d: Item) => {
+        const node = selection.node()
+        return d.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
+      })
       itemLabel
         .append("span")
         .classed("target-item-name", true)
-        .text((d) => d.name)
+        .text((d: Item) => d.name)
       reapTooltips()
     }
 
-    dropdown = makeDropdown(
+    const dropdown = makeDropdown(
       itemColumn,
       (selection) => {
         renderItemOptions(selection)
         const search = selection.select(".search").node() as HTMLInputElement | null
         search?.focus()
       },
-      (selection) => resetSearch(selection.node()),
+      (selection) => {
+        const node = selection.node()
+        if (node instanceof Element) resetSearch(node)
+      },
     )
     dropdown.classed("itemDropdown", true)
 
     const selectedItem = dropdown.append("span").datum(item)
     const selectedItemLabel = addInputs(selectedItem, targetInputName, () => true, itemHandler(this))
-    selectedItemLabel.append(() => item.icon.make(32, false, dropdown.node()))
+    selectedItemLabel.append(() => {
+      const node = dropdown.node()
+      return item.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
+    })
     selectedItemLabel.append("span").classed("target-item-name", true).text(item.name)
 
     targetCount++
@@ -281,16 +322,17 @@ export class BuildTarget {
         "data-tooltip",
         "Choose the output quality tier. The calculator uses the chance from the selected quality modules.",
       )
-      .on("change", (event) => {
-        handleTargetQualityChange(this, Number(event.target.value))
+      .on("change", (event: Event) => {
+        const target = event.target
+        if (target instanceof HTMLSelectElement) handleTargetQualityChange(this, Number(target.value))
       })
-      .node()
-    d3.select(this.qualitySelector)
+      .node() as HTMLSelectElement
+    select(this.qualitySelector)
       .selectAll("option")
       .data(QUALITY_TIERS.map((name, level) => ({ name, level })))
       .join("option")
-      .attr("value", (d) => d.level)
-      .text((d) => d.name)
+      .attr("value", (d: { readonly name: string; readonly level: number }) => d.level)
+      .text((d: { readonly name: string; readonly level: number }) => d.name)
     this.setQuality(0)
 
     this.buildingInput = settings
@@ -306,7 +348,7 @@ export class BuildTarget {
         "title",
         "Enter a value to specify the number of buildings. The rate will be determined based on the number of items a single building can make.",
       )
-      .node()
+      .node() as HTMLInputElement
 
     this.rateInput = settings
       .append("input")
@@ -319,7 +361,7 @@ export class BuildTarget {
         "data-tooltip",
         "Enter a value to specify the rate. The number of buildings will be determined based on the rate.",
       )
-      .node()
+      .node() as HTMLInputElement
     this.setRateLabel()
 
     this.locationWarning = element
@@ -348,29 +390,36 @@ export class BuildTarget {
       .attr("type", "button")
       .style("display", "none")
 
-    this.compatibleLocations = []
     this.displayRecipes()
   }
-  setRateLabel() {
+  getBuildingCountInput(): string {
+    return this.buildingInput.value
+  }
+  setRateLabel(): void {
     this.rateInput?.setAttribute("aria-label", "Rate per " + spec.format.longRate)
   }
-  hideQualityNotice() {
+  hideQualityNotice(): void {
     this.qualityNoticeKind = null
     this.qualityNoticeMessage.text("")
     this.qualityNoticeAction.text("").style("display", "none").on("click", null)
     this.qualityNotice.style("display", "none")
   }
-  clearQualityNotice() {
+  clearQualityNotice(): void {
     this.qualityConflictPreviousQuality = null
     this.hideQualityNotice()
   }
-  clearQualityWarning() {
+  clearQualityWarning(): void {
     this.qualityConflictPreviousQuality = null
     if (this.qualityNoticeKind === "warning") {
       this.hideQualityNotice()
     }
   }
-  showQualityNotice(kind, message, actionText = null, action = null) {
+  showQualityNotice(
+    kind: "warning",
+    message: string,
+    actionText: string | null = null,
+    action: (() => void) | null = null,
+  ): void {
     this.qualityNoticeKind = kind
     this.qualityNoticeMessage.text(message)
     if (actionText === null || action === null) {
@@ -380,7 +429,7 @@ export class BuildTarget {
     }
     this.qualityNotice.style("display", null)
   }
-  showQualityConflict(qualityLevel) {
+  showQualityConflict(qualityLevel: number): void {
     const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
     this.showQualityNotice(
       "warning",
@@ -389,17 +438,16 @@ export class BuildTarget {
       () => configureQualityFromNotice(this),
     )
   }
-  showQualityUnavailable(qualityLevel) {
+  showQualityUnavailable(qualityLevel: number): void {
     const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
     this.showQualityNotice(
       "warning",
       `${tier} ${this.item.name} is unavailable with the currently enabled machines and modules.`,
     )
   }
-  displayLocationWarning() {
+  displayLocationWarning(): void {
     let info = getUnavailableLocationInfo(spec, this.item)
     if (info === null) {
-      this.compatibleLocations = []
       this.locationWarning.style("display", "none")
       return
     }
@@ -412,23 +460,23 @@ export class BuildTarget {
     this.locationWarning.select(".location-warning-message").text("Choose a compatible production location above.")
     this.locationWarning.style("display", null)
   }
-  enableCompatibleLocations() {
+  enableCompatibleLocations(): void {
     let locations = [...this.compatibleLocations]
     for (let location of locations) {
       if (!spec.selectedPlanets.has(location)) {
         spec.selectPlanet(location)
       }
     }
-    d3.selectAll("#planet_selector .toggle")
-      .classed("selected", (location) => spec.selectedPlanets.has(location))
-      .attr("aria-pressed", (location) => String(spec.selectedPlanets.has(location)))
+    selectAll("#planet_selector .toggle")
+      .classed("selected", (location: Planet) => spec.selectedPlanets.has(location))
+      .attr("aria-pressed", (location: Planet) => String(spec.selectedPlanets.has(location)))
     refreshRecipeSettings(spec)
     spec.updateSolution()
   }
-  displayRecipes() {
+  displayRecipes(): void {
     const previousRecipe = this.recipe
     this.recipeSelector.selectAll("*").remove()
-    let recipes = []
+    const recipes: Recipe[] = []
     let found = false
     if (!spec.ignore.has(this.item)) {
       for (let recipe of this.item.recipes) {
@@ -446,20 +494,20 @@ export class BuildTarget {
     }
     this.displayLocationWarning()
     if (recipes.length > 0) {
-      this.defaultRecipe = recipes[0]
+      this.defaultRecipe = recipes[0] ?? null
     }
     if (recipes.length === 0) {
       this.defaultRecipe = null
       if (previousRecipe !== this.recipe) this.clearQualityNotice()
       return
     } else if (recipes.length === 1) {
-      this.recipe = recipes[0]
+      this.recipe = recipes[0] ?? null
       if (previousRecipe !== this.recipe) this.clearQualityNotice()
       return
     }
     // If there are multiple valid recipes, render the recipe dropdown.
     if (this.recipe === null) {
-      this.recipe = recipes[0]
+      this.recipe = recipes[0] ?? null
     }
     let self = this
     let dropdown = makeDropdown(this.recipeSelector)
@@ -467,18 +515,21 @@ export class BuildTarget {
     let labels = addInputs(
       inputs,
       "target-recipe-" + recipeSelectorCount,
-      (d) => self.recipe === d,
-      (d) => {
+      (d: Recipe) => self.recipe === d,
+      (d: Recipe) => {
         self.recipe = d
         self.clearQualityNotice()
         spec.updateSolution()
       },
     )
-    labels.append((d) => d.icon.make(32, false, dropdown.node()))
+    labels.append((d: Recipe) => {
+      const node = dropdown.node()
+      return d.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
+    })
     recipeSelectorCount++
     if (previousRecipe !== this.recipe) this.clearQualityNotice()
   }
-  getRate() {
+  getRate(): Rational {
     this.setRateLabel()
     let rate = zero
     let recipe = this.recipe
@@ -502,7 +553,7 @@ export class BuildTarget {
       qualityRate = baseRate.mul(probability)
     }
     if (this.changedBuilding) {
-      rate = qualityRate.mul(this.buildings)
+      rate = qualityRate === null ? zero : qualityRate.mul(this.buildings)
       this.rateInput.value = spec.format.rate(rate)
     } else {
       rate = this.rate
@@ -516,7 +567,7 @@ export class BuildTarget {
     }
     return rate
   }
-  buildingsChanged() {
+  buildingsChanged(): void {
     this.changedBuilding = true
     this.buildingInput.classList.add(SELECTED_INPUT)
     this.rateInput.classList.remove(SELECTED_INPUT)
@@ -524,12 +575,12 @@ export class BuildTarget {
     this.rate = zero
     this.rateInput.value = ""
   }
-  setBuildings(count, recipe) {
+  setBuildings(count: string, recipe: Recipe | null): void {
     this.buildingInput.value = count
     this.recipe = recipe
     this.buildingsChanged()
   }
-  rateChanged() {
+  rateChanged(): void {
     this.changedBuilding = false
     this.buildingInput.classList.remove(SELECTED_INPUT)
     this.rateInput.classList.add(SELECTED_INPUT)
@@ -537,15 +588,15 @@ export class BuildTarget {
     this.rate = Rational.from_string(this.rateInput.value).div(spec.format.rateFactor)
     this.buildingInput.value = ""
   }
-  setRate(rate) {
+  setRate(rate: string): void {
     this.rateInput.value = rate
     this.rateChanged()
   }
-  setQuality(level) {
+  setQuality(level: number | string): void {
     let maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))
-    d3.select(this.qualitySelector)
+    select(this.qualitySelector)
       .selectAll("option")
-      .property("disabled", (option: any) => option.level > maxLevel)
+      .property("disabled", (option: { level: number }) => option.level > maxLevel)
     this.qualityLevel = Math.max(0, Math.min(maxLevel, Number(level) || 0))
     this.qualitySelector.value = String(this.qualityLevel)
   }

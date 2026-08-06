@@ -1,7 +1,15 @@
 import { select, selectAll } from "d3"
-const d3: any = { select, selectAll }
+import {
+  isProgressionPreset,
+  type CalculatorTab,
+  type FactoryDensity,
+  type PlanningSettingValue,
+  type ProgressionPreset,
+} from "./application/contracts.js"
 import { spec } from "./factory.js"
-import { Rational } from "./math.js"
+import { type DisplayFormat, Rational } from "./math.js"
+import { Building, Planet } from "./models.js"
+import type { Item } from "./recipes.js"
 
 // -----------------------------------------------------------------------------
 // Document title
@@ -13,7 +21,7 @@ export function setTitle(title: string) {
   document.title = title === "" ? DEFAULT_TITLE : title
 }
 
-export type FactoryDensity = "comfortable" | "compact"
+export type { FactoryDensity } from "./application/contracts.js"
 
 const FACTORY_DENSITY_STORAGE_KEY = "factorio-calculator-factory-density"
 const DEFAULT_FACTORY_DENSITY: FactoryDensity = "compact"
@@ -24,12 +32,17 @@ function isFactoryDensity(value: string | null): value is FactoryDensity {
   return value === "comfortable" || value === "compact"
 }
 
-function applyFactoryDensity(value: FactoryDensity) {
+export function setFactoryDensity(value: FactoryDensity): void {
   factoryDensity = value
   document.documentElement.dataset.factoryDensity = value
   document.querySelectorAll<HTMLInputElement>('input[name="factory_density"]').forEach((input) => {
     input.checked = input.value === value
   })
+  try {
+    window.localStorage.setItem(FACTORY_DENSITY_STORAGE_KEY, value)
+  } catch {
+    // Storage may be disabled. The selected density still applies immediately.
+  }
 }
 
 export function initializeFactoryDensity() {
@@ -39,7 +52,7 @@ export function initializeFactoryDensity() {
   } catch {
     // Storage may be disabled. The control still works for the current page.
   }
-  applyFactoryDensity(isFactoryDensity(storedDensity) ? storedDensity : DEFAULT_FACTORY_DENSITY)
+  setFactoryDensity(isFactoryDensity(storedDensity) ? storedDensity : DEFAULT_FACTORY_DENSITY)
 }
 
 export function changeFactoryDensity(event: Event) {
@@ -47,15 +60,10 @@ export function changeFactoryDensity(event: Event) {
   if (!(input instanceof HTMLInputElement) || !isFactoryDensity(input.value)) {
     return
   }
-  applyFactoryDensity(input.value)
-  try {
-    window.localStorage.setItem(FACTORY_DENSITY_STORAGE_KEY, input.value)
-  } catch {
-    // Ignore storage failures; the selected density still applies immediately.
-  }
+  setFactoryDensity(input.value)
 }
 
-export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age" | "megabase"
+export type { ProgressionPreset } from "./application/contracts.js"
 
 type PresetDefinition = {
   planets: string[]
@@ -135,12 +143,28 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   },
 }
 
-function getByKey(collection: Map<any, any> | null, key: string | null) {
+function getByKey<TKey, TValue>(collection: ReadonlyMap<TKey, TValue> | null, key: TKey | null): TValue | null {
   if (collection === null || key === null) return null
   return collection.get(key) ?? null
 }
 
-function syncProgressionControls() {
+function getBoundDatum(element: Element): unknown {
+  return (element as Element & { readonly __data__?: unknown }).__data__
+}
+
+function getEventInput(event: Event): HTMLInputElement | null {
+  return event.target instanceof HTMLInputElement ? event.target : null
+}
+
+function getEventSelect(event: Event): HTMLSelectElement | null {
+  return event.target instanceof HTMLSelectElement ? event.target : null
+}
+
+function getEventControl(event: Event): HTMLInputElement | HTMLSelectElement | null {
+  return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement ? event.target : null
+}
+
+function syncProgressionControls(): void {
   document.querySelectorAll<HTMLInputElement>('#belt_selector input[type="radio"]').forEach((input) => {
     input.checked = input.value === spec.belt?.key
   })
@@ -151,23 +175,22 @@ function syncProgressionControls() {
   if (maxQuality !== null) maxQuality.value = String(spec.maxQualityLevel)
 
   document.querySelectorAll<HTMLInputElement>('#building_selector input[type="checkbox"]').forEach((input) => {
-    let building = (input as HTMLInputElement & { __data__?: any }).__data__
-    input.checked = building === undefined ? false : spec.isAutomaticBuildingEnabled(building)
+    const building = getBoundDatum(input)
+    input.checked = building instanceof Building && spec.isAutomaticBuildingEnabled(building)
   })
 }
 
-export function applyProgressionPreset(event: Event) {
-  let select = event.target
-  if (!(select instanceof HTMLSelectElement) || !(select.value in PROGRESSION_PRESETS)) return
-  let preset = PROGRESSION_PRESETS[select.value as ProgressionPreset]
+export function applyProgressionPresetValue(value: ProgressionPreset): void {
+  const preset = PROGRESSION_PRESETS[value]
 
   spec.selectedPlanets.clear()
   for (let key of preset.planets) {
     let planet = getByKey(spec.planets, key)
     if (planet !== null) spec.selectPlanet(planet)
   }
-  if (spec.selectedPlanets.size === 0 && spec.planets?.size) {
-    spec.selectPlanet(spec.planets.values().next().value)
+  if (spec.selectedPlanets.size === 0 && spec.planets !== null && spec.planets.size > 0) {
+    const firstPlanet = spec.planets.values().next().value
+    if (firstPlanet !== undefined) spec.selectPlanet(firstPlanet)
   }
 
   spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
@@ -184,10 +207,11 @@ export function applyProgressionPreset(event: Event) {
     preset.defaultMachines.map((key) => getByKey(spec.buildingKeys, key)).filter((building) => building !== null),
   )
 
-  document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle: any) => {
-    let location = toggle.__data__
-    toggle.classList.toggle("selected", spec.selectedPlanets.has(location))
-    toggle.setAttribute("aria-pressed", String(spec.selectedPlanets.has(location)))
+  document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle) => {
+    const location = getBoundDatum(toggle)
+    const selected = location instanceof Planet && spec.selectedPlanets.has(location)
+    toggle.classList.toggle("selected", selected)
+    toggle.setAttribute("aria-pressed", String(selected))
   })
 
   syncMiningProductivityControls()
@@ -195,9 +219,15 @@ export function applyProgressionPreset(event: Event) {
   spec.updateSolution()
 }
 
-export function changePlanningSetting(event: Event) {
-  let input = event.target
-  if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement)) return
+export function applyProgressionPreset(event: Event): void {
+  const select = event.target
+  if (!(select instanceof HTMLSelectElement) || !isProgressionPreset(select.value)) return
+  applyProgressionPresetValue(select.value)
+}
+
+export type { PlanningSettingValue } from "./application/contracts.js"
+
+export function setPlanningSetting(input: PlanningSettingValue): void {
   switch (input.id) {
     case "belt_stack_size":
       spec.beltStackSize = Rational.from_string(input.value)
@@ -215,14 +245,14 @@ export function changePlanningSetting(event: Event) {
       }
       break
     default: {
-      let resourceKey = input.dataset.resourceKey
+      const resourceKey = input.resourceKey
       if (resourceKey) {
         let recipe = spec.recipes.get(resourceKey)
         if (recipe)
           spec.setResourceYield(recipe, Rational.from_string(input.value || "100").div(Rational.from_float(100)))
         break
       }
-      let itemKey = input.dataset.itemKey
+      const itemKey = input.itemKey
       if (!itemKey) return
       if (input.value === "") spec.asteroidLimits.delete(itemKey)
       else spec.asteroidLimits.set(itemKey, Rational.from_string(input.value).div(spec.format.rateFactor))
@@ -231,20 +261,31 @@ export function changePlanningSetting(event: Event) {
   spec.updateSolution()
 }
 
+export function changePlanningSetting(event: Event): void {
+  const input = getEventControl(event)
+  if (input === null) return
+  setPlanningSetting({
+    id: input.id,
+    value: input.value,
+    resourceKey: input.dataset.resourceKey,
+    itemKey: input.dataset.itemKey,
+  })
+}
+
 // -----------------------------------------------------------------------------
 // UI actions
 // -----------------------------------------------------------------------------
 
 // build target events
 
-export function plusHandler() {
+export function plusHandler(): void {
   spec.addTarget()
   spec.updateSolution()
 }
 
 let shareStatusTimer: ReturnType<typeof setTimeout> | null = null
 
-function setShareStatus(message: string) {
+function setShareStatus(message: string): void {
   let status = document.getElementById("share_status")
   if (status === null) {
     return
@@ -259,7 +300,7 @@ function setShareStatus(message: string) {
   }, 2500)
 }
 
-function fallbackCopyText(text: string) {
+function fallbackCopyText(text: string): void {
   let input = document.createElement("textarea")
   input.value = text
   input.setAttribute("readonly", "")
@@ -274,7 +315,7 @@ function fallbackCopyText(text: string) {
   }
 }
 
-export async function copyShareLink() {
+export async function copyShareLink(): Promise<void> {
   spec.persistUrlState()
   let url = window.location.href
   try {
@@ -291,9 +332,22 @@ export async function copyShareLink() {
 
 // tab events
 
-export const DEFAULT_TAB = "totals"
+export type { CalculatorTab } from "./application/contracts.js"
 
-export let currentTab = DEFAULT_TAB
+export const DEFAULT_TAB: CalculatorTab = "totals"
+
+export let currentTab: CalculatorTab = DEFAULT_TAB
+
+function isCalculatorTab(value: string): value is CalculatorTab {
+  return (
+    value === "totals" ||
+    value === "graph" ||
+    value === "settings" ||
+    value === "resources" ||
+    value === "debug" ||
+    value === "help"
+  )
+}
 
 let onDeferredTabOpened: (tabName: string) => void = () => undefined
 
@@ -301,66 +355,94 @@ export function configureDeferredTabHandler(handler: (tabName: string) => void):
   onDeferredTabOpened = handler
 }
 
-export function clickTab(tabName) {
-  if (tabName === "about" || tabName === "faq" || tabName === "changelog") {
-    tabName = "help"
-  }
-  if (document.getElementById(tabName + "_tab") === null) {
-    tabName = DEFAULT_TAB
-  }
+export function clickTab(requestedTab: string): void {
+  const candidate =
+    requestedTab === "about" || requestedTab === "faq" || requestedTab === "changelog" ? "help" : requestedTab
+  const tabName: CalculatorTab =
+    isCalculatorTab(candidate) && document.getElementById(candidate + "_tab") !== null ? candidate : DEFAULT_TAB
   currentTab = tabName
-  d3.selectAll(".tab").style("display", "none")
-  d3.selectAll(".tab_button, .toolbar-tab-button").classed("active", false)
-  d3.select("#" + tabName + "_tab").style("display", "block")
-  d3.select("#" + tabName + "_button").classed("active", true)
+  selectAll(".tab").style("display", "none")
+  selectAll(".tab_button, .toolbar-tab-button").classed("active", false)
+  select("#" + tabName + "_tab").style("display", "block")
+  select("#" + tabName + "_button").classed("active", true)
   document.getElementById("factory_tab_tools")?.toggleAttribute("hidden", tabName !== "totals")
   if (tabName === "settings" || tabName === "resources") {
     onDeferredTabOpened(tabName)
   }
   spec.setHash()
+  spec.notifyStateChanged()
 }
 
-export function clickVisualize() {
+export function clickVisualize(): void {
   clickTab("graph")
   spec.display()
 }
 
 // shared events
 
-export function toggleIgnoreHandler(event, d) {
-  spec.toggleIgnore(d.item)
+export function toggleIgnoreHandler(_event: Event, datum: { readonly item: Item }): void {
+  spec.toggleIgnore(datum.item)
   spec.updateSolution()
 }
 
 // setting events
 
-export function changeTitle(event) {
-  setTitle(event.target.value)
+export function setCalculatorTitle(value: string): void {
+  setTitle(value)
   spec.setHash()
+  spec.notifyStateChanged()
 }
 
-export function changeRatePrecision(event) {
-  spec.format.ratePrecision = Number(event.target.value)
+export function changeTitle(event: Event): void {
+  const input = getEventInput(event)
+  if (input !== null) setCalculatorTitle(input.value)
+}
+
+export function setRatePrecision(value: number): void {
+  if (!Number.isInteger(value) || value < 0) return
+  spec.format.ratePrecision = value
   spec.display()
 }
 
-export function changeCountPrecision(event) {
-  spec.format.countPrecision = Number(event.target.value)
+export function changeRatePrecision(event: Event): void {
+  const input = getEventControl(event)
+  if (input !== null) setRatePrecision(Number(input.value))
+}
+
+export function setCountPrecision(value: number): void {
+  if (!Number.isInteger(value) || value < 0) return
+  spec.format.countPrecision = value
   spec.display()
 }
 
-export function changeFormat(event) {
-  spec.format.displayFormat = event.target.value
+export function changeCountPrecision(event: Event): void {
+  const input = getEventControl(event)
+  if (input !== null) setCountPrecision(Number(input.value))
+}
+
+export function setDisplayFormat(value: DisplayFormat): void {
+  spec.format.displayFormat = value
   spec.display()
 }
 
-export function changeMprod(event) {
-  spec.miningProd = Rational.from_string(event.target.value).div(Rational.from_float(100))
+export function changeFormat(event: Event): void {
+  const input = getEventControl(event)
+  if (input === null || (input.value !== "decimal" && input.value !== "rational")) return
+  setDisplayFormat(input.value)
+}
+
+export function setMiningProductivityPercent(value: string): void {
+  spec.miningProd = Rational.from_string(value).div(Rational.from_float(100))
   syncMiningProductivityControls()
   spec.updateSolution()
 }
 
-export function syncMiningProductivityControls() {
+export function changeMprod(event: Event): void {
+  const input = getEventInput(event)
+  if (input !== null) setMiningProductivityPercent(input.value)
+}
+
+export function syncMiningProductivityControls(): void {
   let value = spec.miningProd.mul(Rational.from_integer(100)).toDecimal()
   let input = document.getElementById("mprod") as HTMLInputElement | null
   if (input !== null) input.value = value
@@ -368,28 +450,48 @@ export function syncMiningProductivityControls() {
 
 // visualizer events
 
-export function changeVisType(event) {
-  setVisualizerType(event.target.value)
-  let direction = getDefaultVisualizerDirection()
+export function changeVisualizationType(value: string): void {
+  setVisualizerType(value)
+  const direction = getDefaultVisualizerDirection()
   setVisualizerDirection(direction)
-  d3.select(`#${direction}_direction`).property("checked", true)
+  select(`#${direction}_direction`).property("checked", true)
   spec.display()
 }
 
-export function changeVisRender(event) {
-  setVisualizerRender(event.target.value)
+export function changeVisType(event: Event): void {
+  const input = getEventControl(event)
+  if (input !== null) changeVisualizationType(input.value)
+}
+
+export function changeVisualizationRender(value: string): void {
+  setVisualizerRender(value)
   spec.display()
 }
 
-export function changeVisDir(event) {
-  setVisualizerDirection(event.target.value)
+export function changeVisRender(event: Event): void {
+  const input = getEventControl(event)
+  if (input !== null) changeVisualizationRender(input.value)
+}
+
+export function changeVisualizationDirection(value: string): void {
+  setVisualizerDirection(value)
+  spec.display()
+}
+
+export function changeVisDir(event: Event): void {
+  const input = getEventControl(event)
+  if (input !== null) changeVisualizationDirection(input.value)
+}
+
+export function setDebugEnabled(enabled: boolean): void {
+  spec.debug = enabled
   spec.display()
 }
 
 // debug events
-export function toggleDebug(event) {
-  spec.debug = event.target.checked
-  spec.display()
+export function toggleDebug(event: Event): void {
+  const input = getEventInput(event)
+  if (input !== null) setDebugEnabled(input.checked)
 }
 
 // -----------------------------------------------------------------------------
@@ -428,18 +530,18 @@ let onModificationChanged: () => void = () => {
   throw new Error("Dataset change handler has not been configured")
 }
 
-export function configureDatasetChangeHandler(handler: () => void) {
+export function configureDatasetChangeHandler(handler: () => void): void {
   onModificationChanged = handler
 }
 
-function normalizeDataSetName(name: string | undefined) {
+function normalizeDataSetName(name: string | undefined): string {
   const updatedName = name === undefined ? undefined : (modificationUpdates.get(name) ?? name)
   return updatedName !== undefined && MODIFICATIONS.has(updatedName) ? updatedName : DEFAULT_MODIFICATION
 }
 
-export function renderDataSetOptions(settings: Map<string, string>) {
+export function renderDataSetOptions(settings: Map<string, string>): void {
   const selector = document.getElementById("data_set") as HTMLSelectElement
-  d3.select(selector).on("change", () => onModificationChanged())
+  select(selector).on("change", () => onModificationChanged())
   const configuredModification = normalizeDataSetName(settings.get("data"))
   selector.replaceChildren()
   for (const [key, modification] of MODIFICATIONS) {
@@ -451,7 +553,7 @@ export function renderDataSetOptions(settings: Map<string, string>) {
   }
 }
 
-export function currentMod() {
+export function currentMod(): string {
   return (document.getElementById("data_set") as HTMLSelectElement).value
 }
 
@@ -466,23 +568,23 @@ export let visualizerType = DEFAULT_VISUALIZER
 export let visualizerRender = DEFAULT_RENDER
 export let visualizerDirection = getDefaultVisualizerDirection()
 
-export function setVisualizerType(value: string) {
+export function setVisualizerType(value: string): void {
   visualizerType = value
 }
 
-export function setVisualizerRender(value: string) {
+export function setVisualizerRender(value: string): void {
   visualizerRender = value
 }
 
-export function setVisualizerDirection(value: string) {
+export function setVisualizerDirection(value: string): void {
   visualizerDirection = value
 }
 
-export function getDefaultVisualizerDirection() {
+export function getDefaultVisualizerDirection(): string {
   return visualizerType === "sankey" ? "right" : "down"
 }
 
-export function isDefaultVisualizerDirection() {
+export function isDefaultVisualizerDirection(): boolean {
   return visualizerDirection === getDefaultVisualizerDirection()
 }
 
@@ -492,10 +594,10 @@ export function isDefaultVisualizerDirection() {
 
 let legacyCalculation = false
 
-export function setLegacyCalculation(value: boolean) {
+export function setLegacyCalculation(value: boolean): void {
   legacyCalculation = value
 }
 
-export function usesLegacyCalculation() {
+export function usesLegacyCalculation(): boolean {
   return legacyCalculation
 }

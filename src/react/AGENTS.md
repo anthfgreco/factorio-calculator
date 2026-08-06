@@ -1,14 +1,14 @@
 # React Shell Rules
 
-This directory is the React 19.2.8 application shell. Read the root `AGENTS.md` first.
+Read the root `AGENTS.md` first.
 
-- Keep components functional, typed, and named-exported.
-- Keep application policy out of JSX. React callbacks call operations from `state.ts`; policy remains in deterministic/runtime modules.
-- Preserve every legacy mount-point `id` unless all consumers and tests are migrated together.
-- Treat nodes populated by D3 or imperative modules as opaque. React may create the container but must not manage its children after startup.
-- Use uncontrolled form elements when runtime code reads or writes their DOM value.
-- Forward React synthetic events through `forwardNativeEvent()` when calling legacy handlers.
-- Do not add global handlers, inline HTML event attributes, context, state libraries, or a component abstraction for one-off markup.
-- Split components by stable responsibility, not line count.
-- For a new React-owned control, include its accessibility label, runtime persistence path, and a focused interface/runtime test.
-- Run `corepack pnpm typecheck`, `corepack pnpm test`, and `corepack pnpm verify` after shell changes.
+- Keep components functional, strictly typed, named-exported, and driven by `CalculatorSnapshot` plus `CalculatorCommands`.
+- Application policy stays outside JSX. Add a typed command or snapshot field instead of importing `state.ts`, `factory.ts`, or runtime models into lower components.
+- `CalculatorApp.tsx` is the runtime bridge. Lower components must not call `init()`, `dispose()`, or browser composition directly.
+- Preserve imperative mount-point IDs unless every consumer and behavioral test migrates in the same change.
+- Treat imperative-owned mount points as opaque. React may create the container but must not manage its children.
+- Controlled inputs are appropriate for snapshot-owned values. Inputs still owned by imperative modules remain uncontrolled and must not be overwritten on React rerender.
+- New controls use value commands; do not reintroduce synthetic-to-native event forwarding.
+- Include accessible labels, keyboard behavior, URL/state persistence, and focused UI or E2E coverage.
+- Do not add global handlers, inline HTML events, a state library, or one-off abstraction layers.
+- Run `pnpm check:quick`, `pnpm test:ui`, `pnpm test:e2e`, and `pnpm verify` for shell changes.

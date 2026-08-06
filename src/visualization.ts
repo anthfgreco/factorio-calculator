@@ -1,8 +1,8 @@
-import { color, curveBasis, line, select } from "d3"
-const d3: any = { color, curveBasis, line, select }
+import { color, curveBasis, line, select, type Selection } from "d3"
 import dagre from "@dagrejs/dagre"
 import { spec } from "./factory.js"
 import {
+  CirclePath,
   colonWidth,
   colorList,
   getColorMaps,
@@ -14,9 +14,23 @@ import {
   renderNode,
   renderSankey,
 } from "./graph.js"
-import { one, zero } from "./math.js"
+import { one, zero, Rational } from "./math.js"
+import type { Building } from "./models.js"
+import { Item, Recipe } from "./recipes.js"
+import type { SolverRecipe, Totals } from "./solver.js"
 import { sheetHash, sheetHeight, sheetWidth } from "./presentation.js"
 import { visualizerDirection, visualizerRender, visualizerType } from "./state.js"
+import type {
+  BoxGraphLabel,
+  GraphCurve,
+  GraphData,
+  GraphDirection,
+  GraphLayoutDirection,
+  GraphLink,
+  GraphNode as GraphNodeContract,
+  GraphPoint,
+  LinkDirection,
+} from "./graph/types.js"
 
 // -----------------------------------------------------------------------------
 // Graph viewport
@@ -26,9 +40,11 @@ const ZOOM_SCALE = 100
 const MAX_SCALE = 10
 const ASPECT_RATIO = 16 / 9
 
-export function installSVGEvents(svg: any) {
-  const node = svg.node()
-  const tab = d3.select("#graph_tab")
+export function installSVGEvents(svg: Selection<SVGSVGElement, unknown, null, undefined>): void {
+  const selectedNode = svg.node()
+  if (!(selectedNode instanceof SVGSVGElement)) throw new Error("Graph SVG is unavailable")
+  const node: SVGSVGElement = selectedNode
+  const tab = select("#graph_tab")
   const style = tab.style("display")
   tab.style("display", "block")
   svg.selectAll("image").style("display", "none")
@@ -52,7 +68,7 @@ export function installSVGEvents(svg: any) {
   let scale = MAX_SCALE
   let clickPoint: DOMPoint | null = null
 
-  function clamp() {
+  function clamp(): void {
     const midX = x + width / 2
     const midY = y + height / 2
     if (diagramX > midX) {
@@ -67,17 +83,19 @@ export function installSVGEvents(svg: any) {
     }
   }
 
-  function setViewBox() {
+  function setViewBox(): void {
     clamp()
     svg.attr("viewBox", `${x} ${y} ${width} ${height}`)
   }
 
-  function point(event: MouseEvent) {
+  function point(event: MouseEvent): DOMPoint {
     const clientPoint = new DOMPointReadOnly(event.clientX, event.clientY)
-    return clientPoint.matrixTransform(node.getScreenCTM().inverse())
+    const matrix = node.getScreenCTM()
+    if (matrix === null) throw new Error("Graph SVG has no screen transform")
+    return clientPoint.matrixTransform(matrix.inverse())
   }
 
-  function zoom(event: WheelEvent) {
+  function zoom(event: WheelEvent): void {
     event.preventDefault()
     const originalScale = scale
     if (event.deltaY < 0) {
@@ -97,12 +115,12 @@ export function installSVGEvents(svg: any) {
     setViewBox()
   }
 
-  function mouseDown(event: MouseEvent) {
+  function mouseDown(event: MouseEvent): void {
     clickPoint = point(event)
     event.preventDefault()
   }
 
-  function mouseMove(event: MouseEvent) {
+  function mouseMove(event: MouseEvent): void {
     if (clickPoint === null) return
     const cursor = point(event)
     x -= cursor.x - clickPoint.x
@@ -111,7 +129,7 @@ export function installSVGEvents(svg: any) {
     event.preventDefault()
   }
 
-  function mouseUp(event: MouseEvent) {
+  function mouseUp(event: MouseEvent): void {
     clickPoint = null
     event.preventDefault()
   }
@@ -129,48 +147,55 @@ export function installSVGEvents(svg: any) {
 
 const boxlineNodeMargin = 10
 
-function edgePath(edge) {
-  let line = d3
-    .line()
-    .x((d) => d.x)
-    .y((d) => d.y)
-    .curve(d3.curveBasis)
-  return line(edge.points)
+function edgePath(edge: GraphLink): string | null {
+  const path = line<GraphPoint>()
+    .x((point) => point.x)
+    .y((point) => point.y)
+    .curve(curveBasis)
+  return path(edge.points)
 }
 
-function edgeName(link) {
+function edgeName(link: GraphLink): string {
   return `link-${link.index}`
 }
 
-export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
+function itemColor(itemColors: ReadonlyMap<Item, number>, item: Item): string {
+  return colorList[(itemColors.get(item) ?? 0) % colorList.length] ?? "#000"
+}
+
+function darkenedItemColor(itemColors: ReadonlyMap<Item, number>, item: Item): string {
+  const value = itemColor(itemColors, item)
+  return color(value)?.darker().toString() ?? value
+}
+
+export function renderBoxGraph(
+  { nodes, links }: GraphData,
+  direction: GraphDirection,
+  ignore: ReadonlySet<unknown>,
+  callback: () => void,
+): void {
   let [itemColors, recipeColors] = getColorMaps(nodes, links)
-  if (direction === "down") {
-    direction = "TB"
-  } else {
-    direction = "LR"
-  }
-  let g = new dagre.graphlib.Graph({ multigraph: true })
-  g.setGraph({ rankdir: direction })
+  const layoutDirection: GraphLayoutDirection = direction === "down" ? "TB" : "LR"
+  const g = new dagre.graphlib.Graph({ multigraph: true })
+  g.setGraph({ rankdir: layoutDirection })
   g.setDefaultEdgeLabel(() => {})
 
-  let testSVG = d3.select("body").append("svg").classed("test", true)
-  let text = testSVG.append("text")
-  for (let node of nodes) {
-    let width = node.labelWidth(text, boxlineNodeMargin)
+  let testSVG = select("body").append("svg").classed("test", true)
+  const text = testSVG.append("text")
+  const textNode = text.node()
+  if (!(textNode instanceof SVGTextElement)) throw new Error("Unable to create graph measurement text")
+  for (const node of nodes) {
+    const width = node.labelWidth(textNode, boxlineNodeMargin)
     let height = 52
     let label = { node, width, height }
     g.setNode(node.name, label)
-    node.linkObjs = []
-    node.links = function () {
-      return this.linkObjs
-    }
   }
 
   for (let [i, link] of links.entries()) {
     link.index = i
     let s = `\u00a0\u00d7 ${spec.format.rate(link.rate)}/${spec.format.rateName}`
     text.text(s)
-    let textWidth = text.node().getBBox().width
+    const textWidth = textNode.getBBox().width
     let width = 32 + 10 + textWidth
     let height = 32 + 10
     let label = {
@@ -179,11 +204,11 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
       width: width,
       height: height,
       text: s,
-    }
+      x: 0,
+      y: 0,
+    } satisfies BoxGraphLabel
     link.label = label
     g.setEdge(link.source.name, link.target.name, label, edgeName(link))
-    link.source.linkObjs.push(link)
-    link.target.linkObjs.push(link)
   }
   text.remove()
   testSVG.remove()
@@ -204,7 +229,7 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
   }
 
   let { width, height } = g.graph()
-  let svg = d3.select("svg#graph").classed("sankey", false)
+  let svg = select("svg#graph").classed("sankey", false)
   //.attr("viewBox", `-25,-25,${width+50},${height+50}`)
   //.style("width", width+50)
   //.style("height", height+50)
@@ -217,22 +242,22 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
     .data(links)
     .join("g")
     .classed("edge", true)
-    .classed("fuel", (d) => d.fuel)
-    .each(function (this: SVGGElement, d) {
+    .classed("fuel", (d: GraphLink) => d.fuel)
+    .each(function (this: Element, d: GraphLink) {
       d.elements.push(this)
     })
   edges
     .append("path")
     .classed("highlighter", true)
     .attr("fill", "none")
-    .attr("stroke", (d) => colorList[itemColors.get(d.item) % 10])
+    .attr("stroke", (d: GraphLink) => itemColor(itemColors, d.item))
     .attr("stroke-width", 3)
     .attr("d", edgePath)
-    .attr("marker-end", (d) => `url(#arrowhead-${edgeName(d)})`)
+    .attr("marker-end", (d: GraphLink) => `url(#arrowhead-${edgeName(d)})`)
   edges
     .append("defs")
     .append("marker")
-    .attr("id", (d) => "arrowhead-" + edgeName(d))
+    .attr("id", (d: GraphLink) => "arrowhead-" + edgeName(d))
     .attr("viewBox", "0 0 10 10")
     .attr("refX", "9")
     .attr("refY", "5")
@@ -244,8 +269,8 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
     .classed("highlighter", true)
     .attr("d", "M 0,0 L 10,5 L 0,10 z")
     .attr("stroke-width", 1)
-    .attr("stroke", (d) => colorList[itemColors.get(d.item) % 10])
-    .attr("fill", (d) => d3.color(colorList[itemColors.get(d.item) % 10]).darker())
+    .attr("stroke", (d: GraphLink) => itemColor(itemColors, d.item))
+    .attr("fill", (d: GraphLink) => darkenedItemColor(itemColors, d.item))
 
   let edgeLabels = svg
     .append("g")
@@ -254,35 +279,35 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
     .data(links)
     .join("g")
     .classed("edgeLabel", true)
-    .each(function (this: SVGGElement, d) {
+    .each(function (this: Element, d: GraphLink) {
       d.elements.push(this)
     })
   edgeLabels
     .append("rect")
     .classed("highlighter", true)
-    .attr("x", (d) => {
+    .attr("x", (d: GraphLink) => {
       let edge = d.label
       return edge.x - edge.width / 2
     })
-    .attr("y", (d) => {
+    .attr("y", (d: GraphLink) => {
       let edge = d.label
       return edge.y - edge.height / 2
     })
-    .attr("width", (d) => d.label.width)
-    .attr("height", (d) => d.label.height)
+    .attr("width", (d: GraphLink) => d.label.width)
+    .attr("height", (d: GraphLink) => d.label.height)
     .attr("rx", 6)
     .attr("ry", 6)
-    .attr("fill", (d) => d3.color(colorList[itemColors.get(d.item) % 10]).darker())
+    .attr("fill", (d: GraphLink) => darkenedItemColor(itemColors, d.item))
     .attr("fill-opacity", 0)
     .attr("stroke", "none")
   edgeLabels
     .append("svg")
-    .attr("viewBox", (d) => imageViewBox(d.item))
-    .attr("x", (d) => {
+    .attr("viewBox", (d: GraphLink) => imageViewBox(d.item))
+    .attr("x", (d: GraphLink) => {
       let edge = d.label
       return edge.x - edge.width / 2 + 5 + 0.5
     })
-    .attr("y", (d) => {
+    .attr("y", (d: GraphLink) => {
       let edge = d.label
       return edge.y - iconSize / 2 + 0.5
     })
@@ -294,13 +319,13 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
     .attr("height", sheetHeight)
   edgeLabels
     .append("text")
-    .attr("x", (d) => {
+    .attr("x", (d: GraphLink) => {
       let edge = d.label
       return edge.x - edge.width / 2 + 5 + iconSize
     })
-    .attr("y", (d) => d.label.y)
+    .attr("y", (d: GraphLink) => d.label.y)
     .attr("dy", "0.35em")
-    .text((d) => d.label.text)
+    .text((d: GraphLink) => d.label.text)
 
   let rects = svg.append("g").classed("nodes", true).selectAll("g").data(nodes).join("g").classed("node", true)
   renderNode(rects, boxlineNodeMargin, "left", recipeColors, ignore)
@@ -313,15 +338,15 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
     .join("rect")
     .attr("stroke", "none")
     .attr("fill", "transparent")
-    .attr("x", (d) => d.x0)
-    .attr("y", (d) => d.y0)
-    .attr("width", (d) => d.x1 - d.x0)
-    .attr("height", (d) => d.y1 - d.y0)
-    .on("mouseover", graphMouseOverHandler)
-    .on("mouseout", graphMouseLeaveHandler)
-    .on("click", graphClickHandler)
+    .attr("x", (d: GraphNodeContract) => d.x0)
+    .attr("y", (d: GraphNodeContract) => d.y0)
+    .attr("width", (d: GraphNodeContract) => d.x1 - d.x0)
+    .attr("height", (d: GraphNodeContract) => d.y1 - d.y0)
+    .on("mouseover", (event: Event, node: GraphNodeContract) => graphMouseOverHandler(event, node))
+    .on("mouseout", (event: Event, node: GraphNodeContract) => graphMouseLeaveHandler(event, node))
+    .on("click", (event: Event, node: GraphNodeContract) => graphClickHandler(event, node))
     .append("title")
-    .text((d) => d.name)
+    .text((d: GraphNodeContract) => d.name)
   callback()
 }
 
@@ -329,133 +354,121 @@ export function renderBoxGraph({ nodes, links }, direction, ignore, callback) {
 // Visualization orchestration
 // -----------------------------------------------------------------------------
 
-class GraphEdge {
-  [key: string]: any
-  constructor(source, target, value, item, rate, fuel, beltCount, extra) {
-    this.source = source
-    this.target = target
-    this.value = value
-    this.item = item
-    this.rate = rate
-    this.fuel = fuel
-    this.beltCount = beltCount
-    this.extra = extra
-    this.elements = []
-    this.nodeHighlighters = new Set()
+class GraphEdge implements GraphLink {
+  readonly elements: Element[] = []
+  readonly nodeHighlighters = new Set<GraphNodeContract>()
+  index = 0
+  label: BoxGraphLabel
+  points: GraphPoint[] = []
+  width = 0
+  y0 = 0
+  y1 = 0
+  direction: LinkDirection = "forward"
+  curve: GraphCurve = new CirclePath(1, 0, [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ])
+  belts: GraphLink["belts"] = []
 
+  constructor(
+    readonly source: GraphNode,
+    readonly target: GraphNode,
+    readonly value: number,
+    readonly item: Item,
+    readonly rate: Rational,
+    readonly fuel: boolean,
+    readonly beltCount: Rational | null,
+    readonly extra: boolean,
+  ) {
+    this.label = { link: this, labelpos: "c", width: 0, height: 0, text: "", x: 0, y: 0 }
     source.linkObjects.push(this)
     target.linkObjects.push(this)
   }
-  hasHighlighters() {
+
+  hasHighlighters(): boolean {
     return this.nodeHighlighters.size > 0
   }
-  highlight(node) {
+
+  highlight(node: GraphNodeContract): void {
     if (!this.hasHighlighters()) {
-      for (let element of this.elements) {
-        element.classList.add("edgePathHighlight")
-      }
+      for (const element of this.elements) element.classList.add("edgePathHighlight")
     }
     this.nodeHighlighters.add(node)
   }
-  unhighlight(node) {
+
+  unhighlight(node: GraphNodeContract): void {
     this.nodeHighlighters.delete(node)
     if (!this.hasHighlighters()) {
-      for (let element of this.elements) {
-        element.classList.remove("edgePathHighlight")
-      }
+      for (const element of this.elements) element.classList.remove("edgePathHighlight")
     }
   }
 }
 
-class GraphNode {
-  [key: string]: any
-  constructor(name, recipe, building, count, rate) {
-    this.name = name
+class GraphNode implements GraphNodeContract {
+  readonly ingredients
+  readonly linkObjects: GraphLink[] = []
+  element: SVGElement | null = null
+  x0 = 0
+  y0 = 0
+  x1 = 0
+  y1 = 0
+  width = 0
+  labelX = 0
+
+  constructor(
+    readonly name: string,
+    readonly recipe: SolverRecipe,
+    readonly building: Building | null,
+    readonly count: Rational,
+    readonly rate: Rational | null,
+  ) {
     this.ingredients = recipe.getIngredients()
-    this.recipe = recipe
-    this.building = building || null
-    this.count = count
-    this.rate = rate
-    this.linkObjects = []
   }
-  links() {
+
+  links(): readonly GraphLink[] {
     return this.linkObjects
   }
-  text() {
-    if (this.rate === null) {
-      return this.name
-    } else if (this.count.isZero()) {
-      return `\u00a0\u00d7 ${spec.format.rate(this.rate)}/${spec.format.rateName}`
-    } else {
-      return `\u00a0\u00d7 ${spec.format.count(this.count)}`
-    }
+
+  text(): string {
+    if (this.rate === null) return this.name
+    return this.count.isZero()
+      ? ` × ${spec.format.rate(this.rate)}/${spec.format.rateName}`
+      : ` × ${spec.format.count(this.count)}`
   }
-  // There are three types of nodes, each of which calculate their width
-  // differently:
-  //
-  // 1) Plain text nodes, used for the "output" and "surplus" nodes. These
-  //    are simply the width of the rendered text string, plus a margin on
-  //    either side.
-  //      [margin] [text] [margin]
-  // 2) Rate nodes, which represent the production of an item in lieu of a
-  //    building. These consist of:
-  //      [margin] [item icon] [text label] [margin]
-  // 3) Recipe nodes, which contain a recipe icon, a representation of a
-  //    colon (as two circles), a building icon, and a text label:
-  //      [margin] [recipe icon] [colon] [building icon] [text] [margin]
-  //
-  // The constant `iconSize` is the width and height, in SVG coordinate
-  // units, of all icons.
-  //
-  // The constant `colonWidth` is the distance, in SVG coordinate units,
-  // between the recipe and building icons; the colon symbol is then centered
-  // in this gap.
-  //
-  // `nodeMargin` is 2 for the Sankey visualization: 1 pixel for the rect
-  // border, and one pixel for separation from the border. It is 10 for the
-  // boxline visualziation, which looks nicer.
-  //
-  // These calculations hold for both the Sankey and boxline visualizations,
-  // with the slight caveat that this is the exact width of each node in the
-  // boxline mode, while nodes are of a uniform width in the Sankey diagram,
-  // chosen from the maximum node width calculated here.
-  labelWidth(text, nodeMargin) {
-    text.text(this.text())
-    let textWidth = text.node().getBBox().width
+
+  labelWidth(text: SVGTextElement, nodeMargin: number): number {
+    text.textContent = this.text()
+    const textWidth = text.getBBox().width
     let nodeWidth = textWidth + nodeMargin * 2
     if (this.building !== null) {
-      nodeWidth += iconSize * 2 + colonWidth // + 3
+      nodeWidth += iconSize * 2 + colonWidth
     } else if (this.rate !== null) {
-      nodeWidth += iconSize // + 3
+      nodeWidth += iconSize
     }
     return nodeWidth
   }
-  highlight() {
-    this.element.classList.add("nodeHighlight")
-    for (let edge of this.links()) {
-      edge.highlight(this)
-    }
+
+  highlight(): void {
+    this.element?.classList.add("nodeHighlight")
+    for (const edge of this.links()) edge.highlight(this)
   }
-  unhighlight() {
-    this.element.classList.remove("nodeHighlight")
-    for (let edge of this.links()) {
-      edge.unhighlight(this)
-    }
+
+  unhighlight(): void {
+    this.element?.classList.remove("nodeHighlight")
+    for (const edge of this.links()) edge.unhighlight(this)
   }
 }
 
-function makeGraph(totals, ignore) {
-  let outputs = []
-  let rates = new Map()
-
-  let nodes = []
-  let nodeMap = new Map()
+function makeGraph(totals: Totals): GraphData {
+  const nodes: GraphNode[] = []
+  const nodeMap = new Map<SolverRecipe, GraphNode>()
 
   for (let [recipe, rate] of totals.rates) {
-    let node = null
+    let node: GraphNode
     if (recipe.isReal()) {
-      let building = spec.getBuilding(recipe)
-      let count = spec.getCount(recipe, rate)
+      if (!(recipe instanceof Recipe)) throw new Error(`Unsupported real graph recipe: ${recipe.name}`)
+      const building = spec.getBuilding(recipe)
+      const count = spec.getCount(recipe, rate)
       node = new GraphNode(recipe.name, recipe, building, count, rate)
     } else {
       node = new GraphNode(recipe.name, recipe, null, zero, null)
@@ -464,34 +477,38 @@ function makeGraph(totals, ignore) {
     nodeMap.set(recipe, node)
   }
 
-  let links = []
-  for (let { item, from, to, rate, fuel } of totals.proportionate) {
+  const links: GraphEdge[] = []
+  for (const { item, from, to, rate, fuel } of totals.proportionate) {
+    if (!(item instanceof Item)) throw new Error("Graph flow contains an unsupported item")
+    const source = nodeMap.get(from)
+    const target = nodeMap.get(to)
+    if (source === undefined || target === undefined) throw new Error("Graph flow references a missing process node")
     let value = rate.toFloat()
     if (item.phase === "fluid") {
       // Fluids operate on a different scale.
       value /= 10
     }
     let beltCount = null
-    if (item.phase === "solid") {
+    if (item.phase === "solid" && spec.belt !== null) {
       beltCount = rate.div(spec.belt.rate)
     }
-    let extra = from.products.length > 1
-    links.push(new GraphEdge(nodeMap.get(from), nodeMap.get(to), value, item, rate, fuel, beltCount, extra))
+    const extra = from.products.length > 1
+    links.push(new GraphEdge(source, target, value, item, rate, fuel, beltCount, extra))
   }
-  return { nodes: nodes, links: links }
+  return { nodes, links }
 }
 
-export function renderTotals(totals, ignore) {
-  let data = makeGraph(totals, ignore)
+export function renderTotals(totals: Totals, ignore: ReadonlySet<Item>): void {
+  const data = makeGraph(totals)
   let processCount = data.nodes.filter((node) => node.recipe?.isReal?.()).length
   let summary = document.getElementById("visualization_summary")
   if (summary !== null) {
     summary.textContent = `${processCount} processes · ${data.links.length} flows`
   }
 
-  let callback = function () {
-    let svg = d3.select("svg#graph")
-    let tab = d3.select("#graph_tab")
+  const callback = (): void => {
+    const svg = select<SVGSVGElement>("svg#graph")
+    let tab = select("#graph_tab")
     if (visualizerRender === "zoom") {
       tab.style("min-width", 0)
       svg.attr("width", null)
@@ -505,7 +522,9 @@ export function renderTotals(totals, ignore) {
       // Hide images so the sprite sheet doesn't throw off the bounding
       // box.
       svg.selectAll("image").style("display", "none")
-      let { x, y, width, height } = svg.node().getBBox()
+      const svgNode = svg.node()
+      if (!(svgNode instanceof SVGSVGElement)) throw new Error("Graph SVG is unavailable")
+      const { x, y, width, height } = svgNode.getBBox()
       svg.selectAll("image").style("display", null)
       tab.style("display", style)
       svg
@@ -521,9 +540,11 @@ export function renderTotals(totals, ignore) {
   }
 
   if (visualizerType === "sankey") {
-    renderSankey(data, visualizerDirection, ignore)
+    const direction: GraphDirection = visualizerDirection === "down" ? "down" : "right"
+    renderSankey(data, direction, ignore)
     callback()
   } else {
-    renderBoxGraph(data, visualizerDirection, ignore, callback)
+    const direction: GraphDirection = visualizerDirection === "down" ? "down" : "right"
+    renderBoxGraph(data, direction, ignore, callback)
   }
 }

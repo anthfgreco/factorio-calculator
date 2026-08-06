@@ -1,109 +1,48 @@
-import { create, select, selectAll } from "d3"
-const d3: any = { create, select, selectAll }
-import { getItemProductionRecipes, getRecipeLocations, setRecipeEnabled, spec } from "./factory.js"
+import { create, select, selectAll, type BaseType, type Selection } from "d3"
+import type { Instance } from "tippy.js"
+import {
+  FactorySpecification,
+  getItemProductionRecipes,
+  getRecipeLocations,
+  setRecipeEnabled,
+  spec,
+} from "./factory.js"
 import { one, powerRepresentation, Rational, zero } from "./math.js"
-import { moduleDropdown, moduleRows, type Fuel } from "./models.js"
-import { addInputs, Icon, makeDropdown, makePopover } from "./presentation.js"
-import { getRecipeSelectorGroups } from "./recipes.js"
+import {
+  Building,
+  Module,
+  type ModuleDropdownCell,
+  type ModuleDropdownOption,
+  moduleDropdown,
+  moduleRows,
+  ModuleSpec,
+  Planet,
+  RocketSilo,
+  type RocketLaunchStats,
+} from "./models.js"
+import { addInputs, Icon, makeDropdown, makePopover, type IconObject } from "./presentation.js"
+import { DisabledRecipe, getRecipeSelectorGroups, Item, Recipe, type RecipeSelectorGroup } from "./recipes.js"
 import { refreshRecipeSettings } from "./settings.js"
 import { toggleIgnoreHandler, usesLegacyCalculation } from "./state.js"
 import { formatSettings } from "./url-state.js"
-import {
-  getAssignedLocation,
-  getCompatibleLocations as getPlanningLocations,
-  getLogistics,
-  getPlanningSummary,
-} from "./planning.js"
+import type { SolverItem, SolverRecipe, Totals } from "./solver.js"
+import { getAssignedLocation, getCompatibleLocations as getPlanningLocations, getLogistics } from "./planning.js"
 
-// -----------------------------------------------------------------------------
-// Result grouping
-// -----------------------------------------------------------------------------
+import { type FactoryRecipe, getRecipeGroups, isFactoryRecipe, isItem, topoSort } from "./results/grouping.js"
+import { getFactorySummary } from "./results/summary.js"
 
-function neighbors(groupMap, group) {
-  let result = new Set()
-  for (let recipe of group) {
-    let ingredients: any[] = Array.from(recipe.getIngredients())
-    // Reverse the list of ingredients here, so that it appears in the
-    // "correct" order when the overall topoSort is reversed.
-    ingredients.reverse()
-    for (let ing of ingredients) {
-      for (let subRecipe of ing.item.allRecipes()) {
-        if (groupMap.has(subRecipe)) {
-          result.add(groupMap.get(subRecipe))
-        }
-      }
-    }
-  }
-  result.delete(group)
-  return result
+type AnySelection<TDatum = unknown> = Selection<BaseType, TDatum, BaseType, unknown>
+export { getRecipeGroups, topoSort } from "./results/grouping.js"
+export { getFactorySummary } from "./results/summary.js"
+export type { FactorySummary } from "./results/summary.js"
+
+function requireNode<TNode extends Node>(node: TNode | null, label: string): TNode {
+  if (node === null) throw new Error(`Unable to create ${label}`)
+  return node
 }
 
-function visit(groupMap, group, result, seen) {
-  if (result.has(group) || seen.has(group)) {
-    return
-  }
-  seen.add(group)
-  for (let g of neighbors(groupMap, group)) {
-    visit(groupMap, g, result, seen)
-  }
-  seen.delete(group)
-  result.add(group)
-}
-
-export function topoSort(groups) {
-  let groupMap = new Map()
-  for (let group of groups) {
-    for (let recipe of group) {
-      groupMap.set(recipe, group)
-    }
-  }
-  let result = new Set()
-  let seen = new Set()
-  for (let group of groups) {
-    if (!result.has(group) && !seen.has(group)) {
-      visit(groupMap, group, result, seen)
-    }
-  }
-  let ordered = Array.from(result)
-  ordered.reverse()
-  return ordered
-}
-
-export function getRecipeGroups(recipes) {
-  let groups = new Map()
-  let items = new Set<any>()
-  for (let recipe of recipes) {
-    if (recipe.products.length > 0) {
-      groups.set(recipe, new Set([recipe]))
-      for (let ing of recipe.products) {
-        items.add(ing.item)
-      }
-    }
-  }
-  for (let item of items) {
-    let itemRecipes = []
-    for (let recipe of item.allRecipes()) {
-      if (recipes.has(recipe)) {
-        itemRecipes.push(recipe)
-      }
-    }
-    if (itemRecipes.length > 1) {
-      let combined = new Set()
-      for (let recipe of itemRecipes) {
-        for (let r of groups.get(recipe)) {
-          combined.add(r)
-        }
-      }
-      for (let recipe of combined) {
-        groups.set(recipe, combined)
-      }
-    }
-  }
-  let groupObjects = new Set()
-  for (let [r, group] of groups) {
-    groupObjects.add(group)
-  }
-  return groupObjects
+function getMapValue<TKey, TValue>(map: ReadonlyMap<TKey, TValue>, key: TKey): TValue | undefined {
+  return map.get(key)
 }
 
 // -----------------------------------------------------------------------------
@@ -112,9 +51,9 @@ export function getRecipeGroups(recipes) {
 
 let openItemKey: string | null = null
 let dismissHandlerInstalled = false
-let recipeSelectorInstances = new Set<any>()
+const recipeSelectorInstances = new Set<Instance>()
 
-function closeAll(except = null): void {
+function closeAll(except: Instance | null = null): void {
   if (except === null) {
     openItemKey = null
   }
@@ -137,71 +76,75 @@ function installDismissHandler(): void {
   })
 }
 
-export function makeRecipeSelector(row) {
-  let recipes = getItemProductionRecipes(row.item)
-  if (recipes.length === 0 || row.recipe === null) {
-    return null
-  }
+interface RecipeSelectorRow {
+  readonly item: Item
+  readonly recipe: Recipe
+}
+
+export function makeRecipeSelector(row: RecipeSelectorRow): HTMLElement | null {
+  const recipes = getItemProductionRecipes(row.item)
+  if (recipes.length === 0) return null
 
   installDismissHandler()
-  let details = d3.create("details").classed("recipe-selector", true).property("open", false)
-  let summary = details
+  const details = create("details").classed("recipe-selector", true).property("open", false)
+  const summary = details
     .append("summary")
     .attr("data-tooltip", `Enable or disable recipes for ${row.item.name}.`)
     .attr("aria-label", `Enable or disable recipes for ${row.item.name}.`)
-    .on("click", (event) => {
-      event.preventDefault()
-    })
+    .on("click", (event: Event) => event.preventDefault())
   summary.append(() => row.item.icon.make(32, true))
 
-  let menu = null
-  const ensureMenu = (instance) => {
+  let menu: ReturnType<typeof create> | null = null
+  const ensureMenu = (instance: Instance): void => {
     if (menu !== null) {
-      instance.setContent(menu.node())
+      instance.setContent(requireNode(menu.node(), "recipe selector menu"))
       return
     }
-    menu = d3.create("div").classed("recipe-selector-menu", true)
+    menu = create("div").classed("recipe-selector-menu", true)
     menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
-    let groups = menu
-      .selectAll("section.recipe-selector-group")
-      .data(getRecipeSelectorGroups(recipes, row.recipe), (entry) => entry.key)
+    const groups = menu
+      .selectAll<HTMLElement, RecipeSelectorGroup>("section.recipe-selector-group")
+      .data(getRecipeSelectorGroups(recipes, row.recipe), (entry: RecipeSelectorGroup) => entry.key)
       .join("section")
       .classed("recipe-selector-group", true)
     groups
       .append("div")
       .classed("recipe-selector-group-title", true)
-      .text((entry) => entry.name)
-    let options = groups
-      .selectAll("label")
-      .data((entry) => entry.recipes)
+      .text((entry: RecipeSelectorGroup) => entry.name)
+    const options = groups
+      .selectAll<HTMLLabelElement, Recipe>("label")
+      .data((entry: RecipeSelectorGroup) => entry.recipes)
       .join("label")
       .classed("recipe-selector-option", true)
-      .classed("active", (recipe) => recipe === row.recipe)
+      .classed("active", (recipe: Recipe) => recipe === row.recipe)
     options
       .append("input")
       .attr("type", "checkbox")
-      .property("checked", (recipe) => !spec.disable.has(recipe))
-      .on("change", (event, recipe) => {
+      .property("checked", (recipe: Recipe) => !spec.disable.has(recipe))
+      .on("change", (event: Event, recipe: Recipe) => {
         event.stopPropagation()
+        const target = event.target
+        if (!(target instanceof HTMLInputElement)) return
         openItemKey = row.item.key
-        setRecipeEnabled(spec, recipe, event.target.checked)
+        setRecipeEnabled(spec, recipe, target.checked)
         refreshRecipeSettings(spec)
         spec.updateSolution()
       })
-    options.append((recipe) => recipe.icon.make(32))
-    options.append("span").text((recipe) => {
-      let details = []
-      if (recipe.time && !recipe.time.isZero()) details.push(`${recipe.time.toDecimal()} s`)
-      if (spec.selectedPlanets?.size) {
-        let count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
-        details.push(`${count} selected location${count === 1 ? "" : "s"}`)
+    options.append((recipe: Recipe) => recipe.icon.make(32))
+    options.append("span").text((recipe: Recipe) => {
+      const recipeDetails: string[] = []
+      if (!recipe.time.isZero()) recipeDetails.push(`${recipe.time.toDecimal()} s`)
+      if (spec.selectedPlanets.size > 0) {
+        const count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
+        recipeDetails.push(`${count} selected location${count === 1 ? "" : "s"}`)
       }
-      return details.length > 0 ? `${recipe.name} — ${details.join(", ")}` : recipe.name
+      return recipeDetails.length > 0 ? `${recipe.name} — ${recipeDetails.join(", ")}` : recipe.name
     })
-    instance.setContent(menu.node())
+    instance.setContent(requireNode(menu.node(), "recipe selector menu"))
   }
 
-  let instance = makePopover(details.node(), " ", {
+  const detailsNode = requireNode(details.node(), "recipe selector")
+  const instance = makePopover(detailsNode, " ", {
     appendTo: () => document.body,
     arrow: false,
     offset: [0, 8],
@@ -216,73 +159,70 @@ export function makeRecipeSelector(row) {
     },
     onHide() {
       details.property("open", false)
-      if (document.body.contains(details.node()) && openItemKey === row.item.key) {
-        openItemKey = null
-      }
+      if (document.body.contains(detailsNode) && openItemKey === row.item.key) openItemKey = null
     },
     onDestroy(instance) {
       recipeSelectorInstances.delete(instance)
     },
   })
   recipeSelectorInstances.add(instance)
-  return details.node()
+  return detailsNode
 }
 
 let machineSelectorCount = 0
 
-function makeMachineSelector(row, compatibleBuildings) {
-  let automaticBuilding = spec.getAutomaticBuilding(row.recipe)
-  let override = spec.getBuildingOverride(row.recipe)
-  let label = (building) => {
-    let speed = building.speed ?? building.miningSpeed
-    let details = []
-    if (speed && !speed.isZero()) details.push(`speed ${speed.toDecimal()}`)
+interface MachineOption {
+  readonly building: Building | null
+  readonly displayBuilding: Building
+  readonly label: string
+}
+
+interface MachineSelectorRow {
+  readonly recipe: Recipe
+  readonly building: Building
+}
+
+function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: readonly Building[]): HTMLElement {
+  const automaticBuilding = spec.getAutomaticBuilding(row.recipe) ?? row.building
+  const override = spec.getBuildingOverride(row.recipe)
+  const label = (building: Building): string => {
+    const details: string[] = []
+    if (!building.speed.isZero()) details.push(`speed ${building.speed.toDecimal()}`)
     details.push(`${building.moduleSlots} module slot${building.moduleSlots === 1 ? "" : "s"}`)
     return `${building.name} — ${details.join(", ")}`
   }
-  let options = [
-    {
-      building: null,
-      displayBuilding: automaticBuilding,
-      label: `Automatic (${label(automaticBuilding)})`,
-    },
-    ...compatibleBuildings.map((building) => ({
-      building,
-      displayBuilding: building,
-      label: label(building),
-    })),
+  const options: MachineOption[] = [
+    { building: null, displayBuilding: automaticBuilding, label: `Automatic (${label(automaticBuilding)})` },
+    ...compatibleBuildings.map((building) => ({ building, displayBuilding: building, label: label(building) })),
   ]
 
-  let root = d3
-    .create("span")
+  const root = create("span")
     .classed("machine-selector", true)
     .attr("aria-label", `Choose a machine for ${row.recipe.name}`)
-  let choices = makeDropdown(root)
+  const choices = makeDropdown(root)
     .classed("machine-dropdown", true)
-    .selectAll("div")
+    .selectAll<HTMLDivElement, MachineOption>("div")
     .data(options)
     .join("div")
     .classed("machine-option", true)
-  let labels = addInputs(
+  const labels = addInputs<MachineOption>(
     choices,
     `machine-selector-${machineSelectorCount++}`,
     (option) => option.building === override,
     (option) => {
-      if (spec.setBuildingOverride(row.recipe, option.building)) {
-        spec.updateSolution()
-      }
+      if (spec.setBuildingOverride(row.recipe, option.building)) spec.updateSolution()
     },
   )
-  labels.append(function (this: HTMLElement, option) {
-    let icon = option.displayBuilding.icon.make(32, true)
+  labels.append(function (option: MachineOption) {
+    const icon = option.displayBuilding.icon.make(32, true)
     icon.removeAttribute("title")
     return icon
   })
   labels
     .append("span")
     .classed("machine-option-name", true)
-    .text((option) => option.label)
-  return root.node()
+    .text((option: MachineOption) => option.label)
+  return requireNode(root.node(), "machine selector")
 }
 
 // -----------------------------------------------------------------------------
@@ -291,348 +231,301 @@ function makeMachineSelector(row, compatibleBuildings) {
 
 export { powerRepresentation as powerRepr } from "./math.js"
 
-function alignPower(x) {
-  if (x.isZero()) {
-    return "0 W"
-  }
-  let { power, suffix } = powerRepresentation(x)
-  return spec.format.alignCount(power) + " " + suffix
+function alignPower(value: Rational): string {
+  if (value.isZero()) return "0 W"
+  const { power, suffix } = powerRepresentation(value)
+  return `${spec.format.alignCount(power)} ${suffix}`
 }
+
+type HeaderAlignment = "left" | "right" | "center"
 
 class Header {
-  [key: string]: any
   constructor(
-    text: string,
-    colspan: number,
-    surplus = false,
-    title: string | null = null,
-    icon: any = null,
-    align: "left" | "right" | "center" = "right",
-  ) {
-    this.text = text
-    this.colspan = colspan
-    this.surplus = surplus
-    this.title = title
-    this.icon = icon
-    this.align = align
-  }
+    readonly text: string,
+    readonly colspan: number,
+    readonly surplus = false,
+    readonly title: string | null = null,
+    readonly icon: Icon | null = null,
+    readonly align: HeaderAlignment = "right",
+  ) {}
 }
 
-function setlen(a, len, callback) {
-  if (a.length > len) {
-    a.length = len
-  }
-  while (a.length < len) {
-    a.push(callback())
-  }
+function setLength<TValue>(values: TValue[], length: number, createValue: () => TValue): void {
+  if (values.length > length) values.length = length
+  while (values.length < length) values.push(createValue())
 }
 
 class BreakdownRow {
-  [key: string]: any
-  constructor(item, destRecipe, rate, building, count, percent = null, divider = false) {
-    this.item = item
-    this.recipe = destRecipe
-    this.rate = rate
-    this.building = building
-    this.count = count
-    this.percent = percent
-    this.divider = divider
-  }
+  constructor(
+    readonly item: Item,
+    readonly recipe: Recipe,
+    readonly rate: Rational,
+    readonly building: Building | null,
+    readonly count: Rational | null,
+    readonly percent: string | null = null,
+    readonly divider = false,
+  ) {}
 }
 
-function getBreakdown(item, totals) {
-  let rows = []
-  let uses = []
+function getBreakdown(item: Item, totals: Totals): BreakdownRow[] {
+  const rows: BreakdownRow[] = []
   let found = false
-  // The top half of the breakdown gives every ingredient used by every
-  // recipe that produced the given item. If a given ingredient is produced
-  // by a single recipe, then a building count for that recipe is given.
-  for (let recipe of item.recipes) {
-    if (!totals.rates.has(recipe)) {
-      continue
-    }
-    for (let ing of recipe.getIngredients()) {
-      let rate = totals.consumers.get(ing.item).get(recipe)
-      let building = null
-      let count = null
-      let producers = totals.producers.get(ing.item)
-      if (producers.size === 1) {
-        let r: any = Array.from(producers.keys())[0]
-        let recipeRate = rate.div(r.gives(ing.item))
-        building = spec.getBuilding(r)
-        count = spec.getCount(r, recipeRate)
+  for (const recipe of item.recipes) {
+    if (!totals.rates.has(recipe)) continue
+    for (const ingredient of recipe.getIngredients()) {
+      if (!isItem(ingredient.item)) continue
+      const rate = totals.consumers.get(ingredient.item)?.get(recipe)
+      if (rate === undefined) continue
+      let building: Building | null = null
+      let count: Rational | null = null
+      const producers = totals.producers.get(ingredient.item)
+      if (producers?.size === 1) {
+        const producer = producers.keys().next().value
+        if (producer instanceof Recipe) {
+          const recipeRate = rate.div(producer.gives(ingredient.item))
+          building = spec.getBuilding(producer)
+          count = spec.getCount(producer, recipeRate)
+        }
       }
-      rows.push(new BreakdownRow(ing.item, recipe, rate, building, count, null, false))
+      rows.push(new BreakdownRow(ingredient.item, recipe, rate, building, count))
       found = true
     }
   }
-  // The bottom half of the breakdown gives every recipe which consumes the
-  // given item. If the given item is produced by a single recipe, then the
-  // proportion of that recipe's building count is given.
-  let singleRecipe = null
-  let amount = null
-  let building = null
-  let producers = totals.producers.get(item)
-  let hundred = Rational.from_float(100)
-  if (producers.size === 1) {
-    singleRecipe = Array.from(producers.keys())[0]
-    amount = singleRecipe.gives(item)
-    building = spec.getBuilding(singleRecipe)
-  }
-  for (let [recipe, rate] of totals.consumers.get(item)) {
-    if (recipe.isReal()) {
-      let count = null
-      if (singleRecipe !== null) {
-        let recipeRate = rate.div(amount)
-        count = spec.getCount(singleRecipe, recipeRate)
-      }
-      let percent = rate.div(totals.items.get(item)).mul(hundred)
-      let percentStr
-      if (percent.less(one)) {
-        percentStr = "<1%"
-      } else {
-        percentStr = percent.toDecimal(0) + "%"
-      }
-      rows.push(new BreakdownRow(item, recipe, rate, building, count, percentStr, found))
-      found = false
-    }
+
+  const producers = totals.producers.get(item)
+  const singleProducer = producers?.size === 1 ? producers.keys().next().value : undefined
+  const singleRecipe = singleProducer instanceof Recipe ? singleProducer : null
+  const amount = singleRecipe?.gives(item) ?? null
+  const building = singleRecipe === null ? null : spec.getBuilding(singleRecipe)
+  const itemConsumers = totals.consumers.get(item)
+  const itemTotal = totals.items.get(item)
+  if (itemConsumers === undefined || itemTotal === undefined || itemTotal.isZero()) return rows
+  const hundred = Rational.from_float(100)
+  for (const [consumer, rate] of itemConsumers) {
+    if (!(consumer instanceof Recipe)) continue
+    let count: Rational | null = null
+    if (singleRecipe !== null && amount !== null) count = spec.getCount(singleRecipe, rate.div(amount))
+    const percent = rate.div(itemTotal).mul(hundred)
+    const percentText = percent.less(one) ? "<1%" : `${percent.toDecimal(0)}%`
+    rows.push(new BreakdownRow(item, consumer, rate, building, count, percentText, found))
+    found = false
   }
   return rows
 }
 
-class ModuleInput {
-  [key: string]: any
-  constructor() {
-    this.cell = null
-    this.module = null
+class ModuleInput implements ModuleDropdownOption {
+  private slot: ModuleSlot | null = null
+  module: Module | null = null
+
+  get cell(): ModuleSlot {
+    if (this.slot === null) throw new Error("Module input is not attached to a slot")
+    return this.slot
   }
-  checked() {
-    return this.cell.moduleSpec.getModule(this.cell.index) === this.module
+
+  checked(): boolean {
+    const cell = this.cell
+    return cell.moduleSpec.getModule(cell.index) === this.module
   }
-  choose() {
-    let toUpdate = [this.cell.index]
-    if (this.cell.index === 0) {
-      let modules = this.cell.moduleSpec.modules
-      let oldModule = modules[this.cell.index]
-      for (let i = 1; i < modules.length; i++) {
-        if (modules[i] === oldModule) {
-          toUpdate.push(i)
-        }
+
+  choose(): void {
+    const cell = this.cell
+    const toUpdate = [cell.index]
+    if (cell.index === 0) {
+      const modules = cell.moduleSpec.modules
+      const oldModule = modules[cell.index]
+      for (let index = 1; index < modules.length; index++) {
+        if (modules[index] === oldModule) toUpdate.push(index)
       }
     }
-    let anyRecalc = false
-    for (let i of toUpdate) {
-      let recalc = this.cell.moduleSpec.setModule(i, this.module)
-      anyRecalc = anyRecalc || recalc
+    let needsRecalculation = false
+    for (const index of toUpdate) {
+      needsRecalculation = cell.moduleSpec.setModule(index, this.module) || needsRecalculation
     }
-    if (anyRecalc || spec.isFactoryTarget(this.cell.moduleSpec.recipe)) {
-      spec.updateSolution()
-    } else {
-      spec.display()
-    }
+    if (needsRecalculation || spec.isFactoryTarget(cell.moduleSpec.recipe)) spec.updateSolution()
+    else spec.display()
   }
-  setData(slot, m) {
-    this.cell = slot
-    this.module = m
+
+  setData(slot: ModuleSlot, module: Module | null): void {
+    this.slot = slot
+    this.module = module
   }
 }
 
 let slotCount = 0
-class ModuleSlot {
-  [key: string]: any
-  constructor(group, row) {
-    this.group = group
-    this.row = row
-    this.name = `moduleslot-${slotCount++}`
-    this.moduleSpec = null
-    this.index = null
-    this.inputRows = []
-    setlen(this.inputRows, moduleRows.length, () => [])
+
+class ModuleSlot implements ModuleDropdownCell {
+  readonly name = `moduleslot-${slotCount++}`
+  moduleSpec: ModuleSpec
+  index = 0
+  readonly inputRows: ModuleInput[][] = []
+
+  constructor(
+    readonly group: DisplayGroup,
+    readonly row: DisplayRow,
+    moduleSpec: ModuleSpec,
+  ) {
+    this.moduleSpec = moduleSpec
+    setLength(this.inputRows, moduleRows.length, () => [])
   }
-  setData(mSpec, i) {
-    this.moduleSpec = mSpec
-    this.index = i
-    for (let i = 0; i < this.inputRows.length; i++) {
-      let inputRow = this.inputRows[i]
-      let modules = moduleRows[i]
-      let rowIndex = 0
-      let j = 0
-      for (; j < modules.length; j++) {
-        let module = modules[j]
-        if (module === null || module.canUse(mSpec.recipe, mSpec.building)) {
-          if (rowIndex > inputRow.length - 1) {
-            inputRow.push(new ModuleInput())
-          }
-          inputRow[rowIndex++].setData(this, module)
-        }
+
+  setData(moduleSpec: ModuleSpec, index: number): void {
+    this.moduleSpec = moduleSpec
+    this.index = index
+    for (let rowIndex = 0; rowIndex < this.inputRows.length; rowIndex++) {
+      const inputRow = this.inputRows[rowIndex]
+      const modules = moduleRows[rowIndex]
+      if (inputRow === undefined || modules === undefined) continue
+      let inputIndex = 0
+      for (const module of modules) {
+        if (module !== null && !module.canUse(moduleSpec.recipe, moduleSpec.building)) continue
+        const input = inputRow[inputIndex] ?? new ModuleInput()
+        if (inputRow[inputIndex] === undefined) inputRow.push(input)
+        input.setData(this, module)
+        inputIndex++
       }
-      if (inputRow.length > rowIndex) {
-        inputRow.length = rowIndex
-      }
-      inputRow.length = rowIndex
+      inputRow.length = inputIndex
     }
   }
 }
 
-class BeaconInput {
-  [key: string]: any
-  constructor(cell, module) {
-    this.cell = cell
-    this.module = module
+class BeaconInput implements ModuleDropdownOption {
+  constructor(
+    readonly cell: BeaconCell,
+    readonly module: Module | null,
+  ) {}
+
+  checked(): boolean {
+    return this.module === this.cell.row.moduleSpec?.beaconModules[this.cell.index]
   }
-  checked() {
-    return this.module === this.cell.row.moduleSpec.beaconModules[this.cell.index]
-  }
-  choose() {
-    let toUpdate = [this.cell.index]
-    if (this.cell.index === 0) {
-      let modules = this.cell.row.moduleSpec.beaconModules
-      if (modules[0] === modules[1]) {
-        toUpdate.push(1)
-      }
-    }
-    for (let index of toUpdate) {
-      this.cell.row.moduleSpec.setBeaconModule(this.module, index)
-    }
-    if (spec.isFactoryTarget(this.cell.row.moduleSpec.recipe)) {
-      spec.updateSolution()
-    } else {
-      spec.display()
-    }
+
+  choose(): void {
+    const moduleSpec = this.cell.row.moduleSpec
+    if (moduleSpec === null) return
+    const toUpdate = [this.cell.index]
+    if (this.cell.index === 0 && moduleSpec.beaconModules[0] === moduleSpec.beaconModules[1]) toUpdate.push(1)
+    for (const index of toUpdate) moduleSpec.setBeaconModule(this.module, index)
+    if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
+    else spec.display()
   }
 }
 
 let beaconCount = 0
-class BeaconCell {
-  [key: string]: any
-  constructor(row, index) {
-    this.name = `beaconslot-${beaconCount++}`
-    this.row = row
-    this.index = index
-    this.inputRows = []
-  }
-  setData(moduleSpec) {
+
+class BeaconCell implements ModuleDropdownCell {
+  readonly name = `beaconslot-${beaconCount++}`
+  readonly inputRows: BeaconInput[][] = []
+
+  constructor(
+    readonly row: DisplayRow,
+    readonly index: number,
+  ) {}
+
+  setData(moduleSpec: ModuleSpec | null): void {
     this.inputRows.length = 0
-    if (moduleSpec === null) {
-      return
-    }
-    for (let row of moduleRows) {
-      let inputRow = []
-      for (let module of row) {
-        if (module === null || (module.canBeacon() && module.canUse(moduleSpec.recipe, moduleSpec.building))) {
-          inputRow.push(new BeaconInput(this, module))
-        }
-      }
-      if (inputRow.length > 0) {
-        this.inputRows.push(inputRow)
-      }
+    if (moduleSpec === null) return
+    for (const modules of moduleRows) {
+      const inputRow = modules
+        .filter(
+          (module) => module === null || (module.canBeacon() && module.canUse(moduleSpec.recipe, moduleSpec.building)),
+        )
+        .map((module) => new BeaconInput(this, module))
+      if (inputRow.length > 0) this.inputRows.push(inputRow)
     }
   }
 }
 
 class DisplayRow {
-  [key: string]: any
-  constructor() {
-    this.slots = []
-    this.beaconModules = []
-    for (let i = 0; i < 2; i++) {
-      this.beaconModules.push(new BeaconCell(this, i))
-    }
-  }
-  setData(item, recipe, building, moduleSpec, single, breakdown) {
+  item: Item | null = null
+  recipe: FactoryRecipe | null = null
+  building: Building | null = null
+  moduleSpec: ModuleSpec | null = null
+  single = false
+  breakdown: BreakdownRow[] | null = null
+  readonly slots: ModuleSlot[] = []
+  readonly beaconModules: BeaconCell[] = [new BeaconCell(this, 0), new BeaconCell(this, 1)]
+
+  setData(
+    item: Item | null,
+    recipe: FactoryRecipe | null,
+    building: Building | null,
+    moduleSpec: ModuleSpec | null,
+    single: boolean,
+    breakdown: BreakdownRow[] | null,
+  ): void {
     this.item = item
     this.recipe = recipe
     this.building = building
     this.moduleSpec = moduleSpec
     this.single = single
     this.breakdown = breakdown
-    for (let beaconCell of this.beaconModules) {
-      beaconCell.setData(moduleSpec)
-    }
+    for (const beaconCell of this.beaconModules) beaconCell.setData(moduleSpec)
   }
 }
 
 class DisplayGroup {
-  [key: string]: any
-  constructor() {
-    this.rows = []
-  }
-  setData(totals, items, recipes) {
-    let self = this
-    items = [...items]
-    recipes = [...recipes]
+  readonly rows: DisplayRow[] = []
+
+  setData(totals: Totals, itemValues: Iterable<Item>, recipeValues: Iterable<FactoryRecipe>): void {
+    const items = [...itemValues]
+    const recipes = [...recipeValues]
     if (items.length === 0) {
       this.rows.length = 0
       return
     }
-    let len = Math.max(items.length, recipes.length)
-    setlen(this.rows, len, () => new DisplayRow())
-    let hundred = Rational.from_float(100)
-    for (let i = 0; i < len; i++) {
-      let row = this.rows[i]
-      let item = items[i] || null
-      let recipe = recipes[i] || null
-      let building = null
-      let moduleSpec = null
-      let slotCount = 0
-      if (recipe !== null) {
+    const length = Math.max(items.length, recipes.length)
+    setLength(this.rows, length, () => new DisplayRow())
+    for (let index = 0; index < length; index++) {
+      const row = this.rows[index]
+      if (row === undefined) continue
+      const item = items[index] ?? null
+      const recipe = recipes[index] ?? null
+      let building: Building | null = null
+      let moduleSpec: ModuleSpec | null = null
+      if (recipe instanceof Recipe) {
         building = spec.getBuilding(recipe)
-        if (building !== null && building.canBeacon()) {
-          moduleSpec = spec.getModuleSpec(recipe)
-          slotCount = moduleSpec.modules.length
-        } else {
-          moduleSpec = null
-          slotCount = 0
-        }
+        if (building?.canBeacon()) moduleSpec = spec.getModuleSpec(recipe)
       }
-      setlen(row.slots, slotCount, () => new ModuleSlot(self, row))
-      for (let j = 0; j < slotCount; j++) {
-        row.slots[j].setData(moduleSpec, j)
+      const moduleSlotCount = moduleSpec?.modules.length ?? 0
+      setLength(row.slots, moduleSlotCount, () => {
+        if (moduleSpec === null) throw new Error("Cannot create a module slot without a module specification")
+        return new ModuleSlot(this, row, moduleSpec)
+      })
+      if (moduleSpec !== null) {
+        for (let slotIndex = 0; slotIndex < moduleSlotCount; slotIndex++)
+          row.slots[slotIndex]?.setData(moduleSpec, slotIndex)
       }
-      let single = item !== null && recipe !== null && item.key === recipe.key
-      let breakdown = null
-      if (item !== null) {
-        breakdown = getBreakdown(item, totals)
-      }
-      row.setData(item, recipe, building, moduleSpec, single, breakdown)
+      const single = item !== null && recipe !== null && item.key === recipe.key
+      row.setData(item, recipe, building, moduleSpec, single, item === null ? null : getBreakdown(item, totals))
     }
   }
 }
 
-export function resetDisplay() {
-  d3.selectAll("table#totals > tbody").remove()
+export function resetDisplay(): void {
+  selectAll("table#totals > tbody").remove()
   displayGroups = []
 }
 
-// Remember these values from update to update, to make it simpler to reuse
-// elements.
-let displayGroups = []
+let displayGroups: DisplayGroup[] = []
 
-function getDisplayGroups(totals) {
-  let recipes = Array.from(totals.rates.keys())
-  recipes.reverse()
-  let groupObjects: any[] = topoSort(getRecipeGroups(new Set(recipes))) as unknown as any[]
-  setlen(displayGroups, groupObjects.length, () => new DisplayGroup())
-  let i = 0
-  for (let group of groupObjects) {
-    let items = new Set<any>()
-    for (let recipe of group) {
-      for (let ing of recipe.products) {
-        if (totals.items.has(ing.item)) {
-          items.add(ing.item)
-        }
+function getDisplayGroups(totals: Totals): void {
+  const recipes = [...totals.rates.keys()].filter(isFactoryRecipe).reverse()
+  const groups = topoSort(getRecipeGroups(new Set(recipes)))
+  setLength(displayGroups, groups.length, () => new DisplayGroup())
+  groups.forEach((group, index) => {
+    const items = new Set<Item>()
+    for (const recipe of group) {
+      for (const product of recipe.products) {
+        if (isItem(product.item) && totals.items.has(product.item)) items.add(product.item)
       }
     }
-    displayGroups[i++].setData(totals, items, group)
-  }
+    displayGroups[index]?.setData(totals, items, group)
+  })
 }
 
-function toggleBreakdownHandler(this: HTMLElement) {
-  let row = this.parentElement
-  let breakdownRow = row?.nextElementSibling
-  if (row === null || breakdownRow === null) {
-    return
-  }
+function toggleBreakdownHandler(this: Element): void {
+  const row = this.parentElement
+  const breakdownRow = row?.nextElementSibling
+  if (row === null || breakdownRow === null || breakdownRow === undefined) return
   if (row.classList.contains("breakdown-open")) {
     row.classList.remove("breakdown-open")
     breakdownRow.classList.remove("breakdown-open")
@@ -642,22 +535,26 @@ function toggleBreakdownHandler(this: HTMLElement) {
   }
 }
 
-class ItemIcon {
-  [key: string]: any
-  constructor(item) {
-    this.item = item
-    this.name = item.name
-    this.extra = d3.create("span")
+class ItemIcon implements IconObject {
+  readonly name: string
+  readonly icon_col: number
+  readonly icon_row: number
+  readonly icon: Icon
+  private readonly extra = create("span")
 
+  constructor(readonly item: Item) {
+    this.name = item.name
     this.icon_col = item.icon_col
     this.icon_row = item.icon_row
     this.icon = new Icon(this)
   }
-  setText(text) {
+
+  setText(text: string): void {
     this.extra.text(text)
   }
-  renderTooltip() {
-    return this.item.renderTooltip(this.extra.node())
+
+  renderTooltip(): HTMLElement {
+    return this.item.renderTooltip(requireNode(this.extra.node(), "item status"))
   }
 }
 
@@ -665,7 +562,7 @@ class ItemIcon {
 // well keep it around for legacy datasets.
 
 // For pipe segment of the given length, returns maximum throughput as fluid/s.
-function pipeThroughput(length) {
+function pipeThroughput(length: Rational): Rational {
   let R = Rational.from_float
   if (length.equal(zero)) {
     // A length of zero represents a solid line of pumps.
@@ -684,7 +581,7 @@ let pipeThreshold = Rational.from_floats(4000, 236)
 
 // For fluid throughput in fluid/s, returns maximum length of pipe that can
 // support it.
-function pipeLength(throughput) {
+function pipeLength(throughput: Rational): Rational | null {
   let R = Rational.from_float
   throughput = throughput.div(R(60))
   if (R(200).less(throughput)) {
@@ -704,14 +601,15 @@ function pipeLength(throughput) {
 let minPipeLength = Rational.from_float(17)
 let maxPipeThroughput = pipeThroughput(minPipeLength)
 
-function pipeValues(rate) {
+function pipeValues(rate: Rational): { pipes: Rational; length: Rational } {
   let pipes = rate.div(maxPipeThroughput).ceil()
   let perPipeRate = rate.div(pipes)
-  let length = pipeLength(perPipeRate).floor()
+  const maximumLength = pipeLength(perPipeRate)
+  const length = maximumLength?.floor() ?? zero
   return { pipes: pipes, length: length }
 }
 
-function pipeText(rate) {
+function pipeText(rate: Rational): string {
   if (!usesLegacyCalculation()) {
     return ""
   }
@@ -727,10 +625,15 @@ function pipeText(rate) {
   return pipeString
 }
 
-class PipeIcon {
-  [key: string]: any
+class PipeIcon implements IconObject {
+  readonly name: string
+  readonly icon_col: number
+  readonly icon_row: number
+  readonly icon: Icon
+
   constructor() {
-    let item = spec.items.get("pipe")
+    const item = spec.items.get("pipe")
+    if (item === undefined) throw new Error("Missing pipe item")
     this.name = item.name
     this.icon_col = item.icon_col
     this.icon_row = item.icon_row
@@ -738,148 +641,114 @@ class PipeIcon {
   }
 }
 
-function makeLocationSelector(row) {
-  let building = row.building
-  let compatible = getPlanningLocations(spec, row.recipe, building)
-  let configured = spec.recipeLocations.get(row.recipe) ?? null
-  let assigned = compatible.includes(configured) ? configured : null
-  let automatic = getAssignedLocation(spec, row.recipe, building)
-  let select = d3
-    .create("select")
+function requirePlanets(specification: FactorySpecification): ReadonlyMap<string, Planet> {
+  if (specification.planets === null) throw new Error("Planet data is not initialized")
+  return specification.planets
+}
+
+function requireItemRate(map: ReadonlyMap<SolverItem, Rational>, item: Item, label: string): Rational {
+  const rate = map.get(item)
+  if (rate === undefined) throw new Error(`Missing ${label} rate for ${item.key}`)
+  return rate
+}
+
+function requireRecipeRate(map: ReadonlyMap<SolverRecipe, Rational>, recipe: FactoryRecipe, label: string): Rational {
+  const rate = map.get(recipe)
+  if (rate === undefined) throw new Error(`Missing ${label} rate for ${recipe.key}`)
+  return rate
+}
+
+function requireRowItem(row: DisplayRow): Item {
+  if (row.item === null) throw new Error("Display row has no item")
+  return row.item
+}
+
+function requireRowRecipe(row: DisplayRow): Recipe {
+  if (!(row.recipe instanceof Recipe)) throw new Error("Display row has no concrete recipe")
+  return row.recipe
+}
+
+function requireRowBuilding(row: DisplayRow): Building {
+  if (row.building === null) throw new Error("Display row has no building")
+  return row.building
+}
+
+function requireRowModuleSpec(row: DisplayRow): ModuleSpec {
+  if (row.moduleSpec === null) throw new Error("Display row has no module specification")
+  return row.moduleSpec
+}
+
+function makeLocationSelector(row: DisplayRow): HTMLSelectElement {
+  const recipe = requireRowRecipe(row)
+  const building = row.building
+  const compatible = getPlanningLocations(spec, recipe, building)
+  const configured = spec.recipeLocations.get(recipe) ?? null
+  const assigned = configured !== null && compatible.includes(configured) ? configured : null
+  const automatic = getAssignedLocation(spec, recipe, building)
+  const planets = requirePlanets(spec)
+  const selector = create("select")
     .classed("recipe-location-selector", true)
-    .attr("aria-label", `Choose production location for ${row.recipe.name}`)
-    .on("change", (event) => {
-      let key = event.target.value
-      spec.setRecipeLocation(row.recipe, key === "" ? null : spec.planets.get(key))
+    .attr("aria-label", `Choose production location for ${recipe.name}`)
+    .on("change", (event: Event) => {
+      const target = event.target
+      if (!(target instanceof HTMLSelectElement)) return
+      const location = target.value === "" ? null : (planets.get(target.value) ?? null)
+      spec.setRecipeLocation(recipe, location)
       spec.updateSolution()
     })
-  select
+  selector
     .append("option")
     .attr("value", "")
     .property("selected", assigned === null)
     .text(`Automatic (${automatic?.name ?? "unavailable"})`)
-  select
-    .selectAll("option.location")
+  selector
+    .selectAll<HTMLOptionElement, Planet>("option.location")
     .data(compatible)
     .join("option")
     .classed("location", true)
-    .attr("value", (location) => location.key)
-    .property("selected", (location) => location === assigned)
-    .text((location) => location.name)
-  return select.node()
+    .attr("value", (location: Planet) => location.key)
+    .property("selected", (location: Planet) => location === assigned)
+    .text((location: Planet) => location.name)
+  return requireNode(selector.node() as HTMLSelectElement | null, "location selector")
 }
 
-function formatLocationNames(locations) {
+function formatLocationNames(locations: readonly Planet[]): string {
   return locations.map((location) => location.name).join(" / ")
 }
 
-function getLocationCellText(specification, recipe, building) {
-  if (recipe === null || !recipe.isReal?.()) {
-    return ""
-  }
-  let locations = getRecipeLocations(specification, recipe, building)
-  if (locations.length === 0) {
-    return "Unavailable"
-  }
-  if (locations.length === specification.selectedPlanets.size && locations.length > 2) {
-    return "Any selected"
-  }
-  if (locations.length > 2) {
-    return `${locations.length} locations`
-  }
+function getLocationCellText(
+  specification: FactorySpecification,
+  recipe: FactoryRecipe | null,
+  building: Building | null,
+): string {
+  if (!(recipe instanceof Recipe) || !recipe.isReal()) return ""
+  const locations = getRecipeLocations(specification, recipe, building)
+  if (locations.length === 0) return "Unavailable"
+  if (locations.length === specification.selectedPlanets.size && locations.length > 2) return "Any selected"
+  if (locations.length > 2) return `${locations.length} locations`
   return formatLocationNames(locations)
 }
 
-function hasQualityModules(moduleSpec) {
-  return moduleSpec?.modules.some((module) => module?.category === "quality") ?? false
+function getRocketStatsForRow(row: DisplayRow): RocketLaunchStats | null {
+  if (!(row.recipe instanceof Recipe) || row.recipe.key !== "rocket-part") return null
+  return row.building instanceof RocketSilo ? row.building.getLaunchStats(spec) : null
 }
 
-function getRocketStatsForRow(row) {
-  if (row.recipe?.key !== "rocket-part") return null
-  return row.building?.getLaunchStats?.(spec) ?? null
-}
-
-function isLaunchLimitedRow(row) {
+function isLaunchLimitedRow(row: DisplayRow): boolean {
   return getRocketStatsForRow(row)?.launchLimited ?? false
 }
 
-export function getFactorySummary(specification, totals) {
-  let exactMachines = zero
-  let placedMachines = zero
-  let electricalPower = zero
-  let fuelRates = new Map<Fuel, Rational>()
-  let recipeCount = 0
-  let ambiguousRecipeCount = 0
-  let qualityRecipeCount = 0
-  let beaconedRecipeCount = 0
-
-  for (let [recipe, rate] of totals.rates) {
-    if (!recipe.isReal?.()) {
-      continue
-    }
-    recipeCount++
-    let building = specification.getBuilding(recipe)
-    if (building === null) {
-      continue
-    }
-
-    let count = specification.getCount(recipe, rate)
-    exactMachines = exactMachines.add(count)
-    placedMachines = placedMachines.add(count.ceil())
-
-    let { fuel, power } = specification.getPowerUsage(recipe, rate)
-    if (fuel === "electric") {
-      electricalPower = electricalPower.add(power)
-    } else if (fuel !== null) {
-      let recipeFuel = specification.getFuelForRecipe(recipe)
-      if (recipeFuel !== null) {
-        fuelRates.set(recipeFuel, (fuelRates.get(recipeFuel) ?? zero).add(power.div(recipeFuel.value)))
-      }
-    }
-
-    if (getRecipeLocations(specification, recipe, building).length > 1) {
-      ambiguousRecipeCount++
-    }
-    let moduleSpec = specification.getModuleSpec(recipe)
-    if (hasQualityModules(moduleSpec)) {
-      qualityRecipeCount++
-    }
-    if (
-      moduleSpec !== undefined &&
-      !moduleSpec.beaconCount.isZero() &&
-      moduleSpec.beaconModules.some((module) => module !== null)
-    ) {
-      beaconedRecipeCount++
-    }
-  }
-
-  let selectedLocations = [...(specification.selectedPlanets ?? [])].sort((a, b) => a.order.localeCompare(b.order))
-  let importedItems = [...specification.ignore]
-    .filter((item) => totals.items.has(item))
-    .sort((a, b) => a.name.localeCompare(b.name))
-  let planning = getPlanningSummary(specification, totals)
-
-  return {
-    exactMachines,
-    placedMachines,
-    electricalPower,
-    fuelRates,
-    recipeCount,
-    ambiguousRecipeCount,
-    qualityRecipeCount,
-    beaconedRecipeCount,
-    selectedLocations,
-    importedItems,
-    planning,
-  }
+interface SummaryCard {
+  readonly label: string
+  readonly value: string
 }
 
-function renderFactorySummary(specification, totals) {
-  let summary = getFactorySummary(specification, totals)
-  let root = d3.select("#factory_summary").property("hidden", false)
-  let totalPower = summary.electricalPower.add(summary.planning.beaconPower)
-  let { power, suffix } = powerRepresentation(totalPower)
-  let cards = [
+function renderFactorySummary(specification: FactorySpecification, totals: Totals): void {
+  const summary = getFactorySummary(specification, totals)
+  const root = select<HTMLElement, unknown>("#factory_summary").property("hidden", false)
+  const totalPower = summary.electricalPower.add(summary.planning.beaconPower)
+  const { power, suffix } = powerRepresentation(totalPower)
+  const cards: SummaryCard[] = [
     { label: "Active recipes", value: String(summary.recipeCount) },
     { label: "Machines to place", value: summary.placedMachines.toDecimal(0) },
     { label: "Electric + beacon power", value: `${specification.format.count(power)} ${suffix}` },
@@ -888,59 +757,59 @@ function renderFactorySummary(specification, totals) {
     cards.push({ label: "Pollution / min", value: specification.format.count(summary.planning.pollution) })
   if (!summary.planning.spores.isZero())
     cards.push({ label: "Spores / min", value: specification.format.count(summary.planning.spores) })
-  if (summary.planning.rocket) {
+  if (summary.planning.rocket !== null) {
     cards.push({
       label: `Rocket launches / ${specification.format.rateName}`,
       value: specification.format.rate(summary.planning.rocket.launches),
     })
   }
   if (!summary.planning.aquiloHeat.isZero()) {
-    let heat = powerRepresentation(summary.planning.aquiloHeat)
+    const heat = powerRepresentation(summary.planning.aquiloHeat)
     cards.push({ label: "Aquilo heat", value: `${specification.format.count(heat.power)} ${heat.suffix}` })
   }
   if (summary.planning.transport.length > 0)
     cards.push({ label: "Cross-location flows", value: String(summary.planning.transport.length) })
   if (summary.importedItems.length > 0)
     cards.push({ label: "Imported items", value: String(summary.importedItems.length) })
-  if (summary.planning.freshness.length > 0) {
-    let lowest = summary.planning.freshness[0]
+  const lowest = summary.planning.freshness[0]
+  if (lowest !== undefined) {
     cards.push({
       label: "Lowest freshness",
       value: `${(lowest.remaining.toFloat() * 100).toFixed(1)}% · ${lowest.item.name}`,
     })
   }
-  for (let [fuel, rate] of [...summary.fuelRates].sort(([fuelA], [fuelB]) => fuelA.name.localeCompare(fuelB.name))) {
+  for (const [fuel, rate] of [...summary.fuelRates].sort(([fuelA], [fuelB]) => fuelA.name.localeCompare(fuelB.name))) {
     cards.push({
       label: `${fuel.name} / ${specification.format.rateName}`,
       value: specification.format.rate(rate),
     })
   }
-  let card = root
-    .selectAll("div.factory-summary-card")
-    .data(cards, (entry) => entry.label)
+  const card = root
+    .selectAll<HTMLDivElement, SummaryCard>("div.factory-summary-card")
+    .data(cards, (entry: SummaryCard) => entry.label)
     .join("div")
     .classed("factory-summary-card", true)
   card
-    .selectAll("div.factory-summary-value")
-    .data((entry) => [entry])
+    .selectAll<HTMLDivElement, SummaryCard>("div.factory-summary-value")
+    .data((entry: SummaryCard) => [entry])
     .join("div")
     .classed("factory-summary-value", true)
-    .text((entry) => entry.value)
+    .text((entry: SummaryCard) => entry.value)
   card
-    .selectAll("div.factory-summary-label")
-    .data((entry) => [entry])
+    .selectAll<HTMLDivElement, SummaryCard>("div.factory-summary-label")
+    .data((entry: SummaryCard) => [entry])
     .join("div")
     .classed("factory-summary-label", true)
-    .text((entry) => entry.label)
+    .text((entry: SummaryCard) => entry.label)
 
-  let warnings = []
+  const warnings: string[] = []
   if (summary.planning.rocket?.launchLimited) {
-    let rocket = summary.planning.rocket
+    const rocket = summary.planning.rocket
     warnings.push(
       `Rocket silo launch-limited at ${specification.format.rate(rocket.animationLaunchRate)} launches/${specification.format.rateName} per silo; more speed will not increase throughput.`,
     )
   }
-  for (let target of summary.planning.qualityTargets) {
+  for (const target of summary.planning.qualityTargets) {
     warnings.push(
       `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total production required.`,
     )
@@ -948,34 +817,40 @@ function renderFactorySummary(specification, totals) {
   if (summary.qualityRecipeCount > 0 && summary.planning.qualityTargets.length === 0) {
     warnings.push("Quality modules selected; choose a target quality to include its yield.")
   }
-  let expired = summary.planning.freshness.filter((row) => row.expired)
+  const expired = summary.planning.freshness.filter((row) => row.expired)
   if (expired.length > 0)
     warnings.push(`Fully spoiled after the configured delay: ${expired.map((row) => row.item.name).join(", ")}.`)
-  let agriculturalScience = summary.planning.freshness.find((row) => row.item.key === "agricultural-science-pack")
-  if (agriculturalScience && !specification.freshnessDelayMinutes.isZero()) {
+  const agriculturalScience = summary.planning.freshness.find((row) => row.item.key === "agricultural-science-pack")
+  if (agriculturalScience !== undefined && !specification.freshnessDelayMinutes.isZero()) {
     warnings.push(
       `Agricultural science after ${specification.freshnessDelayMinutes.toDecimal()} min: ${(agriculturalScience.remaining.toFloat() * 100).toFixed(1)}% effective.`,
     )
   }
-  let constrained = summary.planning.asteroidConstraints.filter((row) => row.exceeded)
-  for (let row of constrained)
+  for (const row of summary.planning.asteroidConstraints.filter((entry) => entry.exceeded)) {
     warnings.push(
       `${row.item.name} cap exceeded: ${specification.format.rate(row.required)} required vs ${specification.format.rate(row.limit)} available/${specification.format.rateName}.`,
     )
+  }
   if (!summary.planning.aquiloHeat.isZero())
     warnings.push("Aquilo heat excludes belts, pipes, inserters, pumps, tanks, and other logistics entities.")
 
   root
-    .selectAll("div.factory-summary-warning")
+    .selectAll<HTMLDivElement, string>("div.factory-summary-warning")
     .data(warnings)
     .join("div")
     .classed("factory-summary-warning", true)
-    .text((warning) => warning)
+    .text((warning: string) => warning)
 }
 
-export function displayCalculationError(_specification, error) {
-  let code = error && typeof error === "object" ? error.code : null
-  let rawMessage = error instanceof Error ? error.message : String(error)
+function getErrorCode(error: unknown): string | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) return null
+  const code = error.code
+  return typeof code === "string" ? code : null
+}
+
+export function displayCalculationError(_specification: FactorySpecification, error: unknown): void {
+  const code = getErrorCode(error)
+  const rawMessage = error instanceof Error ? error.message : String(error)
   let message = "The current settings could not produce a complete factory."
   let title = "Unable to calculate this factory"
   let guidance = "Check the target values, selected recipes, machines, locations, and resource priorities."
@@ -998,78 +873,83 @@ export function displayCalculationError(_specification, error) {
     guidance = "Use a whole number, decimal, or fraction such as 60, 2.5, or 1/3."
   }
 
-  let root = d3.select("#calculation_error").property("hidden", false)
+  const root = select<HTMLElement, unknown>("#calculation_error").property("hidden", false)
   root.select(".calculation-error-title").text(title)
   root.select(".calculation-error-message").text(message)
   root.select(".calculation-error-guidance").text(guidance)
-  d3.select("#factory_summary").property("hidden", true)
-  d3.select("table#totals").property("hidden", true)
+  select("#factory_summary").property("hidden", true)
+  select("table#totals").property("hidden", true)
 }
 
-export function displayItems(spec, totals) {
-  d3.select("#calculation_error").property("hidden", true)
-  d3.select("table#totals").property("hidden", false)
+export function displayItems(spec: FactorySpecification, totals: Totals): void {
+  const belt = spec.belt
+  if (belt === null) throw new Error("Belt data is not initialized")
+
+  select("#calculation_error").property("hidden", true)
+  select("table#totals").property("hidden", false)
   renderFactorySummary(spec, totals)
-  let showLocations = spec.selectedPlanets?.size > 1
-  let showSurplus = totals.surplus.size > 0
-  let headers = [
+  const showLocations = spec.selectedPlanets.size > 1
+  const showSurplus = totals.surplus.size > 0
+  const headers: Header[] = [
     new Header("Item", 2, false, null, null, "left"),
-    new Header("Rate / " + spec.format.rateName, 1, false, null, null, "right"),
-    ...(showSurplus ? [new Header("Surplus / " + spec.format.rateName, 1, true, null, null, "right")] : []),
-    new Header("Belts", 1, false, `Equivalent ${spec.belt.name} belts at the selected rate`, spec.belt.icon, "right"),
+    new Header(`Rate / ${spec.format.rateName}`, 1, false, null, null, "right"),
+    ...(showSurplus ? [new Header(`Surplus / ${spec.format.rateName}`, 1, true, null, null, "right")] : []),
+    new Header("Belts", 1, false, `Equivalent ${belt.name} belts at the selected rate`, belt.icon, "right"),
     new Header("Machines", 2, false, null, null, "center"),
     ...(showLocations ? [new Header("Location", 1, false, null, null, "left")] : []),
     new Header("Modules", 1, false, null, null, "left"),
     new Header("Beacons", 1, false, null, null, "left"),
     new Header("Power", 1, false, null, null, "right"),
-    new Header("", 1, false, null, null, "center"), // pop-out links
+    new Header("", 1, false, null, null, "center"),
   ]
-  let totalCols = 0
-  for (let header of headers) {
-    totalCols += header.colspan
-  }
+  const totalCols = headers.reduce((sum, header) => sum + header.colspan, 0)
 
-  let table = d3.select("table#totals")
+  const table = select<HTMLTableElement, unknown>("table#totals")
   table.classed("nosurplus", totals.surplus.size === 0)
 
-  let headerRow = table.selectAll("thead tr").classed("factory-header", true).selectAll("th").data(headers)
+  const headerRow = table
+    .selectAll<HTMLTableRowElement, unknown>("thead tr")
+    .classed("factory-header", true)
+    .selectAll<HTMLTableCellElement, Header>("th")
+    .data(headers)
   headerRow.exit().remove()
-  let headerCell = headerRow
+  const headerCell = headerRow
     .join("th")
-    .classed("surplus", (d) => d.surplus)
-    .classed("align-left", (d) => d.align === "left")
-    .classed("align-center", (d) => d.align === "center")
-    .classed("align-right", (d) => d.align === "right")
-    .attr("colspan", (d) => d.colspan)
-    .attr("data-tooltip", (d) => d.title)
-  headerCell.each(function (this: HTMLTableCellElement, header) {
-    let cell = d3.select(this)
+    .classed("surplus", (header: Header) => header.surplus)
+    .classed("align-left", (header: Header) => header.align === "left")
+    .classed("align-center", (header: Header) => header.align === "center")
+    .classed("align-right", (header: Header) => header.align === "right")
+    .attr("colspan", (header: Header) => header.colspan)
+    .attr("data-tooltip", (header: Header) => header.title)
+  headerCell.each(function (this: Element, header: Header) {
+    const cell = select(this)
     cell.selectAll("*").remove()
-    if (header.icon !== null) {
-      cell.append(() => header.icon.make(18)).classed("header-icon", true)
-    }
+    const icon = header.icon
+    if (icon !== null) cell.append(() => icon.make(18)).classed("header-icon", true)
     cell.append("span").text(header.text)
   })
 
   getDisplayGroups(totals)
-  let rowGroup = table
-    .selectAll("tbody")
+  const rowGroup = table
+    .selectAll<HTMLTableSectionElement, DisplayGroup>("tbody")
     .data(displayGroups)
     .join("tbody")
     .classed("display-group", true)
-    .classed("multi", (d) => d.rows.length > 1)
+    .classed("multi", (group: DisplayGroup) => group.rows.length > 1)
   rowGroup.selectAll("tr.breakdown").remove()
-  // Create new rows.
-  let row = rowGroup
-    .selectAll("tr")
-    .data((d) => d.rows)
+
+  const displayRows = rowGroup
+    .selectAll<HTMLTableRowElement, DisplayRow>("tr.display-row")
+    .data<DisplayRow>((group: DisplayGroup) => group.rows)
     .join((enter) => {
-      let row = enter.append("tr").classed("display-row", true)
-      // cell 1: breakdown toggle
-      row
+      const rows = enter.append("tr").classed("display-row", true)
+
+      rows
         .append("td")
         .classed("item", true)
-        .on("click", toggleBreakdownHandler)
+        .on("click", function (this: Element) {
+          toggleBreakdownHandler.call(this)
+        })
         .append("svg")
         .classed("breakdown-arrow", true)
         .attr("viewBox", "0 0 16 16")
@@ -1077,61 +957,50 @@ export function displayItems(spec, totals) {
         .attr("height", 16)
         .append("use")
         .attr("href", "images/icons.svg#right")
-      // cell 2: item identity and import toggle
-      let itemCell = row.append("td").classed("item item-identity", true)
-      let itemToggle = itemCell.append("button").classed("item-import-toggle", true).attr("type", "button")
+
+      const itemCell = rows.append("td").classed("item item-identity", true)
+      const itemToggle = itemCell.append("button").classed("item-import-toggle", true).attr("type", "button")
       itemToggle.append("span").classed("item-icon", true)
       itemToggle.append("span").classed("item-name", true)
       itemToggle.append("span").classed("item-state", true)
-      // cell 3: item rate
-      row.append("td").classed("item right-align", true).append("tt").classed("item-rate", true)
-      // cell 4: surplus rate
-      row.append("td").classed("item surplus right-align", true).append("tt").classed("surplus-rate", true)
-      // cell 5: equivalent belt count (fluids are blank for Factorio 2.x datasets)
-      row
+
+      rows.append("td").classed("item right-align", true).append("tt").classed("item-rate", true)
+      rows.append("td").classed("item surplus right-align", true).append("tt").classed("surplus-rate", true)
+      rows
         .append("td")
         .classed("item right-align logistics-cell pad-right", true)
         .append("tt")
         .classed("belt-count", true)
 
-      // cell 6: building icon
-      let buildingCell = row.append("td").classed("pad building building-icon leftmost right-align", true)
-      // cell 7: building count
-      row.append("td").classed("right-align building", true).append("tt").classed("building-count", true)
+      rows.append("td").classed("pad building building-icon leftmost right-align", true)
+      rows.append("td").classed("right-align building", true).append("tt").classed("building-count", true)
+      rows.append("td").classed("location-cell", true)
+      rows.append("td").classed("pad building module module-cell", true)
 
-      // Production location for multi-location plans.
-      row.append("td").classed("location-cell", true)
-
-      // cell 8: modules
-      let moduleCell = row.append("td").classed("pad building module module-cell", true)
-
-      // cell 9: beacons
-      let beaconCell = row.append("td").classed("pad building module beacon", true)
-      let beaconControls = beaconCell.append("span").classed("beacon-controls", true)
+      const beaconCell = rows.append("td").classed("pad building module beacon", true)
+      const beaconControls = beaconCell.append("span").classed("beacon-controls", true)
       beaconControls.append("span").classed("beacon-container", true)
-      let beaconCountSpan = beaconControls.append("span").classed("beacon-count", true)
+      const beaconCountSpan = beaconControls.append("span").classed("beacon-count", true)
       beaconCountSpan.append("span").text(" \u00d7 ")
       beaconCountSpan
         .append("input")
         .attr("type", "text")
         .attr("size", 3)
-        .on("change", function (event, d) {
-          let count = Rational.from_string(event.target.value)
-          d.moduleSpec.setBeaconCount(count)
-          if (spec.isFactoryTarget(d.recipe)) {
-            spec.updateSolution()
-          } else {
-            spec.display()
-          }
+        .on("change", function (this: Element, event: Event, row: DisplayRow) {
+          const target = event.target
+          if (!(target instanceof HTMLInputElement)) return
+          const moduleSpec = requireRowModuleSpec(row)
+          const recipe = requireRowRecipe(row)
+          moduleSpec.setBeaconCount(Rational.from_string(target.value))
+          if (spec.isFactoryTarget(recipe)) spec.updateSolution()
+          else spec.display()
         })
 
-      // cell 10: power or fuel rate
-      let powerCell = row.append("td").classed("right-align building power-cell", true)
+      const powerCell = rows.append("td").classed("right-align building power-cell", true)
       powerCell.append("span").classed("fuel-icon", true)
       powerCell.append("tt").classed("power", true)
 
-      // cell 11: popout
-      row
+      rows
         .append("td")
         .classed("popout pad item", true)
         .append("a")
@@ -1145,166 +1014,203 @@ export function displayItems(spec, totals) {
         .append("use")
         .attr("href", "images/icons.svg#popout")
 
-      return row
+      return rows
     })
-    .classed("nobuilding", (d) => d.building === null)
-    .classed("nomodule", (d) => d.moduleSpec === null)
-    .classed("noitem", (d) => d.item === null)
-    .classed("target-output", (d) => d.item !== null && spec.buildTargets.some((target) => target.item === d.item))
-    .classed("imported-output", (d) => d.item !== null && spec.ignore.has(d.item))
-    .classed("launch-limited", isLaunchLimitedRow)
-  let locationCell = row.selectAll("td.location-cell").classed("hide", !showLocations)
-  locationCell.selectAll("*").remove()
-  locationCell.filter((d) => d.recipe !== null && d.recipe.isReal?.()).append((d) => makeLocationSelector(d))
-  locationCell
-    .filter((d) => d.recipe === null || !d.recipe.isReal?.())
-    .text((d) => getLocationCellText(spec, d.recipe, d.building))
+    .classed("nobuilding", (row: DisplayRow) => row.building === null)
+    .classed("nomodule", (row: DisplayRow) => row.moduleSpec === null)
+    .classed("noitem", (row: DisplayRow) => row.item === null)
+    .classed(
+      "target-output",
+      (row: DisplayRow) => row.item !== null && spec.buildTargets.some((target) => target.item === row.item),
+    )
+    .classed("imported-output", (row: DisplayRow) => row.item !== null && spec.ignore.has(row.item))
+    .classed("launch-limited", (row: DisplayRow) => isLaunchLimitedRow(row))
 
-  // Update row data.
-  let itemRow = row.filter((d) => d.item !== null)
-  let itemToggle = itemRow
-    .selectAll("button.item-import-toggle")
-    .classed("imported", (d) => spec.ignore.has(d.item))
-    .attr("data-tooltip", (d) =>
-      spec.ignore.has(d.item) ? `Produce ${d.item.name} in this plan` : `Treat ${d.item.name} as imported`,
-    )
-    .attr("aria-label", (d) =>
-      spec.ignore.has(d.item) ? `Produce ${d.item.name} in this plan` : `Treat ${d.item.name} as imported`,
-    )
-    .on("click", toggleIgnoreHandler)
-  let itemIcon = itemToggle.select("span.item-icon")
+  const locationCell = displayRows
+    .selectAll<HTMLTableCellElement, DisplayRow>("td.location-cell")
+    .classed("hide", !showLocations)
+  locationCell.selectAll("*").remove()
+  locationCell
+    .filter((row: DisplayRow) => row.recipe instanceof Recipe && row.recipe.isReal())
+    .append((row: DisplayRow) => makeLocationSelector(row))
+  locationCell
+    .filter((row: DisplayRow) => !(row.recipe instanceof Recipe) || !row.recipe.isReal())
+    .text((row: DisplayRow) => getLocationCellText(spec, row.recipe, row.building))
+
+  const itemRows = displayRows.filter((row: DisplayRow) => row.item !== null)
+  const itemToggle = itemRows
+    .selectAll<HTMLButtonElement, DisplayRow>("button.item-import-toggle")
+    .classed("imported", (row: DisplayRow) => spec.ignore.has(requireRowItem(row)))
+    .attr("data-tooltip", (row: DisplayRow) => {
+      const item = requireRowItem(row)
+      return spec.ignore.has(item) ? `Produce ${item.name} in this plan` : `Treat ${item.name} as imported`
+    })
+    .attr("aria-label", (row: DisplayRow) => {
+      const item = requireRowItem(row)
+      return spec.ignore.has(item) ? `Produce ${item.name} in this plan` : `Treat ${item.name} as imported`
+    })
+    .on("click", (event: Event, row: DisplayRow) => toggleIgnoreHandler(event, { item: requireRowItem(row) }))
+  const itemIcon = itemToggle.select<HTMLSpanElement>("span.item-icon")
   itemIcon.selectAll("img").remove()
   itemIcon
-    .append((d) => {
-      let icon = new ItemIcon(d.item)
-      icon.setText(spec.ignore.has(d.item) ? "Imported." : "Produced in this plan.")
+    .append((row: DisplayRow) => {
+      const item = requireRowItem(row)
+      const icon = new ItemIcon(item)
+      icon.setText(spec.ignore.has(item) ? "Imported." : "Produced in this plan.")
       return icon.icon.make(32)
     })
-    .classed("ignore", (d) => spec.ignore.has(d.item))
-  itemToggle.select("span.item-name").text((d) => d.item.name)
-  itemToggle.select("span.item-state").text((d) => {
-    let labels = []
-    if (spec.buildTargets.some((target) => target.item === d.item)) labels.push("target")
-    if (spec.ignore.has(d.item)) labels.push("imported")
-    if (isLaunchLimitedRow(d)) labels.push("launch-limited")
+    .classed("ignore", (row: DisplayRow) => spec.ignore.has(requireRowItem(row)))
+  itemToggle.select<HTMLSpanElement>("span.item-name").text((row: DisplayRow) => requireRowItem(row).name)
+  itemToggle.select<HTMLSpanElement>("span.item-state").text((row: DisplayRow) => {
+    const item = requireRowItem(row)
+    const labels: string[] = []
+    if (spec.buildTargets.some((target) => target.item === item)) labels.push("target")
+    if (spec.ignore.has(item)) labels.push("imported")
+    if (isLaunchLimitedRow(row)) labels.push("launch-limited")
     return labels.join(" · ")
   })
-  itemRow.selectAll("tt.item-rate").text((d) => {
-    let rate = totals.items.get(d.item)
-    if (totals.surplus.has(d.item)) {
-      rate = rate.sub(totals.surplus.get(d.item))
-    }
-    return spec.format.alignRate(rate)
+  itemRows.selectAll<HTMLElement, DisplayRow>("tt.item-rate").text((row: DisplayRow) => {
+    const item = requireRowItem(row)
+    const rate = requireItemRate(totals.items, item, "item")
+    const surplus = totals.surplus.get(item) ?? zero
+    return spec.format.alignRate(rate.sub(surplus))
   })
-  itemRow
-    .selectAll("tt.surplus-rate")
-    .text((d) => spec.format.alignRate(totals.surplus.has(d.item) ? totals.surplus.get(d.item) : zero))
-  let beltRow = itemRow.filter((d) => d.item.phase === "solid")
-  beltRow
-    .selectAll("td.logistics-cell")
-    .attr("data-tooltip", (d) => {
-      let rate = totals.items.get(d.item)
-      let logistics = getLogistics(d.item, rate, spec)
-      return `Equivalent ${spec.belt.name} belts at stack height ${spec.beltStackSize.toDecimal()}. ${spec.format.rate(logistics.stackRate)} stacks/${spec.format.rateName}; ${logistics.bufferSlots.toDecimal(0)} slots for a ${spec.bufferMinutes.toDecimal()} minute buffer; ${spec.format.count(logistics.wagonLoads)} cargo wagons/${spec.format.rateName}.`
+  itemRows
+    .selectAll<HTMLElement, DisplayRow>("tt.surplus-rate")
+    .text((row: DisplayRow) => spec.format.alignRate(totals.surplus.get(requireRowItem(row)) ?? zero))
+
+  const beltRows = itemRows.filter((row: DisplayRow) => requireRowItem(row).phase === "solid")
+  beltRows
+    .selectAll<HTMLTableCellElement, DisplayRow>("td.logistics-cell")
+    .attr("data-tooltip", (row: DisplayRow) => {
+      const item = requireRowItem(row)
+      const rate = requireItemRate(totals.items, item, "item")
+      const logistics = getLogistics(item, rate, spec)
+      if (logistics === null) throw new Error(`Missing solid logistics report for ${item.key}`)
+      return `Equivalent ${belt.name} belts at stack height ${spec.beltStackSize.toDecimal()}. ${spec.format.rate(logistics.stackRate)} stacks/${spec.format.rateName}; ${logistics.bufferSlots.toDecimal(0)} slots for a ${spec.bufferMinutes.toDecimal()} minute buffer; ${spec.format.count(logistics.wagonLoads)} cargo wagons/${spec.format.rateName}.`
     })
-    .selectAll("tt.belt-count")
-    .text((d) => spec.format.alignCount(spec.getBeltCount(totals.items.get(d.item))))
-  let pipeRow = itemRow.filter((d) => d.item.phase === "fluid")
-  pipeRow
-    .selectAll("td.logistics-cell")
+    .selectAll<HTMLElement, DisplayRow>("tt.belt-count")
+    .text((row: DisplayRow) => {
+      const item = requireRowItem(row)
+      return spec.format.alignCount(spec.getBeltCount(requireItemRate(totals.items, item, "item")))
+    })
+
+  const pipeRows = itemRows.filter((row: DisplayRow) => requireRowItem(row).phase === "fluid")
+  pipeRows
+    .selectAll<HTMLTableCellElement, DisplayRow>("td.logistics-cell")
     .attr("data-tooltip", usesLegacyCalculation() ? "Legacy maximum pipe length" : null)
-    .selectAll("tt.belt-count")
-    .text((d) => pipeText(totals.items.get(d.item)))
-  let itemBuildingCell = itemRow.selectAll("td.building-icon")
+    .selectAll<HTMLElement, DisplayRow>("tt.belt-count")
+    .text((row: DisplayRow) => pipeText(requireItemRate(totals.items, requireRowItem(row), "item")))
+
+  const itemBuildingCell = itemRows.selectAll<HTMLTableCellElement, DisplayRow>("td.building-icon")
   itemBuildingCell.selectAll("*").remove()
   itemBuildingCell
-    .filter((d) => getItemProductionRecipes(d.item).length > 0 && d.recipe !== null)
-    .append((d) => makeRecipeSelector(d))
+    .filter(
+      (row: DisplayRow) => getItemProductionRecipes(requireRowItem(row)).length > 0 && row.recipe instanceof Recipe,
+    )
+    .append((row: DisplayRow) => {
+      const selector = makeRecipeSelector({ item: requireRowItem(row), recipe: requireRowRecipe(row) })
+      return requireNode(selector, "recipe selector")
+    })
 
-  // Secondary recipe rows have no item, but their machine cells are still reused.
-  row.selectAll("td.building-icon > :not(.recipe-selector)").remove()
-  let buildingRow = row.filter((d) => d.building !== null)
-  let buildingCell = buildingRow.selectAll("td.building-icon")
-  buildingCell.append((d) => {
-    let compatibleBuildings = spec.getCompatibleBuildings(d.recipe)
-    if (compatibleBuildings.length <= 1) {
-      return d.building.icon.make(32)
-    }
-    return makeMachineSelector(d, compatibleBuildings)
+  displayRows.selectAll("td.building-icon > :not(.recipe-selector)").remove()
+  const buildingRows = displayRows.filter((row: DisplayRow) => row.building !== null && row.recipe instanceof Recipe)
+  const buildingCell = buildingRows.selectAll<HTMLTableCellElement, DisplayRow>("td.building-icon")
+  buildingCell.append((row: DisplayRow) => {
+    const recipe = requireRowRecipe(row)
+    const building = requireRowBuilding(row)
+    const compatibleBuildings = spec.getCompatibleBuildings(recipe)
+    if (compatibleBuildings.length <= 1) return building.icon.make(32)
+    return makeMachineSelector({ recipe, building }, compatibleBuildings)
   })
   buildingCell.append("span").text(" \u00d7")
-  buildingRow
-    .selectAll("tt.building-count")
-    .attr("data-tooltip", (d) => {
-      let rocket = getRocketStatsForRow(d)
-      if (!rocket) return null
-      let limit = `${spec.format.rate(rocket.animationLaunchRate)} launches/${spec.format.rateName} per silo`
+  buildingRows
+    .selectAll<HTMLElement, DisplayRow>("tt.building-count")
+    .attr("data-tooltip", (row: DisplayRow) => {
+      const rocket = getRocketStatsForRow(row)
+      if (rocket === null) return null
+      const limit = `${spec.format.rate(rocket.animationLaunchRate)} launches/${spec.format.rateName} per silo`
       return rocket.launchLimited
         ? `Normal-quality launch animation limit: ${limit}. More speed does not increase steady-state throughput; productivity still reduces required crafts.`
         : `Maximum normal-quality buffered launch rate: ${limit}. Current rocket-part crafting is slower than the launch animation.`
     })
-    .text((d) => spec.format.alignCount(spec.getCount(d.recipe, totals.rates.get(d.recipe))))
-  let moduleRow = row.filter((d) => d.moduleSpec !== null)
-  let moduleCell = moduleRow.selectAll("td.module-cell")
-  // XXX: Something's wrong with how I did the module dropdowns. Work around
-  // the issue for now by re-rendering all of them on each update.
-  moduleCell.selectAll("*").remove()
-  moduleRow.selectAll("span.beacon-container").selectAll("*").remove()
-  moduleDropdown(moduleCell, (d) => d.slots)
-  moduleDropdown(moduleRow.selectAll("span.beacon-container"), (d) => d.beaconModules)
-  moduleRow.selectAll("span.beacon-count input").attr("value", (d) => spec.format.count(d.moduleSpec.beaconCount))
+    .text((row: DisplayRow) => {
+      const recipe = requireRowRecipe(row)
+      return spec.format.alignCount(spec.getCount(recipe, requireRecipeRate(totals.rates, recipe, "recipe")))
+    })
 
-  let fuelRow = buildingRow.filter((d) => d.building.fuel !== null)
-  let fuelIcon = fuelRow.selectAll(".fuel-icon")
+  const moduleRowsSelection = displayRows.filter((row: DisplayRow) => row.moduleSpec !== null)
+  const moduleCell = moduleRowsSelection.selectAll<HTMLTableCellElement, DisplayRow>("td.module-cell")
+  moduleCell.selectAll("*").remove()
+  moduleRowsSelection.selectAll("span.beacon-container").selectAll("*").remove()
+  moduleDropdown(moduleCell, (row: DisplayRow) => row.slots)
+  moduleDropdown(
+    moduleRowsSelection.selectAll<HTMLSpanElement, DisplayRow>("span.beacon-container"),
+    (row: DisplayRow) => row.beaconModules,
+  )
+  moduleRowsSelection
+    .selectAll<HTMLInputElement, DisplayRow>("span.beacon-count input")
+    .attr("value", (row: DisplayRow) => spec.format.count(requireRowModuleSpec(row).beaconCount))
+
+  const fuelRows = buildingRows.filter((row: DisplayRow) => requireRowBuilding(row).fuel !== null)
+  const fuelIcon = fuelRows.selectAll<HTMLSpanElement, DisplayRow>(".fuel-icon")
   fuelIcon.selectAll("*").remove()
-  fuelIcon.append((d) => spec.getFuelForRecipe(d.recipe).icon.make(24))
+  fuelIcon.append((row: DisplayRow) => {
+    const fuel = spec.getFuelForRecipe(requireRowRecipe(row))
+    if (fuel === null) throw new Error(`Missing fuel for ${requireRowRecipe(row).key}`)
+    return fuel.icon.make(24)
+  })
   fuelIcon.append("span").text(" × ")
-  fuelRow.selectAll("tt.power").text((d) => {
-    let rate = totals.rates.get(d.recipe)
-    let { fuel, power } = spec.getPowerUsage(d.recipe, rate)
-    let recipeFuel = spec.getFuelForRecipe(d.recipe)
+  fuelRows.selectAll<HTMLElement, DisplayRow>("tt.power").text((row: DisplayRow) => {
+    const recipe = requireRowRecipe(row)
+    const rate = requireRecipeRate(totals.rates, recipe, "recipe")
+    const { power } = spec.getPowerUsage(recipe, rate)
+    const recipeFuel = spec.getFuelForRecipe(recipe)
+    if (recipeFuel === null) throw new Error(`Missing fuel for ${recipe.key}`)
     return `${spec.format.alignRate(power.div(recipeFuel.value))}/${spec.format.rateName}`
   })
-  let electricRow = buildingRow.filter((d) => d.building.fuel === null)
-  electricRow.selectAll(".fuel-icon").selectAll("*").remove()
-  electricRow.selectAll("tt.power").text((d) => {
-    let rate = totals.rates.get(d.recipe)
-    let { fuel, power } = spec.getPowerUsage(d.recipe, rate)
-    return alignPower(power)
+
+  const electricRows = buildingRows.filter((row: DisplayRow) => requireRowBuilding(row).fuel === null)
+  electricRows.selectAll(".fuel-icon").selectAll("*").remove()
+  electricRows.selectAll<HTMLElement, DisplayRow>("tt.power").text((row: DisplayRow) => {
+    const recipe = requireRowRecipe(row)
+    const rate = requireRecipeRate(totals.rates, recipe, "recipe")
+    return alignPower(spec.getPowerUsage(recipe, rate).power)
   })
   refreshRecipeSettings(spec)
 
-  itemRow.selectAll("td.popout a").attr("href", (d) => {
-    let rate = totals.items.get(d.item)
-    let rates = [[d.item, rate]]
-    return "#" + formatSettings(true, "totals", rates)
+  itemRows.selectAll<HTMLAnchorElement, DisplayRow>("td.popout a").attr("href", (row: DisplayRow) => {
+    const item = requireRowItem(row)
+    const rate = requireItemRate(totals.items, item, "item")
+    const rates: readonly (readonly [Item, Rational])[] = [[item, rate]]
+    return `#${formatSettings(true, "totals", rates)}`
   })
 
-  // Render breakdowns.
-  itemRow = row.filter((d) => d.breakdown !== null)
-  let breakdown = itemRow
-    .select(function (this: HTMLTableRowElement) {
-      let row = document.createElement("tr")
-      this.parentElement?.insertBefore(row, this.nextSibling)
-      return row
+  const rowsWithBreakdowns = displayRows.filter((row: DisplayRow) => row.breakdown !== null)
+  const breakdownContainers = rowsWithBreakdowns
+    .select<HTMLTableRowElement>(function (this: Element) {
+      const breakdown = document.createElement("tr")
+      this.parentElement?.insertBefore(breakdown, this.nextSibling)
+      return breakdown
     })
     .classed("breakdown", true)
-    .classed("breakdown-open", function (this: HTMLTableRowElement) {
+    .classed("breakdown-open", function (this: Element) {
       return this.previousElementSibling?.classList.contains("breakdown-open") ?? false
     })
-  breakdown.append("td")
-  row = breakdown
+  breakdownContainers.append("td")
+  const breakdownRows = breakdownContainers
     .append("td")
     .attr("colspan", totalCols - 1)
     .append("table")
-    .selectAll("tr")
-    .data((d) => d.breakdown)
+    .selectAll<HTMLTableRowElement, BreakdownRow>("tr")
+    .data<BreakdownRow>((row: DisplayRow) => row.breakdown ?? [])
     .join("tr")
     .classed("breakdown-row", true)
-    .classed("breakdown-first-output", (d) => d.divider)
-  let bdIcons = row.append("td")
-  bdIcons.append((d) => d.recipe.icon.make(32)).classed("item-icon", true)
-  bdIcons
+    .classed("breakdown-first-output", (row: BreakdownRow) => row.divider)
+
+  const breakdownIcons = breakdownRows.append("td")
+  breakdownIcons.append((row: BreakdownRow) => row.recipe.icon.make(32)).classed("item-icon", true)
+  breakdownIcons
     .append("svg")
     .classed("usage-arrow", true)
     .attr("viewBox", "0 0 18 16")
@@ -1312,42 +1218,51 @@ export function displayItems(spec, totals) {
     .attr("height", 16)
     .append("use")
     .attr("href", "images/icons.svg#rightarrow")
-  bdIcons.append((d) => d.item.icon.make(32)).classed("item-icon", true)
-  row
+  breakdownIcons.append((row: BreakdownRow) => row.item.icon.make(32)).classed("item-icon", true)
+  breakdownRows
     .append("td")
     .classed("right-align", true)
     .append("tt")
     .classed("item-rate pad-right", true)
-    .text((d) => spec.format.alignRate(d.rate))
-  beltRow = row.filter((d) => d.item.phase === "solid")
-  let beltCell = beltRow.append("td")
-  beltCell.append((d) => spec.belt.icon.make(32))
-  beltCell.append("span").text(" \u00d7")
-  beltRow
+    .text((row: BreakdownRow) => spec.format.alignRate(row.rate))
+
+  const breakdownBeltRows = breakdownRows.filter((row: BreakdownRow) => row.item.phase === "solid")
+  const breakdownBeltCell = breakdownBeltRows.append("td")
+  breakdownBeltCell.append(() => belt.icon.make(32))
+  breakdownBeltCell.append("span").text(" \u00d7")
+  breakdownBeltRows
     .append("td")
     .classed("right-align", true)
     .append("tt")
     .classed("belt-count pad-right", true)
-    .text((d) => spec.format.alignCount(d.rate.div(spec.belt.rate)))
-  pipeRow = row.filter((d) => d.item.phase === "fluid")
-  pipeRow.append("td").append((d) => new PipeIcon().icon.make(32))
-  pipeRow.append("td")
-  buildingCell = row
+    .text((row: BreakdownRow) => spec.format.alignCount(row.rate.div(belt.rate)))
+
+  const breakdownPipeRows = breakdownRows.filter((row: BreakdownRow) => row.item.phase === "fluid")
+  breakdownPipeRows.append("td").append(() => new PipeIcon().icon.make(32))
+  breakdownPipeRows.append("td")
+
+  const breakdownBuildingCell = breakdownRows
     .append("td")
-    .filter((d) => d.building !== null)
+    .filter((row: BreakdownRow) => row.building !== null)
     .classed("building", true)
-  buildingCell.append((d) => d.building.icon.make(32))
-  buildingCell.append("span").text(" \u00d7")
-  row
+  breakdownBuildingCell.append((row: BreakdownRow) => {
+    if (row.building === null) throw new Error("Breakdown row has no building")
+    return row.building.icon.make(32)
+  })
+  breakdownBuildingCell.append("span").text(" \u00d7")
+  breakdownRows
     .append("td")
-    .filter((d) => d.count !== null)
+    .filter((row: BreakdownRow) => row.count !== null)
     .classed("building pad-right", true)
     .append("tt")
-    .text((d) => spec.format.alignCount(d.count))
-  row
+    .text((row: BreakdownRow) => {
+      if (row.count === null) throw new Error("Breakdown row has no machine count")
+      return spec.format.alignCount(row.count)
+    })
+  breakdownRows
     .append("td")
-    .filter((d) => d.percent !== null)
+    .filter((row: BreakdownRow) => row.percent !== null)
     .classed("right-align", true)
     .append("tt")
-    .text((d) => d.percent)
+    .text((row: BreakdownRow) => row.percent ?? "")
 }

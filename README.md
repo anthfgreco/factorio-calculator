@@ -34,7 +34,7 @@ https://anthfgreco.github.io/factorio-calculator/
 
 Requirements:
 
-- Node.js 22.13 or newer
+- Node.js 24
 - pnpm 11
 - Python 3 and Pillow only when rebuilding Factorio datasets
 
@@ -47,41 +47,44 @@ pnpm dev
 
 ```bash
 pnpm dev                 # Start Vite
-pnpm bench               # Benchmark exact 500- and 1,000-step solver chains
-pnpm check               # Architecture, types, tests, and dataset runtime checks
-pnpm check:architecture  # Enforce module dependency rules
-pnpm typecheck:core      # Strictly type-check data, math, and solver modules
-pnpm typecheck           # Type-check the complete browser application
-pnpm test                # Run focused Node characterization tests
+pnpm doctor              # Validate Node, pnpm, lockfile, datasets, and required tools
+pnpm check:quick         # ~5s architecture, type-debt, and global strict TypeScript lane
+pnpm test:core           # ~3s exact solver and named Factorio scenarios
+pnpm test:ui             # Store, URL, state, and interface behavior
+pnpm test:e2e            # ~20s critical Chromium workflows
+pnpm bench               # Report exact 500- and 1,000-step solver medians
+pnpm bench:check         # Enforce conservative solver performance budgets
 pnpm validate:runtime    # Load and verify every bundled dataset
+pnpm build:site          # Build the Vite site
+pnpm validate:build      # Validate dist/ and bundle budgets
 pnpm format              # Format supported files with Oxfmt
 pnpm format:check        # Check formatting without modifying files
-pnpm verify              # Complete release and GitHub Pages build gate
+pnpm verify              # Complete release gate
 pnpm preview             # Preview dist/
 pnpm zip                 # Package current working-tree files on Windows
 ```
 
 ## Architecture
 
-The TypeScript source is intentionally consolidated into cohesive feature modules rather than many small files:
+The codebase is organized around strict ownership boundaries rather than a framework-wide rewrite:
 
-- `src/data.ts` — dataset contracts, validation, search, and location helpers
-- `src/math.ts` — exact rational/matrix arithmetic and numeric formatting
-- `src/solver.ts` — solver contracts, cycles, totals, and simplex orchestration
-- `src/factory.ts` — calculator state facade and factory policies
-- `src/planning.ts` — quality, freshness, transport, capacity, pollution, power, and heat calculations
-- `src/models.ts` — runtime buildings, modules, belts, fuel, planets, and groups
-- `src/recipes.ts` — item/recipe models and recipe policy/query logic
-- `src/priorities.ts` — resource-priority model, policy, and editor
-- `src/state.ts` — browser/application settings and event actions
-- `src/presentation.ts` — icons, tooltips, and dropdown primitives
-- `src/settings.ts`, `src/results.ts`, `src/ui.ts` — settings, results, and target DOM
-- `src/graph.ts`, `src/visualization.ts` — Sankey/graph implementation and rendering
-- `src/url-state.ts` — URL history and fragment serialization
-- `src/main.tsx`, `src/react/` — React 19.2.8 shell and typed runtime bridge
-- `src/app.ts` — calculator runtime composition and dataset bootstrap
+- `src/application/` — typed snapshots, value commands, store lifecycle, and browser ports
+- `src/data.ts` — external dataset contracts, runtime validation, search, and location helpers
+- `src/math.ts` — exact rational/matrix arithmetic and formatting
+- `src/solver.ts`, `src/solver/` — exact solver implementation, structural contracts, and typed failures
+- `src/planning.ts`, `src/planning/` — deterministic Space Age planning reports and contracts
+- `src/factory.ts` — calculator facade, machine/location policy, solver adaptation, and renderer port
+- `src/models.ts`, `src/models/` — buildings, modules, belts, fuel, planets, item groups, and research factories
+- `src/recipes.ts` — item/recipe models and recipe policy
+- `src/state.ts` — value operations plus compatibility adapters for remaining imperative controls
+- `src/url/`, `src/url-state.ts` — pure fragment codec, injected history, and compatibility serialization
+- `src/results.ts`, `src/results/` — high-volume results renderer plus pure grouping/summary logic
+- `src/settings.ts`, `src/settings/`, `src/ui.ts` — dynamic settings and target rendering
+- `src/graph.ts`, `src/graph/`, `src/visualization.ts` — deferred graph/Sankey runtime
+- `src/main.tsx`, `src/react/` — React 19.2.8 shell subscribed through `useSyncExternalStore`
+- `src/app.ts` — browser composition and dataset bootstrap
 
-Start with [AGENTS.md](AGENTS.md), [src/README.md](src/README.md), [docs/architecture.md](docs/architecture.md), and the [player-focused roadmap](docs/player-roadmap.md).
+Start with [AGENTS.md](AGENTS.md), [docs/architecture.md](docs/architecture.md), [docs/testing.md](docs/testing.md), and [docs/change-guide.md](docs/change-guide.md). Complex work is tracked in [PLANS.md](PLANS.md).
 
 ## GitHub Pages
 
