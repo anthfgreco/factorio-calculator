@@ -115,11 +115,10 @@ export function serializeAutomaticBuildings(factorySpec: FactorySpecification): 
   const buildings: string[] = []
   const groupSet = new Set(factorySpec.buildings.values())
   for (let group of groupSet) {
-    let defaultBuilding = group.getDefault()
+    const defaultBuildings = group.getDefaults()
     if (
-      defaultBuilding === null ||
-      group.selectedBuildings.size !== 1 ||
-      !group.selectedBuildings.has(defaultBuilding)
+      defaultBuildings.length !== group.selectedBuildings.size ||
+      defaultBuildings.some((building) => !group.selectedBuildings.has(building))
     ) {
       for (let building of group.buildings) {
         if (group.selectedBuildings.has(building)) {

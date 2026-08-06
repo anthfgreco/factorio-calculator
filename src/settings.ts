@@ -845,10 +845,7 @@ function renderBuildings(settings: SettingsMap) {
       groupSet.add(group)
     }
   }
-  for (let group of groupSet) {
-    const defaultBuilding = group.getDefault()
-    if (defaultBuilding !== null) spec.setMinimumBuilding(defaultBuilding)
-  }
+  spec.resetAutomaticBuildingPreferences()
   if (settings.has("buildings")) {
     let buildingKeys = (settings.get("buildings") ?? "").split(",")
     const selections = new Map<BuildingGroup, Building[]>()

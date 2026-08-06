@@ -48,7 +48,12 @@ export const DEFAULT_ITEM_KEY = "advanced-circuit"
 export const DEFAULT_PLANET = "nauvis"
 export const DEFAULT_BELT = "transport-belt"
 export const DEFAULT_FUEL = "coal"
-export const DEFAULT_BUILDING_KEYS = new Set(["assembling-machine-1", "electric-furnace", "electric-mining-drill"])
+export const DEFAULT_BUILDING_KEYS = new Set([
+  "assembling-machine-1",
+  "chemical-plant",
+  "stone-furnace",
+  "electric-mining-drill",
+])
 
 // -----------------------------------------------------------------------------
 // Factory application contracts
@@ -163,14 +168,22 @@ export class BuildingGroup {
   constructor(buildingSet: Iterable<Building>) {
     this.buildings = [...buildingSet]
     buildingSort(this.buildings)
-    const defaultBuilding = this.getDefault()
-    if (defaultBuilding === null) throw new Error("Building group cannot be empty")
+    const defaultBuildings = this.getDefaults()
+    const defaultBuilding = defaultBuildings[0]
+    if (defaultBuilding === undefined) throw new Error("Building group cannot be empty")
     this.building = defaultBuilding
-    this.selectedBuildings = new Set([defaultBuilding])
+    this.selectedBuildings = new Set(defaultBuildings)
+  }
+
+  getDefaults(): Building[] {
+    const defaults = this.buildings.filter((building) => DEFAULT_BUILDING_KEYS.has(building.key))
+    if (defaults.length > 0) return defaults
+    const fallback = this.buildings.at(-1)
+    return fallback === undefined ? [] : [fallback]
   }
 
   getDefault(): Building | null {
-    return this.buildings.find((building) => DEFAULT_BUILDING_KEYS.has(building.key)) ?? this.buildings.at(-1) ?? null
+    return this.getDefaults()[0] ?? null
   }
 
   getBuilding(recipe: Recipe, available: (building: Building) => boolean = () => true): Building | null {
@@ -675,8 +688,7 @@ export class FactorySpecification {
     }
 
     for (const group of new Set<BuildingGroup>(this.buildings.values())) {
-      const fallback = group.getDefault()
-      const selected = selections.get(group) ?? (fallback === null ? [] : [fallback])
+      const selected = selections.get(group) ?? group.getDefaults()
       const minimum = selected[0]
       if (minimum === undefined) continue
       this.setMinimumBuilding(minimum)
@@ -684,6 +696,9 @@ export class FactorySpecification {
         this.setAutomaticBuildingEnabled(building, true)
       }
     }
+  }
+  resetAutomaticBuildingPreferences(): void {
+    this.setAutomaticBuildingPreferences([])
   }
   clearBuildingOverrides(): void {
     for (let recipe of [...this.buildingOverrides.keys()]) {

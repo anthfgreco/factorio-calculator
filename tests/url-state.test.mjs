@@ -111,7 +111,7 @@ test("URL automatic-machine settings preserve multiple selections", () => {
   const electromagneticPlant = { key: "electromagnetic-plant" }
   const group = {
     buildings: [assemblingMachine1, assemblingMachine3, electromagneticPlant],
-    getDefault: () => assemblingMachine1,
+    getDefaults: () => [assemblingMachine1],
     selectedBuildings: new Set([assemblingMachine3, electromagneticPlant]),
   }
   const factorySpec = {
@@ -122,6 +122,24 @@ test("URL automatic-machine settings preserve multiple selections", () => {
   }
 
   assert.deepEqual(serializeAutomaticBuildings(factorySpec), ["assembling-machine-3", "electromagnetic-plant"])
+})
+
+test("URL automatic-machine settings omit multiple default selections", () => {
+  const assemblingMachine1 = { key: "assembling-machine-1" }
+  const chemicalPlant = { key: "chemical-plant" }
+  const group = {
+    buildings: [assemblingMachine1, chemicalPlant],
+    getDefaults: () => [assemblingMachine1, chemicalPlant],
+    selectedBuildings: new Set([assemblingMachine1, chemicalPlant]),
+  }
+  const factorySpec = {
+    buildings: new Map([
+      ["crafting", group],
+      ["chemistry", group],
+    ]),
+  }
+
+  assert.deepEqual(serializeAutomaticBuildings(factorySpec), [])
 })
 
 test("URL recipe productivity levels are stable and omit defaults or unknown research", () => {

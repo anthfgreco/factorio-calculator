@@ -930,6 +930,27 @@ test("automatic machine preferences choose compatible baseline and specialized m
   assert.equal(factorySpec.getBuilding(recipes.get("processing-unit")).key, "electromagnetic-plant")
 })
 
+test("fresh Vulcanus plans use chemical plants for oil cracking", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  const chemicalPlant = factorySpec.buildingKeys.get("chemical-plant")
+
+  factorySpec.selectOnePlanet(planets.get("vulcanus"))
+
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(chemicalPlant), true)
+  assert.equal(factorySpec.getBuilding(recipes.get("heavy-oil-cracking")), chemicalPlant)
+  assert.equal(factorySpec.getBuilding(recipes.get("light-oil-cracking")), chemicalPlant)
+})
+
+test("fresh plans use stone furnaces instead of electric furnaces", async () => {
+  const { factorySpec, recipes } = await setupTestFactory()
+  const stoneFurnace = factorySpec.buildingKeys.get("stone-furnace")
+  const electricFurnace = factorySpec.buildingKeys.get("electric-furnace")
+
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(stoneFurnace), true)
+  assert.equal(factorySpec.isAutomaticBuildingEnabled(electricFurnace), false)
+  assert.equal(factorySpec.getBuilding(recipes.get("iron-plate")), stoneFurnace)
+})
+
 test("recipe building overrides reject incompatible machines", async () => {
   const { factorySpec, recipes, planets } = await setupTestFactory()
   const recipe = recipes.get("processing-unit")
