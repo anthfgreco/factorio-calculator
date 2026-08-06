@@ -140,6 +140,7 @@ export class BrowserCalculatorStore implements CalculatorStore {
 
   readonly commands: CalculatorCommands = {
     addTarget: (itemKey?: string) => {
+      if (this.snapshot.status !== "ready") return
       this.specification.addTarget(itemKey)
       this.specification.updateSolution()
     },

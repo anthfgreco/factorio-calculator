@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { resolve } from "node:path"
 import { pathToFileURL } from "node:url"
 import test from "node:test"
+import { deflateRaw } from "pako"
 
 const root = resolve(import.meta.dirname, "..")
 const build = process.env.FACTORIO_TEST_BUILD
@@ -150,7 +151,16 @@ const { CalculatorUrlHistory } = await import(pathToFileURL(resolve(build, "url/
 
 const nodeBase64 = {
   encode: (binary) => Buffer.from(binary, "latin1").toString("base64"),
-  decode: (encoded) => Buffer.from(encoded, "base64").toString("latin1"),
+  decode: (encoded) => {
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+      throw new Error("Invalid base64")
+    }
+    return Buffer.from(encoded, "base64").toString("latin1")
+  },
+}
+
+function compressFragment(value) {
+  return `zip=${nodeBase64.encode(bytesToBinaryString(deflateRaw(value)))}`
 }
 
 test("pure URL codec preserves uncompressed parameter values exactly", () => {
@@ -169,6 +179,22 @@ test("pure URL codec round-trips compressed calculator fragments", () => {
   const compressed = compressCalculatorSettings(settings, nodeBase64)
   assert.match(compressed, /^zip=/)
   assert.deepEqual(parseCalculatorFragment(`#${compressed}`, nodeBase64), parseSettingsParameters(settings))
+})
+
+test("pure URL codec falls back to empty settings for invalid base64", () => {
+  assert.deepEqual(parseCalculatorFragment("#zip=%%%not-base64%%%", nodeBase64), new Map())
+})
+
+test("pure URL codec falls back to empty settings for invalid deflate data", () => {
+  const invalidDeflate = nodeBase64.encode("this is not raw deflate data")
+  assert.deepEqual(parseCalculatorFragment(`#zip=${invalidDeflate}`, nodeBase64), new Map())
+})
+
+test("pure URL codec rejects excessively nested compressed fragments", () => {
+  let nested = "title=Nested%20factory"
+  for (let depth = 0; depth < 10; depth++) nested = compressFragment(nested)
+
+  assert.deepEqual(parseCalculatorFragment(`#${nested}`, nodeBase64), new Map())
 })
 
 test("URL history controller suppresses startup writes and replaces later state atomically", () => {

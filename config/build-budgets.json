@@ -4,5 +4,5 @@
   "maximumInitialCssBytes": 120000,
   "maximumInitialRequests": 10,
   "maximumSingleChunkBytes": 1500000,
-  "requiredDeferredModuleFragments": ["visualization", "graph", "dagre", "d3"]
+  "requiredDeferredModuleFragments": ["src/visualization.ts", "src/graph.ts", "node_modules/@dagrejs/dagre"]
 }

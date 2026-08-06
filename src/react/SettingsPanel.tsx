@@ -1,4 +1,4 @@
-import type { ChangeEvent } from "react"
+import type { ChangeEvent, FormEvent } from "react"
 
 import type { CalculatorCommands, CalculatorSnapshot } from "./types.js"
 
@@ -56,7 +56,7 @@ export function SettingsPanel({ commands, snapshot }: SettingsPanelProps) {
                 size={30}
                 placeholder="Factorio Calculator"
                 value={snapshot.title === "Factorio Calculator" ? "" : snapshot.title}
-                onInput={(event: ChangeEvent<HTMLInputElement>) => commands.setTitle(event.currentTarget.value)}
+                onInput={(event: FormEvent<HTMLInputElement>) => commands.setTitle(event.currentTarget.value)}
               />
             </td>
           </tr>

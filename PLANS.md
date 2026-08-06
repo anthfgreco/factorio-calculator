@@ -39,7 +39,7 @@ Enable full repository-wide strict TypeScript, establish one typed calculator st
 7. [x] Type and decompose calculation and renderer ownership modules.
 8. [x] Replace source-string behavior checks with focused unit, scenario, UI, and browser tests.
 9. [x] Add architecture layers, bundle/performance budgets, review rules, ADRs, and skills.
-10. [ ] Run the dependency-backed release gate on Node 24 after installing the frozen lockfile. Dependency-independent architecture, type-debt, syntax, and strict TypeScript checks pass in the implementation environment.
+10. [ ] Run the dependency-backed release gate on Node 22.22.3 after installing the frozen lockfile. Dependency-independent architecture, type-debt, syntax, and strict TypeScript checks pass in the implementation environment.
 
 ### Decision log
 
@@ -49,7 +49,7 @@ Enable full repository-wide strict TypeScript, establish one typed calculator st
 - The uploaded repository is the sole implementation base; older migration artifacts are reference material only.
 - The exact module allowlist remains the narrow dependency contract; six architectural layers additionally reject upward dependencies and make ownership visible in diagnostics.
 - `test:e2e` remains separate from `verify` so releases can run in environments without Chromium; browser-facing changes and release candidates should run it when Chromium is available.
-- The current execution environment lacks the pinned Node 24/pnpm dependency installation, so the dependency-backed release gate must be rerun after `pnpm install --frozen-lockfile`.
+- The release gate uses the pinned Node 22.22.3 and pnpm dependency installation, so rerun it after `pnpm install --frozen-lockfile`.
 
 ## Template
 

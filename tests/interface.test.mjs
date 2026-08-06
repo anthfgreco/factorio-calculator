@@ -208,6 +208,6 @@ test("repository agent guardrails and validation lanes are installed", async () 
     assert.equal(typeof scripts[command], "string", `missing ${command}`)
   }
   assert.match(agents, /^# Code Review Rules$/m)
-  assert.ok(JSON.parse(buildBudgets).requiredDeferredModuleFragments.includes("visualization"))
+  assert.ok(JSON.parse(buildBudgets).requiredDeferredModuleFragments.includes("src/visualization.ts"))
   assert.ok(JSON.parse(performanceBudgets).solverScenarios["1001"])
 })

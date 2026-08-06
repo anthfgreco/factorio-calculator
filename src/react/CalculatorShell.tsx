@@ -29,7 +29,7 @@ export function CalculatorShell({ commands, snapshot }: CalculatorShellProps) {
   )
 }
 
-function TargetsPanel({ commands }: CalculatorShellProps) {
+function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
   return (
     <section className="targets-panel" aria-labelledby="targets_title">
       <div className="targets-heading">
@@ -49,6 +49,7 @@ function TargetsPanel({ commands }: CalculatorShellProps) {
             className="add-target-button ui"
             data-tooltip="Add another production target."
             type="button"
+            disabled={snapshot.status !== "ready"}
             onClick={() => commands.addTarget()}
           >
             + Add target

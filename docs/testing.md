@@ -16,7 +16,7 @@ Durations are targets, not contracts; update them if measured CI times materiall
 ## Environment preflight
 
 ```bash
-pnpm doctor
+pnpm run doctor
 ```
 
 Checks the supported Node/pnpm environment, lockfile, required sources, datasets, and local tools. Failures should explain the corrective action.
@@ -63,7 +63,7 @@ Starts Vite and drives Chromium through the DevTools protocol without an additio
 - target addition
 - title/URL persistence through reload
 - progression preset effects
-- visualization code remains unloaded until Visualize is opened
+- opening Visualize renders a graph summary without browser errors
 - critical controls render at a mobile viewport
 - uncaught browser errors fail the test
 
@@ -93,7 +93,7 @@ pnpm build:site
 pnpm validate:build
 ```
 
-The Vite manifest is checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred visualization modules.
+The Vite manifest and emitted Rollup module graph are checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred visualization modules. Required deferred modules must be present, reachable through the calculator's dynamic import graph, and absent from its static import closure.
 
 ## Release gate
 

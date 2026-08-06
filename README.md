@@ -34,7 +34,7 @@ https://anthfgreco.github.io/factorio-calculator/
 
 Requirements:
 
-- Node.js 24
+- Node.js 22.22.3
 - pnpm 11
 - Python 3 and Pillow only when rebuilding Factorio datasets
 
@@ -47,7 +47,7 @@ pnpm dev
 
 ```bash
 pnpm dev                 # Start Vite
-pnpm doctor              # Validate Node, pnpm, lockfile, datasets, and required tools
+pnpm run doctor          # Validate Node, pnpm, lockfile, datasets, and required tools
 pnpm check:quick         # ~5s architecture, type-debt, and global strict TypeScript lane
 pnpm test:core           # ~3s exact solver and named Factorio scenarios
 pnpm test:ui             # Store, URL, state, and interface behavior

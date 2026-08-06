@@ -128,3 +128,15 @@ test("calculator store ignores removal requests for missing targets", () => {
   assert.equal(store.getSnapshot(), before)
   assert.equal(specification.buildTargets.length, 0)
 })
+
+test("calculator store ignores target additions before the dataset is ready", () => {
+  const store = new BrowserCalculatorStore(createBrowserPort())
+  const specification = new FactorySpecification()
+  store.bindSpecification(specification)
+  const before = store.getSnapshot()
+
+  assert.doesNotThrow(() => store.commands.addTarget())
+
+  assert.equal(store.getSnapshot(), before)
+  assert.equal(specification.buildTargets.length, 0)
+})

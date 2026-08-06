@@ -1,5 +1,7 @@
 import { deflateRaw, inflateRaw } from "pako"
 
+const MAX_COMPRESSED_FRAGMENT_DEPTH = 3
+
 export interface Base64Codec {
   encode(binary: string): string
   decode(encoded: string): string
@@ -29,14 +31,27 @@ export function parseSettingsParameters(value: string): Map<string, string> {
 }
 
 export function parseCalculatorFragment(fragment: string, base64: Base64Codec): Map<string, string> {
+  return parseCalculatorFragmentAtDepth(fragment, base64, 0)
+}
+
+function parseCalculatorFragmentAtDepth(
+  fragment: string,
+  base64: Base64Codec,
+  compressedDepth: number,
+): Map<string, string> {
   const value = fragment.startsWith("#") ? fragment.slice(1) : fragment
   const settings = parseSettingsParameters(value)
   const compressed = settings.get("zip")
   if (compressed === undefined) return settings
+  if (compressedDepth >= MAX_COMPRESSED_FRAGMENT_DEPTH) return new Map()
 
-  const binary = base64.decode(compressed)
-  const unzipped = inflateRaw(binaryStringToBytes(binary), { to: "string" })
-  return parseCalculatorFragment(unzipped, base64)
+  try {
+    const binary = base64.decode(compressed)
+    const unzipped = new TextDecoder().decode(inflateRaw(binaryStringToBytes(binary)))
+    return parseCalculatorFragmentAtDepth(unzipped, base64, compressedDepth + 1)
+  } catch {
+    return new Map()
+  }
 }
 
 export function compressCalculatorSettings(settings: string, base64: Base64Codec): string {

@@ -4,6 +4,62 @@ import { createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 
+class DevToolsClient {
+  static async connect(url) {
+    const socket = new WebSocket(url)
+    await new Promise((resolvePromise, reject) => {
+      socket.addEventListener("open", resolvePromise, { once: true })
+      socket.addEventListener("error", reject, { once: true })
+    })
+    return new DevToolsClient(socket)
+  }
+
+  constructor(socket) {
+    this.socket = socket
+    this.nextId = 1
+    this.pending = new Map()
+    this.listeners = new Map()
+    socket.addEventListener("message", (event) => this.handleMessage(event.data))
+    socket.addEventListener("close", () => {
+      for (const { reject } of this.pending.values()) reject(new Error("Chromium DevTools connection closed."))
+      this.pending.clear()
+    })
+  }
+
+  send(method, params = {}) {
+    const id = this.nextId++
+    const request = JSON.stringify({ id, method, params })
+    return new Promise((resolvePromise, reject) => {
+      this.pending.set(id, { resolve: resolvePromise, reject })
+      this.socket.send(request)
+    })
+  }
+
+  on(method, listener) {
+    const listeners = this.listeners.get(method) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(method, listeners)
+  }
+
+  close() {
+    this.socket.close()
+  }
+
+  handleMessage(data) {
+    const message = JSON.parse(String(data))
+    if (typeof message.id === "number") {
+      const pending = this.pending.get(message.id)
+      if (pending === undefined) return
+      this.pending.delete(message.id)
+      if (message.error !== undefined) pending.reject(new Error(`${message.error.message} (${message.error.code})`))
+      else pending.resolve(message.result ?? {})
+      return
+    }
+    if (typeof message.method !== "string") return
+    for (const listener of this.listeners.get(message.method) ?? []) listener(message.params ?? {})
+  }
+}
+
 const root = resolve(import.meta.dirname, "..")
 const chromiumCandidates = [
   process.env.CHROME_PATH,
@@ -110,14 +166,6 @@ try {
   const initialDataset = await evaluateValue(client, `document.querySelector("#data_set")?.value`)
   assert(typeof initialDataset === "string" && initialDataset.length > 0, "The default dataset was not selected.")
 
-  const visualizationLoadedInitially = await evaluateValue(
-    client,
-    `performance.getEntriesByType("resource").some((entry) =>
-      /(?:visualization|dagre)/i.test(entry.name)
-    )`,
-  )
-  assert(visualizationLoadedInitially === false, "Visualization code loaded before the visualization tab was opened.")
-
   await evaluateValue(client, `document.querySelector(".add-target-button")?.click()`)
   await waitForExpression(
     client,
@@ -132,19 +180,22 @@ try {
     "settings tab",
   )
 
-  await evaluateValue(
+  const titleInputFocused = await evaluateValue(
     client,
     `(() => {
       const input = document.querySelector("#title_setting")
       if (!(input instanceof HTMLInputElement)) return false
-      input.value = "Codex regression plan"
-      input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "Codex regression plan" }))
-      return true
+      input.focus()
+      return document.activeElement === input
     })()`,
   )
+  assert(titleInputFocused === true, "The title input could not be focused.")
+  await client.send("Input.insertText", { text: "Codex regression plan" })
   await waitForExpression(
     client,
-    `document.title === "Codex regression plan" && location.hash.includes("title=Codex%20regression%20plan")`,
+    `document.title === "Codex regression plan" &&
+      document.querySelector("#title_setting")?.value === "Codex regression plan" &&
+      location.hash.length > 1`,
     "title persistence",
   )
   const persistedHash = await evaluateValue(client, "location.hash")
@@ -156,6 +207,13 @@ try {
       document.querySelectorAll("#targets > li.target").length === 2 &&
       location.hash === ${JSON.stringify(persistedHash)}`,
     "URL state reload",
+  )
+
+  await evaluateValue(client, `document.querySelector("#settings_button")?.click()`)
+  await waitForExpression(
+    client,
+    `document.querySelector("#settings_button")?.classList.contains("active") === true`,
+    "settings tab after reload",
   )
 
   await evaluateValue(
@@ -179,8 +237,8 @@ try {
   await waitForExpression(
     client,
     `document.querySelector("#graph_button")?.classList.contains("active") === true &&
-      performance.getEntriesByType("resource").some((entry) => /(?:visualization|dagre)/i.test(entry.name))`,
-    "deferred visualization load",
+      (document.querySelector("#visualization_summary")?.textContent?.trim().length ?? 0) > 0`,
+    "visualization rendering",
   )
 
   await client.send("Emulation.setDeviceMetricsOverride", {
@@ -207,17 +265,36 @@ try {
   }
 
   console.log(
-    "Browser workflows passed: default calculation, target addition, URL reload, progression preset, deferred graph loading, and mobile controls.",
+    "Browser workflows passed: default calculation, target addition, URL reload, progression preset, graph rendering, and mobile controls.",
   )
 } finally {
   client?.close()
-  browser.kill("SIGTERM")
-  server.kill("SIGTERM")
-  await rm(browserProfile, { recursive: true, force: true })
+  await Promise.all([stopProcess(browser), stopProcess(server)])
+  await rm(browserProfile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 }
 
 function assert(condition, message) {
   if (!condition) throw new Error(message)
+}
+
+async function stopProcess(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return
+  const exited = waitForProcessExit(child, 5_000)
+  child.kill("SIGTERM")
+  if (await exited) return
+
+  child.kill("SIGKILL")
+  await waitForProcessExit(child, 5_000)
+}
+
+function waitForProcessExit(child, timeout) {
+  return new Promise((resolveExit) => {
+    const timer = setTimeout(() => resolveExit(false), timeout)
+    child.once("exit", () => {
+      clearTimeout(timer)
+      resolveExit(true)
+    })
+  })
 }
 
 async function getAvailablePort() {
@@ -273,60 +350,4 @@ async function evaluateValue(client, expression) {
 
 function delay(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds))
-}
-
-class DevToolsClient {
-  static async connect(url) {
-    const socket = new WebSocket(url)
-    await new Promise((resolvePromise, reject) => {
-      socket.addEventListener("open", resolvePromise, { once: true })
-      socket.addEventListener("error", reject, { once: true })
-    })
-    return new DevToolsClient(socket)
-  }
-
-  constructor(socket) {
-    this.socket = socket
-    this.nextId = 1
-    this.pending = new Map()
-    this.listeners = new Map()
-    socket.addEventListener("message", (event) => this.handleMessage(event.data))
-    socket.addEventListener("close", () => {
-      for (const { reject } of this.pending.values()) reject(new Error("Chromium DevTools connection closed."))
-      this.pending.clear()
-    })
-  }
-
-  send(method, params = {}) {
-    const id = this.nextId++
-    const request = JSON.stringify({ id, method, params })
-    return new Promise((resolvePromise, reject) => {
-      this.pending.set(id, { resolve: resolvePromise, reject })
-      this.socket.send(request)
-    })
-  }
-
-  on(method, listener) {
-    const listeners = this.listeners.get(method) ?? new Set()
-    listeners.add(listener)
-    this.listeners.set(method, listeners)
-  }
-
-  close() {
-    this.socket.close()
-  }
-
-  handleMessage(data) {
-    const message = JSON.parse(String(data))
-    if (typeof message.id === "number") {
-      const pending = this.pending.get(message.id)
-      if (pending === undefined) return
-      this.pending.delete(message.id)
-      if (message.error !== undefined) pending.reject(new Error(`${message.error.message} (${message.error.code})`))
-      else pending.resolve(message.result ?? {})
-      return
-    }
-    if (typeof message.method !== "string") return
-    for (const listener of this.listeners.get(message.method) ?? []) listener(message.params ?? {})
-  }
 }

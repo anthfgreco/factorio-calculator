@@ -42,6 +42,9 @@ const snapshot = {
 }
 
 const html = renderToStaticMarkup(createElement(CalculatorShell, { commands, snapshot }))
+const loadingHtml = renderToStaticMarkup(
+  createElement(CalculatorShell, { commands, snapshot: { ...snapshot, status: "loading" } }),
+)
 
 test("React shell renders the complete accessible calculator workflow", () => {
   for (const text of [
@@ -80,4 +83,9 @@ test("React shell preserves imperative mount points and snapshot-owned controls"
   assert.match(html, /id="factory_density_compact"[^>]*checked=""/)
   assert.match(html, /id="mprod"[^>]*value="30"/)
   assert.doesNotMatch(html, /\son(?:click|change|input)=/i)
+})
+
+test("React shell disables target addition until the dataset is ready", () => {
+  assert.match(loadingHtml, /class="add-target-button ui"[^>]*disabled=""/)
+  assert.doesNotMatch(html, /class="add-target-button ui"[^>]*disabled=""/)
 })

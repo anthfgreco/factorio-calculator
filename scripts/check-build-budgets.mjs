@@ -7,11 +7,16 @@ const dist = resolve(root, "dist")
 const budgets = JSON.parse(await readFile(resolve(root, "config/build-budgets.json"), "utf8"))
 const manifestPath = resolve(dist, ".vite/manifest.json")
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"))
-const calculatorEntry = Object.values(manifest).find((entry) => entry.isEntry && entry.src === "src/main.tsx")
-if (!calculatorEntry) throw new Error("Vite manifest is missing the calculator entry for src/main.tsx")
+const moduleGraph = JSON.parse(await readFile(resolve(dist, ".vite/module-graph.json"), "utf8"))
+if (moduleGraph.version !== 1 || typeof moduleGraph.chunks !== "object" || moduleGraph.chunks === null) {
+  throw new Error("Vite module graph metadata is missing or unsupported.")
+}
+const calculatorEntry = Object.values(manifest).find((entry) => entry.isEntry && entry.src === "calc.html")
+if (!calculatorEntry) throw new Error("Vite manifest is missing the calculator entry for calc.html")
 
 const initialFiles = collectInitialFiles(calculatorEntry, manifest)
-const initialJavaScript = initialFiles.filter((file) => file.endsWith(".js"))
+const reachableChunks = collectReachableChunks(calculatorEntry.file, moduleGraph.chunks)
+const initialJavaScript = [...initialFiles].filter((file) => file.endsWith(".js"))
 const initialCss = new Set()
 for (const key of initialFiles) {
   const entry = Object.values(manifest).find((candidate) => candidate.file === key)
@@ -36,23 +41,29 @@ for (const file of assets.filter((path) => path.endsWith(".js"))) {
   assertBudget(`chunk ${file.slice(dist.length + 1)}`, size, budgets.maximumSingleChunkBytes)
 }
 
+const deferredSummary = []
 for (const fragment of budgets.requiredDeferredModuleFragments ?? []) {
-  const deferredEntries = Object.entries(manifest).filter(
-    ([key, entry]) =>
-      key.toLowerCase().includes(fragment.toLowerCase()) ||
-      String(entry.src ?? "")
-        .toLowerCase()
-        .includes(fragment.toLowerCase()),
+  const normalizedFragment = fragment.toLowerCase()
+  const matchingChunks = Object.entries(moduleGraph.chunks).filter(([, chunk]) =>
+    chunk.modules.some((moduleId) => moduleId.toLowerCase().includes(normalizedFragment)),
   )
-  for (const [, entry] of deferredEntries) {
-    if (initialFiles.has(entry.file)) {
-      throw new Error(`Deferred module ${fragment} was pulled into the initial calculator chunk (${entry.file}).`)
+  if (matchingChunks.length === 0) {
+    throw new Error(`Required deferred module ${fragment} was not found in the production module graph.`)
+  }
+
+  for (const [file] of matchingChunks) {
+    if (!reachableChunks.has(file)) {
+      throw new Error(`Deferred module ${fragment} is not reachable from the calculator entry (${file}).`)
+    }
+    if (initialFiles.has(file)) {
+      throw new Error(`Deferred module ${fragment} was pulled into the initial calculator chunk (${file}).`)
     }
   }
+  deferredSummary.push(`${fragment} -> ${matchingChunks.map(([file]) => file).join(", ")}`)
 }
 
 console.log(
-  `Build budgets passed: ${jsBytes} B JS (${gzipBytes} B gzip), ${cssBytes} B CSS, ${initialJavaScript.length + initialCss.size} initial requests.`,
+  `Build budgets passed: ${jsBytes} B JS (${gzipBytes} B gzip), ${cssBytes} B CSS, ${initialJavaScript.length + initialCss.size} initial requests. Deferred modules: ${deferredSummary.join("; ")}.`,
 )
 
 function collectInitialFiles(entry, allEntries) {
@@ -66,6 +77,19 @@ function collectInitialFiles(entry, allEntries) {
     }
   }
   visit(entry)
+  return files
+}
+
+function collectReachableChunks(entryFile, chunks) {
+  const files = new Set()
+  const visit = (file) => {
+    if (files.has(file)) return
+    files.add(file)
+    const chunk = chunks[file]
+    if (chunk === undefined) return
+    for (const imported of [...chunk.imports, ...chunk.dynamicImports]) visit(imported)
+  }
+  visit(entryFile)
   return files
 }
 

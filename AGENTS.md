@@ -29,7 +29,7 @@ Commands:
 
 ```bash
 corepack pnpm install --frozen-lockfile
-corepack pnpm doctor
+corepack pnpm run doctor
 corepack pnpm check:quick
 corepack pnpm test:core
 corepack pnpm test:ui
