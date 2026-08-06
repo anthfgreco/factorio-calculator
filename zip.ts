@@ -19,13 +19,16 @@
  *
  * Usage:
  *   pn zip
- *   pn zip -- --output ../custom-name.zip
+ *   pn zip --nocopy
+ *   pn zip --output ../custom-name.zip
+ *
+ * By default, the generated ZIP is copied to the Windows clipboard as a file.
  */
 
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { $, argv, usePowerShell, usePwsh } from "zx"
+import { $, argv, chalk, usePowerShell, usePwsh } from "zx"
 
 if (process.platform === "win32") {
   try {
@@ -37,6 +40,24 @@ if (process.platform === "win32") {
 
 if (process.platform !== "win32") {
   throw new Error("This script currently requires Windows' built-in tar.exe.")
+}
+
+const copyFileToClipboard = async (filePath: string): Promise<void> => {
+  const powershellScript = `
+Add-Type -AssemblyName System.Windows.Forms
+
+$fileDropList = [System.Collections.Specialized.StringCollection]::new()
+[void]$fileDropList.Add($env:ZIP_CLIPBOARD_PATH)
+
+[System.Windows.Forms.Clipboard]::SetFileDropList($fileDropList)
+`
+
+  await $({
+    env: {
+      ...process.env,
+      ZIP_CLIPBOARD_PATH: filePath,
+    },
+  })`powershell.exe -NoProfile -STA -Command ${powershellScript}`
 }
 
 const parseNullSeparatedPaths = (output: string): string[] => {
@@ -64,6 +85,7 @@ if (!repoRoot) {
 
 const repoName = path.basename(repoRoot)
 const outputArgument = typeof argv.output === "string" ? argv.output : undefined
+const shouldCopyToClipboard = argv.nocopy !== true
 
 const outputPath = path.resolve(repoRoot, outputArgument ?? path.join("..", `${repoName}-working-tree.zip`))
 
@@ -141,15 +163,29 @@ try {
   })`tar.exe -a -c -f ${outputPath} --null -T ${fileListPath}`
 
   console.log("")
-  console.log(`Created: ${outputPath}`)
-  console.log(`Included: ${filePaths.length} working-tree files`)
+  console.log(`${chalk.green("Created:")} ${outputPath}`)
+  console.log(chalk.cyan(`Included: ${filePaths.length} working-tree files`))
+  console.log(chalk.cyan(`Size: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`))
+
+  if (shouldCopyToClipboard) {
+    try {
+      await copyFileToClipboard(outputPath)
+      console.log(chalk.green("Copied ZIP to clipboard."))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
+      // Clipboard copying is only a convenience. The successfully created ZIP
+      // should remain usable even if another process temporarily owns the clipboard.
+      console.warn(chalk.yellow(`Could not copy ZIP to clipboard: ${message}`))
+    }
+  }
 
   if (deletedPaths.length > 0) {
-    console.log(`Skipped: ${deletedPaths.length} tracked files deleted locally`)
+    console.log(chalk.yellow(`Skipped: ${deletedPaths.length} tracked files deleted locally`))
   }
 
   if (directoryPaths.length > 0) {
-    console.log(`Skipped: ${directoryPaths.length} tracked directories or submodules`)
+    console.log(chalk.yellow(`Skipped: ${directoryPaths.length} tracked directories or submodules`))
   }
 } finally {
   fs.rmSync(tempDirectory, {
