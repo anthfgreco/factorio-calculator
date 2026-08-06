@@ -13,8 +13,12 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
   return (
     <div id="settings_tab" className="tab">
       <table id="settings">
+        <colgroup>
+          <col className="settings-label-column" />
+          <col />
+        </colgroup>
         <tbody>
-          <tr className="setting-section">
+          <tr id="settings_data" className="setting-section">
             <td colSpan={2}>
               <span>Data</span>
               <hr />
@@ -22,13 +26,13 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Use recipe set:</td>
+            <td className="setting-label">Use recipe set</td>
             <td>
               <select id="data_set" aria-label="Recipe set" />
             </td>
           </tr>
 
-          <tr className="setting-section">
+          <tr id="settings_display" className="setting-section">
             <td colSpan={2}>
               <span>Display</span>
               <hr />
@@ -36,7 +40,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Title:</td>
+            <td className="setting-label">Title</td>
             <td>
               <input
                 id="title_setting"
@@ -49,14 +53,14 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label top">Display rates as:</td>
+            <td className="setting-label top">Display rates as</td>
             <td>
               <form id="display_rate" />
             </td>
           </tr>
 
-          <tr className="setting-row">
-            <td className="setting-label">Rate precision:</td>
+          <tr className="setting-row compact-setting-row compact-setting-first">
+            <td className="setting-label">Rate precision</td>
             <td>
               <input
                 id="rprec"
@@ -69,8 +73,8 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
             </td>
           </tr>
 
-          <tr className="setting-row">
-            <td className="setting-label">Count precision:</td>
+          <tr className="setting-row compact-setting-row compact-setting-second">
+            <td className="setting-label">Count precision</td>
             <td>
               <input
                 id="cprec"
@@ -84,7 +88,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label top">Format values as:</td>
+            <td className="setting-label top">Format values as</td>
             <td>
               <form id="value_format">
                 <input
@@ -111,13 +115,13 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Color scheme:</td>
+            <td className="setting-label">Color scheme</td>
             <td>
               <select id="color_scheme" aria-label="Color scheme" />
             </td>
           </tr>
 
-          <tr className="setting-section">
+          <tr id="settings_factory" className="setting-section">
             <td colSpan={2}>
               <span>Factory</span>
               <hr />
@@ -125,14 +129,14 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Belt:</td>
+            <td className="setting-label">Belt</td>
             <td>
               <span id="belt_selector" className="radio-setting" />
             </td>
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Belt stacking:</td>
+            <td className="setting-label">Belt stacking</td>
             <td>
               <select id="belt_stack_size" defaultValue="1" onChange={onPlanningChange}>
                 <option value="1">1 item high</option>
@@ -143,8 +147,8 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
             </td>
           </tr>
 
-          <tr className="setting-row">
-            <td className="setting-label">Logistics buffer:</td>
+          <tr className="setting-row compact-setting-row compact-setting-first">
+            <td className="setting-label">Logistics buffer</td>
             <td>
               <input
                 id="buffer_minutes"
@@ -159,8 +163,8 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
             </td>
           </tr>
 
-          <tr className="setting-row">
-            <td className="setting-label">Freshness delay:</td>
+          <tr className="setting-row compact-setting-row compact-setting-second">
+            <td className="setting-label">Freshness delay</td>
             <td>
               <input
                 id="freshness_delay"
@@ -176,7 +180,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Quality progression:</td>
+            <td className="setting-label">Quality progression</td>
             <td>
               <select id="max_quality" defaultValue="4" onChange={onPlanningChange}>
                 <option value="0">Normal only</option>
@@ -188,7 +192,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row planning-assumptions-row">
-            <td className="setting-label top">Resource assumptions:</td>
+            <td className="setting-label top">Resource assumptions</td>
             <td>
               <details className="planning-details">
                 <summary>Fluid yields and asteroid limits</summary>
@@ -252,38 +256,43 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Preferred fuel:</td>
+            <td className="setting-label">Preferred fuel</td>
             <td>
               <span id="fuel_selector" className="radio-setting" />
             </td>
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Default module (all eligible slots):</td>
+            <td className="setting-label">Default module (all eligible slots)</td>
             <td>
               <span id="default_module" />
             </td>
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Secondary default module:</td>
+            <td className="setting-label">Secondary default module</td>
             <td>
               <span id="secondary_module" />
             </td>
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Default beacon:</td>
+            <td className="setting-label">Default beacon</td>
             <td>
-              <span id="default_beacon" className="beacon-container" /> &times;{" "}
-              <input id="default_beacon_count" type="text" size={3} aria-label="Default beacon count" />
+              <div id="default_beacon_setting" className="default-beacon-setting">
+                <span className="beacon-controls">
+                  <span id="default_beacon" className="beacon-container" />
+                  <span aria-hidden="true"> &times; </span>
+                  <input id="default_beacon_count" type="text" size={3} aria-label="Default beacon count" />
+                </span>
+              </div>
             </td>
           </tr>
 
           <tr className="setting-row">
             <td className="setting-label top-icon">
               <div>
-                <span>Machines:</span>
+                <span>Machines</span>
               </div>
             </td>
             <td>
@@ -295,8 +304,15 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
             </td>
           </tr>
 
+          <tr id="settings_research" className="setting-section">
+            <td colSpan={2}>
+              <span>Research</span>
+              <hr />
+            </td>
+          </tr>
+
           <tr id="recipe_productivity_row" className="setting-row">
-            <td className="setting-label top">Productivity:</td>
+            <td className="setting-label top">Productivity</td>
             <td>
               <div id="recipe_productivity_settings">
                 <label className="recipe-productivity-setting mining-productivity-setting">
@@ -324,7 +340,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
             </td>
           </tr>
 
-          <tr className="setting-section recipe-setting-section">
+          <tr id="settings_recipes" className="setting-section recipe-setting-section">
             <td colSpan={2}>
               <span>Recipes</span>
               <hr />
@@ -332,7 +348,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label top">Recipes:</td>
+            <td className="setting-label top">Recipes</td>
             <td>
               <div id="recipe_toggles" />
             </td>

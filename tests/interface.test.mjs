@@ -66,6 +66,38 @@ test("player-facing controls stay close to the evidence they affect", async () =
   }
 })
 
+test("Settings navigation, recipe management, and compact beacon rows preserve the dense UI", async () => {
+  const [shell, panel, settings, results, styles] = await Promise.all([
+    readFile(resolve(root, "src/react/CalculatorShell.tsx"), "utf8"),
+    readFile(resolve(root, "src/react/SettingsPanel.tsx"), "utf8"),
+    readFile(resolve(root, "src/settings.ts"), "utf8"),
+    readFile(resolve(root, "src/results.ts"), "utf8"),
+    readFile(resolve(root, "src/styles/player-ui.css"), "utf8"),
+  ])
+
+  assert.ok(!panel.includes('className="settings-nav"'))
+  assert.ok(!panel.includes("Back to top"))
+  assert.ok(settings.includes('text("Changed only")'))
+  assert.ok(settings.includes('text("Reset recipe changes")'))
+  assert.ok(settings.includes('classed("recipe-category-nav", true)'))
+  assert.ok(settings.includes('.selectAll("details.recipe-settings-category")'))
+  assert.ok(settings.includes('"Orange: enabled · Dimmed: disabled · Click to toggle"'))
+  assert.ok(results.includes('.classed("ui add-beacon", true)'))
+  assert.ok(results.includes('.text("+ Beacon")'))
+  assert.ok(results.includes('classed("beacon-collapsed"'))
+  assert.ok(panel.includes('id="default_beacon_setting"'))
+  assert.ok(!panel.includes('id="add_default_beacon"'))
+  assert.ok(panel.includes('className="setting-row compact-setting-row compact-setting-first"'))
+  assert.ok(panel.includes('className="setting-row compact-setting-row compact-setting-second"'))
+  assert.ok(styles.includes("table#settings tbody"))
+  assert.ok(styles.includes("grid-template-columns: repeat(2, minmax(0, 15rem))"))
+  assert.ok(styles.includes("tr.setting-row td:first-child"))
+  assert.ok(styles.includes("display: block"))
+  assert.ok(styles.includes("text-align: left"))
+  assert.ok(styles.includes("td.beacon.beacon-collapsed .beacon-controls"))
+  assert.ok(shell.includes('import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")'))
+})
+
 test("player-facing copy describes Factorio behavior instead of implementation details", async () => {
   const sources = await Promise.all(
     [
@@ -341,7 +373,7 @@ test("progression presets keep Settings controls synchronized", async () => {
   const settings = await readFile(resolve(root, "src/react/SettingsPanel.tsx"), "utf8")
   assert.ok(shell.includes('<option value="first-planets">Early Space Age</option>'))
   assert.ok(shell.includes('<option value="megabase">Established megabase</option>'))
-  assert.ok(settings.includes("Default module (all eligible slots):"))
+  assert.ok(settings.includes("Default module (all eligible slots)"))
 })
 
 test("productivity settings use official icons and percentage inputs", async () => {

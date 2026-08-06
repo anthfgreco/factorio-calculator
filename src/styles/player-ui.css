@@ -8,7 +8,7 @@
   --main: #202428;
   --light: #343a40;
   --rule: #454b51;
-  --muted: #9aa0a6;
+  --muted: #a7adb3;
   --foreground: #d1d5d8;
   --accent: #e97924;
   --bright: #f6f5f2;
@@ -101,6 +101,10 @@ ul#targets li {
   border: 0;
   background: transparent;
 }
+.location-toolbar-content {
+  display: grid;
+  gap: 0.1rem;
+}
 .location-toolbar-label,
 .progression-presets > label {
   color: var(--muted);
@@ -157,6 +161,11 @@ div.tabs {
   gap: 1.25rem;
   margin-top: 0.65rem;
   border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  background: var(--dark-overlay);
+  backdrop-filter: blur(6px);
 }
 div.tabs button.tab_button {
   float: none;
@@ -256,7 +265,7 @@ div.tab {
 #totals tr.factory-header th {
   color: var(--muted);
   border-bottom: 1px solid var(--rule);
-  font-size: 0.74rem;
+  font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.025em;
   text-align: right;
@@ -295,6 +304,23 @@ span.beacon-container {
   border: 1px solid var(--rule);
   border-radius: 2px;
   background: transparent;
+}
+.beacon-controls {
+  display: inline-flex;
+  align-items: center;
+}
+.add-beacon {
+  display: none;
+  min-height: 1.75rem;
+  padding: 0.18rem 0.42rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+td.beacon.beacon-collapsed .add-beacon {
+  display: inline-block;
+}
+td.beacon.beacon-collapsed .beacon-controls {
+  display: none;
 }
 .breakdown table {
   border: 0;
@@ -403,7 +429,27 @@ rect.nodeHighlight {
 
 /* Settings and resources use rules rather than boxed sections. */
 table#settings {
-  width: min(78rem, 100%);
+  width: min(65rem, 100%);
+  table-layout: fixed;
+}
+.settings-label-column {
+  width: 190px;
+}
+.recipe-category-nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+.recipe-category-nav a:hover,
+.recipe-category-nav a:focus-visible {
+  color: var(--bright);
+}
+#settings_data,
+#settings_display,
+#settings_factory,
+#settings_research,
+#settings_recipes,
+.recipe-settings-category {
+  scroll-margin-top: 6rem;
 }
 tr.setting-section td {
   padding-top: 1.5rem;
@@ -422,7 +468,20 @@ tr.setting-row td {
   padding-bottom: 0.28rem;
 }
 tr.setting-row td:first-child {
-  padding-left: 1rem;
+  padding-left: 0;
+}
+td.setting-label {
+  padding-right: 12px;
+  color: var(--foreground);
+  font-size: 0.86rem;
+  text-align: left;
+}
+tr.setting-row td:last-child {
+  min-width: 0;
+  padding-left: 12px;
+}
+#settings_recipes + tr td:last-child {
+  width: calc(min(90vw, 90rem) - 190px);
 }
 #resource_settings {
   border: 1px solid var(--rule);
@@ -562,6 +621,100 @@ tr.setting-row td:first-child {
   .changelog-entry {
     grid-template-columns: 1fr;
     gap: 0.3rem;
+  }
+}
+
+/* Vertical Settings form: labels lead each control instead of forming an admin-style gutter. */
+table#settings {
+  display: block;
+  width: min(90rem, 100%);
+  table-layout: auto;
+}
+
+table#settings colgroup {
+  display: none;
+}
+
+table#settings tbody {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 15rem)) minmax(0, 1fr);
+  gap: 0 1.5rem;
+  width: 100%;
+}
+
+tr.setting-section {
+  display: table;
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 65rem;
+}
+
+tr.setting-section.recipe-setting-section {
+  max-width: 90rem;
+}
+
+tr.setting-row {
+  display: grid;
+  grid-column: 1 / 3;
+  gap: 0.35rem;
+  width: 100%;
+  max-width: 31.5rem;
+  margin-bottom: 1rem;
+}
+
+tr.setting-row.compact-setting-first {
+  grid-column: 1;
+}
+
+tr.setting-row.compact-setting-second {
+  grid-column: 2;
+}
+
+#settings_recipes + tr.setting-row {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+
+tr.setting-row td,
+tr.setting-row td:first-child,
+tr.setting-row td:last-child {
+  display: block;
+  width: 100%;
+  padding: 0;
+}
+
+td.setting-label {
+  color: var(--foreground);
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.top-icon > div {
+  height: auto;
+  line-height: inherit;
+}
+
+.recipe-settings-browser {
+  width: min(90vw, 90rem);
+}
+
+@media (max-width: 760px) {
+  table#settings tbody {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  tr.setting-row,
+  tr.setting-row.compact-setting-first,
+  tr.setting-row.compact-setting-second,
+  #settings_recipes + tr.setting-row {
+    grid-column: 1;
+    max-width: 30rem;
+  }
+
+  .recipe-settings-browser {
+    width: 100%;
   }
 }
 
@@ -1158,4 +1311,168 @@ svg.sankey g.edgePathHighlight path.highlighter {
 .machine-option label span:last-child,
 .recipe-selector-option span:last-child {
   line-height: 1.25;
+}
+
+/* Settings navigation and dense recipe management. */
+.setting-help,
+.recipe-settings-help,
+.recipe-settings-summary {
+  color: var(--muted);
+  font-size: 0.82rem;
+  opacity: 1;
+}
+
+.recipe-settings-browser {
+  width: calc(min(90vw, 90rem) - 202px);
+  min-width: 0;
+}
+
+.recipe-settings-toolbar {
+  gap: 0.45rem 0.75rem;
+}
+
+.recipe-settings-unavailable,
+.recipe-settings-changed {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--foreground);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.reset-recipe-changes {
+  margin-left: auto;
+}
+
+.reset-recipe-changes:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.recipe-category-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.65rem;
+  margin: 0.4rem 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.recipe-category-nav > span {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.recipe-settings-category {
+  margin: 0.35rem 0 0.55rem;
+}
+
+.recipe-settings-category > summary {
+  width: max-content;
+  margin-bottom: 0.2rem;
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 0.82rem;
+  user-select: none;
+}
+
+.recipe-settings-category > summary:hover,
+.recipe-settings-category > summary:focus-visible {
+  color: var(--bright);
+}
+
+#totals_tab,
+#graph_tab {
+  width: min(90rem, 100%);
+}
+
+#help_tab,
+.help-content {
+  width: min(65rem, 100%);
+}
+
+@media (min-width: 901px) {
+  .progression-presets {
+    margin-left: 0.35rem;
+    padding-left: 0.9rem;
+    border-left: 1px solid var(--rule);
+  }
+}
+
+@media (max-width: 760px) {
+  .production-target-header {
+    display: none;
+  }
+
+  ul#targets li.production-target-row {
+    grid-template-columns: 2rem minmax(0, 1fr);
+    align-items: start;
+    width: 100%;
+  }
+
+  .production-target-item {
+    grid-column: 2;
+    width: calc(100vw - 4rem);
+  }
+
+  .production-target-settings {
+    display: grid;
+    grid-column: 2;
+    grid-template-columns: calc(42% - 8px) calc(24% - 4px) calc(34% - 4px);
+    gap: 8px;
+    width: calc(100vw - 4rem);
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .progression-presets {
+    order: initial;
+  }
+
+  .settings-label-column {
+    width: 9rem;
+  }
+
+  .recipe-settings-browser {
+    width: calc(100vw - 10.5rem);
+  }
+
+  .reset-recipe-changes {
+    margin-left: 0;
+  }
+
+  #totals tr.factory-header th:first-child,
+  #totals tr.display-row > td:first-child,
+  #totals td.item-identity {
+    position: sticky;
+    z-index: 3;
+    background: var(--dark);
+  }
+
+  #totals tr.factory-header th:first-child,
+  #totals tr.display-row > td:first-child {
+    left: 0;
+  }
+
+  #totals td.item-identity {
+    left: 1.35rem;
+  }
+
+  #totals tr.display-row:hover > td:first-child,
+  #totals tr.display-row:hover > td.item-identity {
+    background: #171a1d;
+  }
+}
+
+/* Recipe controls intentionally break out wider than the narrow Settings fields. */
+#settings_recipes + tr.setting-row .recipe-settings-browser {
+  width: min(90vw, 90rem);
+}
+
+@media (max-width: 760px) {
+  #settings_recipes + tr.setting-row .recipe-settings-browser {
+    width: 100%;
+  }
 }

@@ -59,12 +59,16 @@ function TargetsPanel({ actions }: CalculatorShellProps) {
 }
 
 function PlannerToolbar({ actions }: CalculatorShellProps) {
+  const showDebug = import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")
+
   return (
     <div className="planner-toolbar">
       <div id="location_toolbar" className="location-toolbar" hidden>
         <span className="location-toolbar-label">Locations</span>
-        <div id="planet_selector" />
-        <span className="location-toolbar-help">Shift-click to combine</span>
+        <div className="location-toolbar-content">
+          <div id="planet_selector" />
+          <span className="location-toolbar-help">Shift-click to combine</span>
+        </div>
       </div>
       <div className="progression-presets" role="group" aria-label="Progression preset">
         <label htmlFor="progression_preset">Preset</label>
@@ -82,14 +86,16 @@ function PlannerToolbar({ actions }: CalculatorShellProps) {
         <button id="copy_share_link" className="ui planner-action" type="button" onClick={actions.copyShareLink}>
           Copy plan link
         </button>
-        <button
-          id="debug_button"
-          className="ui planner-action toolbar-tab-button"
-          type="button"
-          onClick={() => actions.openTab("debug")}
-        >
-          Debug
-        </button>
+        {showDebug ? (
+          <button
+            id="debug_button"
+            className="ui planner-action toolbar-tab-button"
+            type="button"
+            onClick={() => actions.openTab("debug")}
+          >
+            Debug
+          </button>
+        ) : null}
       </div>
     </div>
   )

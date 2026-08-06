@@ -45,8 +45,13 @@ import {
 
 let searchText = ""
 let showUnavailable = false
+let showChangedOnly = false
 let recipeSettingsRendered = false
 let resourcePrioritiesRendered = false
+
+function recipeCategoryId(category: string) {
+  return `recipe-category-${category.replace(/[^a-z0-9_-]+/gi, "-")}`
+}
 
 function updateRecipeToggleState(spec: any, element: HTMLButtonElement, recipe: any) {
   const unavailable = isRecipeUnavailable(spec, recipe)
@@ -98,16 +103,18 @@ function makeRecipeToggles(container: any, recipes: any[], spec: any) {
 
 function makeRecipeGroups(container: any, groups: any[], spec: any) {
   const group = container
-    .selectAll("section.recipe-settings-category")
+    .selectAll("details.recipe-settings-category")
     .data(groups, (entry: any) => entry.category)
-    .join("section")
+    .join("details")
     .classed("recipe-settings-category", true)
+    .property("open", true)
+    .attr("id", (entry: any) => recipeCategoryId(entry.category))
     .attr("data-category", (entry: any) => entry.category)
 
   group
-    .selectAll("h5")
+    .selectAll("summary")
     .data((entry: any) => [entry])
-    .join("h5")
+    .join("summary")
     .text((entry: any) => entry.name)
   group
     .selectAll("div.recipe-settings-toggle-row")
@@ -134,13 +141,26 @@ function disableAllRecycling(spec: any, recyclingRecipes: any[]) {
   }
 }
 
+function resetRecipeChanges(spec: any) {
+  const overrides = spec.getNetDisable()
+  for (const recipe of [...overrides.disable]) {
+    spec.setEnable(recipe)
+  }
+  for (const recipe of [...overrides.enable]) {
+    spec.setDisable(recipe)
+  }
+  spec.updateSolution()
+}
+
 export function renderRecipeSettings(spec: any) {
   searchText = ""
   showUnavailable = false
+  showChangedOnly = false
 
   const recipes = getConfigurableRecipes(spec)
   const productionRecipes = recipes.filter((recipe) => !isRecyclingRecipe(recipe))
   const recyclingRecipes = recipes.filter(isRecyclingRecipe)
+  const productionGroups = groupRecipesForSettings(productionRecipes)
   const root = d3.select("#recipe_toggles")
   root.selectAll("*").remove()
   root.classed("recipe-settings-browser", true)
@@ -170,16 +190,42 @@ export function renderRecipeSettings(spec: any) {
     .append("span")
     .text("Show unavailable recipes")
 
+  const changedLabel = toolbar.append("label").classed("recipe-settings-changed", true)
+  changedLabel
+    .append("input")
+    .attr("type", "checkbox")
+    .on("change", function (this: HTMLInputElement) {
+      showChangedOnly = this.checked
+      refreshRecipeSettings(spec)
+    })
+  changedLabel.append("span").text("Changed only")
+
+  toolbar
+    .append("button")
+    .attr("type", "button")
+    .classed("ui reset-recipe-changes", true)
+    .text("Reset recipe changes")
+    .on("click", () => resetRecipeChanges(spec))
+
+  const categoryNav = root.append("nav").classed("recipe-category-nav", true).attr("aria-label", "Recipe categories")
+  categoryNav.append("span").text("Jump to")
+  categoryNav
+    .selectAll("a")
+    .data(productionGroups)
+    .join("a")
+    .attr("href", (entry: any) => `#${recipeCategoryId(entry.category)}`)
+    .text((entry: any) => entry.name)
+    .on("click", function (_event: Event, entry: any) {
+      const category = document.getElementById(recipeCategoryId(entry.category)) as HTMLDetailsElement | null
+      if (category !== null) category.open = true
+    })
+
   root.append("div").attr("id", "recipe_settings_help").classed("recipe-settings-help", true)
   root.append("div").classed("recipe-settings-summary", true).attr("aria-live", "polite")
 
   const production = root.append("section").classed("recipe-settings-section production-recipes", true)
   production.append("h4").text("Production recipes")
-  makeRecipeGroups(
-    production.append("div").classed("recipe-settings-groups", true),
-    groupRecipesForSettings(productionRecipes),
-    spec,
-  )
+  makeRecipeGroups(production.append("div").classed("recipe-settings-groups", true), productionGroups, spec)
 
   const recycling = root.append("details").classed("recipe-settings-section recycling-recipes", true)
   recycling.append("summary").append("span").classed("recycling-recipes-title", true).text("Recycling recipes")
@@ -214,20 +260,25 @@ export function refreshRecipeSettings(spec: any) {
   }
 
   const normalizedSearch = normalizeSearchText(searchText)
+  const overrides = spec.getNetDisable()
+  const changedRecipes = new Set([...overrides.disable, ...overrides.enable])
   let visibleCount = 0
 
   root.selectAll("button.recipe-setting-toggle").each(function (this: HTMLButtonElement, recipe: any) {
-    const visible = recipeVisibleInSettings(spec, recipe, {
-      searchText,
-      showUnavailable,
-    })
+    const visible =
+      recipeVisibleInSettings(spec, recipe, {
+        searchText,
+        showUnavailable,
+      }) &&
+      (!showChangedOnly || changedRecipes.has(recipe))
     this.hidden = !visible
     visibleCount += Number(visible)
     updateRecipeToggleState(spec, this, recipe)
   })
 
-  root.selectAll("section.recipe-settings-category").each(function (this: HTMLElement) {
+  root.selectAll("details.recipe-settings-category").each(function (this: HTMLDetailsElement) {
     this.hidden = this.querySelector("button.recipe-setting-toggle:not([hidden])") === null
+    if (normalizedSearch !== "" && !this.hidden) this.open = true
   })
 
   const production = root.select(".production-recipes")
@@ -250,7 +301,7 @@ export function refreshRecipeSettings(spec: any) {
       recyclingRecipes.length === 0 || recyclingRecipes.every((recipe: any) => spec.disable.has(recipe)),
     )
 
-  let helpText = "Orange recipes are enabled. Dimmed recipes are disabled. Click a recipe to change it."
+  let helpText = "Orange: enabled · Dimmed: disabled · Click to toggle"
   if (showUnavailable) {
     helpText += " Locked recipes are unavailable on the selected planets or machines."
   }
@@ -263,6 +314,7 @@ export function refreshRecipeSettings(spec: any) {
         ? `${visibleCount} recipe${visibleCount === 1 ? "" : "s"}`
         : `${visibleCount} matching recipe${visibleCount === 1 ? "" : "s"}`,
     )
+  root.select("button.reset-recipe-changes").property("disabled", changedRecipes.size === 0)
   root.select(".recipe-settings-empty").property("hidden", visibleCount !== 0)
 }
 
@@ -1066,7 +1118,8 @@ function renderDefaultBeacon(settings) {
   d3.select("#default_beacon_count")
     .attr("value", defaultCount.toDecimal())
     .on("change", (event) => {
-      spec.setDefaultBeaconCount(Rational.from_string(event.target.value))
+      let count = Rational.from_string(event.target.value)
+      spec.setDefaultBeaconCount(count)
       spec.updateSolution()
     })
 }
