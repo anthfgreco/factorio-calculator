@@ -52,7 +52,7 @@ let testDatasetTextPromise = null
 let parsedTestDataPromise = null
 
 function getTestDatasetText() {
-  testDatasetTextPromise ??= readFile(resolve(root, "public/data/space-age-2.1.12.json"), "utf8")
+  testDatasetTextPromise ??= readFile(resolve(root, "public/data/space-age-2.1.13.json"), "utf8")
   return testDatasetTextPromise
 }
 
@@ -136,7 +136,7 @@ async function setupTestFactory() {
 
 test("dataset parser accepts the generated Space Age dataset", async () => {
   const data = await getParsedTestData()
-  assert.equal(data.game_version, "2.1.12")
+  assert.equal(data.game_version, "2.1.13")
   assert.ok(data.recipes.length > 600)
   assert.deepEqual(data.rocket_launch, {
     buffered: true,
@@ -146,6 +146,12 @@ test("dataset parser accepts the generated Space Age dataset", async () => {
   assert.equal(data.planets.find((planet) => planet.key === "nauvis").pollutant_type, "pollution")
   assert.equal(data.planets.find((planet) => planet.key === "gleba").pollutant_type, "spores")
   assert.deepEqual(data.plants.find((plant) => plant.key === "yumako-tree").harvest_emissions, { spores: 15 })
+})
+
+test("Factorio 2.1.13 recycling times scale with recipe result counts", async () => {
+  const data = await getParsedTestData()
+  assert.equal(data.recipes.find((recipe) => recipe.key === "concrete-recycling").energy_required, 0.0625)
+  assert.equal(data.recipes.find((recipe) => recipe.key === "land-mine-recycling").energy_required, 0.078125)
 })
 
 test("generated Space Age data includes every official recipe productivity research effect", async () => {

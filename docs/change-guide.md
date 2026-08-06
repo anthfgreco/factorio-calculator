@@ -18,7 +18,7 @@
 
 ## Fix a recipe or Factorio-version issue
 
-Do not patch `public/data/space-age-2.1.12.json` as the source of truth.
+Do not patch generated files under `public/data/` as the source of truth.
 
 1. Verify the official prototype export.
 2. Update `scripts/build_factorio_dataset.py` or schema handling in `src/data.ts`.

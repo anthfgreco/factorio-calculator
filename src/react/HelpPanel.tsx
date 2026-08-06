@@ -64,6 +64,13 @@ export function HelpPanel() {
         <section id="help-changelog" className="help-section">
           <h2 className="help-section-title">Changelog</h2>
           <div className="changelog-timeline">
+            <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">
+              <li>
+                Updated Space Age recipes for Factorio 2.1.13, including faster recycling for recipes that produce
+                multiple items.
+              </li>
+            </ChangelogEntry>
+
             <ChangelogEntry date="2026-08-03" title="Advanced Space Age Planning & Correctness">
               <li>Replaced verbose planning narratives with compact KPIs and actionable diagnostics.</li>
               <li>Optimized exact rational arithmetic and added a repeatable solver benchmark.</li>

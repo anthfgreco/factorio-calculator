@@ -1,5 +1,5 @@
 {
-    "build": 87038,
+    "build": 87164,
     "crafting_machines": 16,
     "excluded_raw_recipes": [
         "item-unknown-recycling",
@@ -41,8 +41,8 @@
         "parts_per_launch": 50
     },
     "source": "Factorio built-in exports plus bundled Factorio wiki mechanics",
-    "sprite_hash": "ad2ed179f24c9b7ded5835325fa435ca",
+    "sprite_hash": "672da8878eae6b9ea7589de8b5ba9bf5",
     "sprite_height": 896,
     "sprite_width": 832,
-    "version": "2.1.12"
+    "version": "2.1.13"
 }

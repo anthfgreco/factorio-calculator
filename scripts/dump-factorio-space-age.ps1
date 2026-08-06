@@ -1,7 +1,8 @@
 param(
     [string]$FactorioExe = "",
     [string]$UserDataDir = (Join-Path $env:APPDATA "Factorio"),
-    [string]$OutputZip = (Join-Path $PWD "factorio-2.1.12-space-age-dump.zip"),
+    [string]$ExpectedVersion = "2.1.13",
+    [string]$OutputZip = "",
     [int]$TimeoutMinutes = 30
 )
 
@@ -115,7 +116,7 @@ if (-not $FactorioExe -or -not (Test-Path $FactorioExe)) {
 Could not find factorio.exe.
 
 Run this script again with the full path, for example:
-  .\dump-factorio-2.1.12-v2.ps1 -FactorioExe "D:\SteamLibrary\steamapps\common\Factorio\bin\x64\factorio.exe"
+  .\scripts\dump-factorio-space-age.ps1 -FactorioExe "D:\SteamLibrary\steamapps\common\Factorio\bin\x64\factorio.exe"
 "@
 }
 
@@ -130,8 +131,18 @@ if (Test-FactorioRunning) {
 $versionText = (& $FactorioExe --version 2>&1 | Out-String).Trim()
 Write-Host $versionText
 
-if ($versionText -notmatch '(?m)\b2\.1\.12\b') {
-    throw "This script requires Factorio 2.1.12. The detected version was:`n$versionText"
+$versionMatch = [regex]::Match($versionText, '(?m)^Version:\s*(\d+\.\d+\.\d+)\b')
+if (-not $versionMatch.Success) {
+    throw "Could not identify the Factorio version from:`n$versionText"
+}
+$detectedVersion = $versionMatch.Groups[1].Value
+
+if ($detectedVersion -ne $ExpectedVersion) {
+    throw "This script requires Factorio $ExpectedVersion. The detected version was $detectedVersion."
+}
+
+if (-not $OutputZip) {
+    $OutputZip = Join-Path $PWD "factorio-$detectedVersion-space-age-dump.zip"
 }
 
 $versionDeadline = (Get-Date).AddSeconds(30)
@@ -142,7 +153,7 @@ if (Test-FactorioRunning) {
     throw "Factorio remained running after the version check. Close it and rerun."
 }
 
-$tempRoot = Join-Path $env:TEMP ("factorio-2.1.12-dump-" + [guid]::NewGuid().ToString("N"))
+$tempRoot = Join-Path $env:TEMP ("factorio-$detectedVersion-dump-" + [guid]::NewGuid().ToString("N"))
 $modsDir = Join-Path $tempRoot "mods"
 $scriptOutput = Join-Path $UserDataDir "script-output"
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"

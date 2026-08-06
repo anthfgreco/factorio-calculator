@@ -81,7 +81,7 @@ try {
     "factorio-wiki.md",
     "factorio-wiki.sqlite",
     ".tmp/factorio-wiki.sqlite",
-    "factorio-2.1.12-space-age-dump.zip",
+    "factorio-2.1.13-space-age-dump.zip",
   ]
 
   const extraPaths = EXTRA_INCLUSIONS.filter((filePath) => {

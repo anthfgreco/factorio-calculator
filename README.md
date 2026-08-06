@@ -2,7 +2,7 @@
 
 A browser calculator for Factorio.
 
-This fork includes experimental **Factorio Space Age 2.1.12** data.
+This fork includes experimental **Factorio Space Age 2.1.13** data.
 
 ## Player-facing behavior
 
@@ -101,7 +101,16 @@ Create an isolated Factorio export with only these official mods enabled:
 - Recycler
 - Space Age
 
-Run:
+On Windows, the tracked helper performs the isolated export, preserves the existing `script-output` directory, and
+creates `factorio-2.1.13-space-age-dump.zip`. Extract it and pass the resulting directory to the builder:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\dump-factorio-space-age.ps1
+Expand-Archive -LiteralPath factorio-2.1.13-space-age-dump.zip -DestinationPath .tmp\factorio-2.1.13-export -Force
+python scripts\build_factorio_dataset.py .tmp\factorio-2.1.13-export
+```
+
+For a manual export, run Factorio once for each command:
 
 ```text
 --dump-data
@@ -118,8 +127,8 @@ python scripts/build_factorio_dataset.py /path/to/factorio-export
 
 The builder writes:
 
-- `public/data/space-age-2.1.12.json`
+- `public/data/space-age-2.1.13.json`
 - `public/images/sprite-sheet-<hash>.png` and lossless `.webp` runtime copies
-- `build-reports/space-age-2.1.12.json`
+- `build-reports/space-age-2.1.13.json`
 
 Raw JSON is validated by `parseCalculatorData()` in `src/data.ts` before runtime objects are created. Do not manually treat generated JSON as the source of truth.

@@ -81,7 +81,7 @@ const datasets = [
   "vanilla-1.1.110-expensive.json",
   "vanilla-2.0.55.json",
   "space-age-2.0.55.json",
-  "space-age-2.1.12.json",
+  "space-age-2.1.13.json",
 ]
 
 const originalLog = console.log
@@ -115,7 +115,7 @@ try {
       throw new Error("Factory specification did not initialize miner settings")
     }
 
-    if (filename === "space-age-2.1.12.json") {
+    if (filename === "space-age-2.1.13.json") {
       const spacePlatform = planets.get("space-platform")
       const asteroidChunkKeys = [
         "carbonic-asteroid-chunk",

@@ -26,7 +26,7 @@ from typing import Any
 from PIL import Image
 
 CELL_SIZE = 32
-TARGET_VERSION = "2.1.12"
+TARGET_VERSION = "2.1.13"
 DATASET_NAME = f"space-age-{TARGET_VERSION}.json"
 EXPECTED_MODS = ["base", "elevated-rails", "quality", "recycler", "space-age"]
 
@@ -37,7 +37,7 @@ ASTEROID_CHUNK_KEYS = {
     "promethium-asteroid-chunk",
 }
 
-# These are all item-like prototype families present in the 2.1.12 dump.
+# These are all item-like prototype families present in the current dump.
 # Fluids and asteroid chunks are included separately because they are not
 # represented by stack_size in the same way as conventional items.
 ITEM_TYPES = (
@@ -956,6 +956,11 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
     require(
         {entry["name"]: entry["amount"] for entry in acid.get("ingredients", [])}.get("sulfuric-acid") == 100,
         "Acid neutralisation sulfuric acid mismatch",
+    )
+    concrete_recycling = recipe_map.get("concrete-recycling", {})
+    require(
+        concrete_recycling.get("energy_required") == 0.0625,
+        "Concrete recycling does not include the 2.1.13 result-count speedup",
     )
     space_platform = next((planet for planet in dataset["planets"] if planet["key"] == "space-platform"), None)
     require(space_platform is not None, "Missing Space platform")

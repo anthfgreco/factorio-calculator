@@ -12,7 +12,7 @@ await Promise.all([
   requireFile("index.html"),
   requireFile("calc.html"),
   requireFile("favicon.png"),
-  requireFile("data/space-age-2.1.12.json"),
+  requireFile("data/space-age-2.1.13.json"),
   requireFile("docs/changelog.html"),
   requireFile("posts/bower_components/function-plot/dist/function-plot.js"),
 ])
@@ -80,9 +80,9 @@ if (!sitemapXml.includes("https://anthfgreco.github.io/factorio-calculator/calc.
   throw new Error("sitemap.xml is missing the canonical calculator URL")
 }
 
-const dataPath = await requireFile("data/space-age-2.1.12.json")
+const dataPath = await requireFile("data/space-age-2.1.13.json")
 const data = JSON.parse(await readFile(dataPath, "utf8"))
-if (data.game_version !== "2.1.12") {
+if (data.game_version !== "2.1.13") {
   throw new Error(`Unexpected dataset version: ${data.game_version}`)
 }
 if (!Array.isArray(data.recipes) || data.recipes.length < 600) {
@@ -95,7 +95,7 @@ if (!data.sprites?.hash) {
 await requireFile(`images/sprite-sheet-${data.sprites.hash}.png`)
 await requireFile(`images/sprite-sheet-${data.sprites.hash}.webp`)
 
-console.log(`Validated React 19 Vite build with ${data.recipes.length} Factorio 2.1.12 recipes.`)
+console.log(`Validated React 19 Vite build with ${data.recipes.length} Factorio 2.1.13 recipes.`)
 
 async function readJavaScriptAssets(directory) {
   const entries = await readdir(directory, { withFileTypes: true })

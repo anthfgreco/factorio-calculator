@@ -164,7 +164,7 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/dropdown.css" />'))
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/calc.css" />'))
   assert.ok(html.includes('<link rel="stylesheet" href="./src/styles/player-ui.css" />'))
-  assert.ok(html.includes('rel="preload" href="./data/space-age-2.1.12.json" as="fetch" crossorigin'))
+  assert.ok(html.includes('rel="preload" href="./data/space-age-2.1.13.json" as="fetch" crossorigin'))
   assert.ok(!main.includes('import "./styles/'))
   assert.ok(main.includes("createRoot(rootElement).render(<CalculatorApp />)"))
   assert.ok(!main.includes("StrictMode"))
@@ -188,6 +188,11 @@ test("mobile startup keeps optional runtimes and hidden controls off the critica
   for (const source of [app, settings, ui, presentation, graph, visualization]) {
     assert.ok(!source.includes('import * as d3Package from "d3"'))
   }
+})
+
+test("Factorio 2.1.12 links migrate to the current Space Age data", async () => {
+  const state = await readFile(resolve(root, "src/state.ts"), "utf8")
+  assert.ok(state.includes('["space-age-2-1-12", "space-age-2-1-13"]'))
 })
 
 test("Resources and Settings initialize independently on first open", async () => {

@@ -81,7 +81,9 @@ These modules must remain independent of React, the DOM, D3, storage, and browse
 
 - Treat `factorio-wiki.md` as a project source of truth. Search the relevant mechanic; do not read the entire file by default.
 - Prefer Space Age behavior when editions differ.
-- Never manually patch generated sprite coordinates or generated 2.1.12 prototype values. Fix the exporter and regenerate the data; keep generator and output changes together.
+- Never manually patch generated sprite coordinates or generated prototype values. Fix the exporter and regenerate the data; keep generator and output changes together.
+- Keep each generated sprite hash's PNG and lossless WebP together: PNG bytes define the dataset hash, while runtime rendering uses WebP. Remove an old pair only after confirming no `public/data/*.json` references its hash.
+- For version bumps, update the builder target, default dataset, preload/validators, player copy, and previous-key URL migration. Review semantic data changes without `icon_col`/`icon_row` first because hash-sorted sprite packing can cause broad coordinate churn.
 
 ## Invariants
 
