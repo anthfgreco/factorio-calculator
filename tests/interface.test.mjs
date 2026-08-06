@@ -66,7 +66,7 @@ test("player-facing controls stay close to the evidence they affect", async () =
   }
 })
 
-test("Settings navigation, recipe management, and compact beacon rows preserve the dense UI", async () => {
+test("Settings navigation, recipe management, and beacon controls preserve the dense UI", async () => {
   const [shell, panel, settings, results, styles] = await Promise.all([
     readFile(resolve(root, "src/react/CalculatorShell.tsx"), "utf8"),
     readFile(resolve(root, "src/react/SettingsPanel.tsx"), "utf8"),
@@ -82,9 +82,8 @@ test("Settings navigation, recipe management, and compact beacon rows preserve t
   assert.ok(settings.includes('classed("recipe-category-nav", true)'))
   assert.ok(settings.includes('.selectAll("details.recipe-settings-category")'))
   assert.ok(settings.includes('"Orange: enabled · Dimmed: disabled · Click to toggle"'))
-  assert.ok(results.includes('.classed("ui add-beacon", true)'))
-  assert.ok(results.includes('.text("+ Beacon")'))
-  assert.ok(results.includes('classed("beacon-collapsed"'))
+  assert.ok(!results.includes('.text("+ Beacon")'))
+  assert.ok(results.includes('.classed("beacon-controls", true)'))
   assert.ok(panel.includes('id="default_beacon_setting"'))
   assert.ok(!panel.includes('id="add_default_beacon"'))
   assert.ok(panel.includes('className="setting-row compact-setting-row compact-setting-first"'))
@@ -94,7 +93,11 @@ test("Settings navigation, recipe management, and compact beacon rows preserve t
   assert.ok(styles.includes("tr.setting-row td:first-child"))
   assert.ok(styles.includes("display: block"))
   assert.ok(styles.includes("text-align: left"))
-  assert.ok(styles.includes("td.beacon.beacon-collapsed .beacon-controls"))
+  assert.ok(styles.includes(".beacon-controls"))
+  const beaconStyleStart = styles.indexOf("span.beacon-container")
+  const beaconStyle = styles.slice(beaconStyleStart, styles.indexOf("}", beaconStyleStart))
+  assert.ok(beaconStyle.includes("padding: 0"))
+  assert.ok(beaconStyle.includes("border: 0"))
   assert.ok(shell.includes('import.meta.env.DEV || new URLSearchParams(window.location.search).has("debug")'))
 })
 

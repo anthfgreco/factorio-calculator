@@ -503,7 +503,6 @@ class BeaconInput {
 }
 
 let beaconCount = 0
-const expandedBeaconRows = new WeakSet<object>()
 class BeaconCell {
   [key: string]: any
   constructor(row, index) {
@@ -1108,16 +1107,6 @@ export function displayItems(spec, totals) {
 
       // cell 9: beacons
       let beaconCell = row.append("td").classed("pad building module beacon", true)
-      beaconCell
-        .append("button")
-        .attr("type", "button")
-        .attr("aria-label", "Configure beacons for this recipe")
-        .classed("ui add-beacon", true)
-        .text("+ Beacon")
-        .on("click", function (this: HTMLButtonElement, _event, d) {
-          expandedBeaconRows.add(d)
-          d3.select(this.parentElement).classed("beacon-collapsed", false)
-        })
       let beaconControls = beaconCell.append("span").classed("beacon-controls", true)
       beaconControls.append("span").classed("beacon-container", true)
       let beaconCountSpan = beaconControls.append("span").classed("beacon-count", true)
@@ -1129,7 +1118,6 @@ export function displayItems(spec, totals) {
         .on("change", function (event, d) {
           let count = Rational.from_string(event.target.value)
           d.moduleSpec.setBeaconCount(count)
-          if (count.isZero()) expandedBeaconRows.delete(d)
           if (spec.isFactoryTarget(d.recipe)) {
             spec.updateSolution()
           } else {
@@ -1257,9 +1245,6 @@ export function displayItems(spec, totals) {
     })
     .text((d) => spec.format.alignCount(spec.getCount(d.recipe, totals.rates.get(d.recipe))))
   let moduleRow = row.filter((d) => d.moduleSpec !== null)
-  moduleRow
-    .selectAll("td.beacon")
-    .classed("beacon-collapsed", (d) => d.moduleSpec.beaconCount.isZero() && !expandedBeaconRows.has(d))
   let moduleCell = moduleRow.selectAll("td.module-cell")
   // XXX: Something's wrong with how I did the module dropdowns. Work around
   // the issue for now by re-rendering all of them on each update.

@@ -300,27 +300,14 @@ div.tab {
   vertical-align: middle;
 }
 span.beacon-container {
-  padding: 0.2rem 0.3rem;
-  border: 1px solid var(--rule);
-  border-radius: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
   background: transparent;
 }
 .beacon-controls {
   display: inline-flex;
   align-items: center;
-}
-.add-beacon {
-  display: none;
-  min-height: 1.75rem;
-  padding: 0.18rem 0.42rem;
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-td.beacon.beacon-collapsed .add-beacon {
-  display: inline-block;
-}
-td.beacon.beacon-collapsed .beacon-controls {
-  display: none;
 }
 .breakdown table {
   border: 0;
