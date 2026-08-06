@@ -430,9 +430,9 @@ tr.setting-row td:first-child {
   background: transparent;
 }
 
-/* Help: high-density Tufte layout with quiet hairline dividers. */
+/* Help: compact task guidance with secondary release notes. */
 .help-content {
-  max-width: 54rem;
+  max-width: 68rem;
   padding: 1rem 0 3rem;
 }
 .help-section + .help-section {
@@ -459,12 +459,6 @@ tr.setting-row td:first-child {
 .help-meta a:hover {
   text-decoration: underline;
 }
-.help-summary {
-  color: var(--foreground);
-  font-size: 0.92rem;
-  line-height: 1.55;
-}
-
 .help-section-title {
   font-size: 0.8rem;
   font-weight: 600;
@@ -475,29 +469,27 @@ tr.setting-row td:first-child {
   border-bottom: 1px solid var(--rule);
   margin-bottom: 0.75rem;
 }
-.help-reference-list {
-  display: flex;
-  flex-direction: column;
-}
-.help-reference-row {
-  display: grid;
-  grid-template-columns: 13rem 1fr;
-  column-gap: 1.5rem;
-  padding: 0.65rem 0;
-  border-bottom: 1px solid var(--rule);
-}
-.help-reference-row:last-child {
-  border-bottom: none;
-}
-.help-reference-row dt {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--bright);
-}
-.help-reference-row dd {
+.help-steps {
   font-size: 0.86rem;
   color: var(--foreground);
   line-height: 1.48;
+}
+.help-table {
+  font-size: 0.86rem;
+  color: var(--foreground);
+}
+.help-table th,
+.help-table td {
+  padding: 0.45rem 0.65rem;
+  border-bottom-color: var(--rule);
+}
+.help-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.help-changelog > summary {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .changelog-timeline {
@@ -563,9 +555,9 @@ tr.setting-row td:first-child {
     border-left: 0;
     border-top: 1px solid var(--rule);
   }
-  .help-reference-row {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
+  .help-table th,
+  .help-table td {
+    padding-inline: 0.4rem;
   }
   .changelog-entry {
     grid-template-columns: 1fr;

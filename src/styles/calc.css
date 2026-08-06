@@ -808,7 +808,7 @@ details.recipe-selector[open] > summary {
 }
 /* help */
 .help-content {
-  max-width: 58em;
+  max-width: 72em;
   margin: 0 auto;
   padding: 1em 1em 3em;
 }
@@ -835,12 +835,6 @@ details.recipe-selector[open] > summary {
 .meta-separator {
   opacity: 0.5;
 }
-.help-summary {
-  max-width: 54em;
-  margin: 0;
-  line-height: 1.55;
-  color: var(--foreground);
-}
 .help-section-title {
   font-size: 0.88em;
   font-weight: 600;
@@ -851,27 +845,38 @@ details.recipe-selector[open] > summary {
   border-bottom: 1px solid var(--rule);
   margin-bottom: 1em;
 }
-.help-reference-list {
+.help-steps {
   margin: 0;
-  padding: 0;
+  padding-left: 1.5em;
+  line-height: 1.65;
 }
-.help-reference-row {
-  display: grid;
-  grid-template-columns: 14em 1fr;
-  column-gap: 1.5em;
-  padding: 0.7em 0;
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+}
+.help-table th,
+.help-table td {
+  padding: 0.5em 0.75em;
+  text-align: left;
+  vertical-align: top;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
-.help-reference-row dt {
-  font-weight: 600;
+.help-table th {
   color: var(--bright);
-  font-size: 0.9em;
+  font-weight: 600;
 }
-.help-reference-row dd {
-  margin: 0;
-  line-height: 1.5;
-  font-size: 0.9em;
-  color: var(--foreground);
+.help-table th:first-child,
+.help-table td:first-child {
+  width: 48%;
+}
+.help-changelog > summary {
+  color: var(--bright);
+  font-weight: 600;
+  cursor: pointer;
+}
+.help-changelog[open] > summary {
+  margin-bottom: 1em;
 }
 .changelog-timeline {
   display: flex;

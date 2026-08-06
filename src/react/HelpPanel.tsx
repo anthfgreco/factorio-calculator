@@ -6,63 +6,67 @@ export function HelpPanel() {
       <div className="help-content">
         <section id="help-about" className="help-section">
           <header className="help-header">
-            <h1>Factorio Calculator</h1>
+            <h1>Help</h1>
             <div className="help-meta">
-              <span>Factorio 2.1 &amp; Space Age</span>
+              <span>Factorio 2.1.13</span>
               <span className="meta-separator">•</span>
-              <span>Apache 2.0 Open Source</span>
+              <span>Space Age</span>
               <span className="meta-separator">•</span>
               <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noopener noreferrer">
                 GitHub Repository
               </a>
             </div>
           </header>
-          <p className="help-summary">
-            Plan Factorio production chains from early game through Space Age. Calculates exact machine counts, item
-            rates, electrical power, burner fuel, and belt requirements for any recipe target.
-          </p>
         </section>
 
-        <section id="help-faq" className="help-section">
-          <h2 className="help-section-title">Quick Reference &amp; Workflows</h2>
-          <dl className="help-reference-list">
-            <ReferenceRow term="Production Targets">
-              Add one or more desired outputs at the top of the page. Choose an item, then enter either a machine count
-              or a production rate.
-            </ReferenceRow>
-            <ReferenceRow term="Imported Ingredients">
-              Click any item icon in the Factory table to mark it as imported. The calculator treats it as supplied from
-              elsewhere; click again to include its production chain.
-            </ReferenceRow>
-            <ReferenceRow term="Progression Presets">
-              Presets quickly set standard locations, modules, beacons, belts, and mining productivity for key game
-              stages without altering your production targets.
-            </ReferenceRow>
-            <ReferenceRow term="Production Locations">
-              Select a single planet/surface, or Shift-click to combine multiple locations into a shared material pool.
-              Assign individual recipes in the Factory table; required transfers appear in the factory summary.
-            </ReferenceRow>
-            <ReferenceRow term="Quality & Recycling">
-              Choose a quality tier beside an output to include its production chance. Recycler and upcycling loops must
-              still be planned separately.
-            </ReferenceRow>
-            <ReferenceRow term="Factory Totals">
-              Building counts show ceiling-rounded counts for physical placement. The summary separates electrical
-              machine power from the required chemical fuel, nutrients, bioflux, or other burner consumables.
-            </ReferenceRow>
-            <ReferenceRow term="Alternate Recipes & Priorities">
-              Override recipes per Factory row or globally in Settings. When multiple solution paths exist, the{" "}
-              <strong>Resources</strong> priority hierarchy determines resource preference.
-            </ReferenceRow>
-            <ReferenceRow term="Calculation Help">
-              If a factory cannot be calculated, check its enabled recipes, production locations, imported ingredients,
-              and resource priorities.
-            </ReferenceRow>
-          </dl>
+        <section id="help-using" className="help-section">
+          <h2 className="help-section-title">Using the calculator</h2>
+          <ol className="help-steps">
+            <li>Add a production target.</li>
+            <li>Enter a machine count or rate.</li>
+            <li>Select the locations available to your factory.</li>
+            <li>
+              Open <strong>Factory</strong> to choose recipes, machines, modules, and imported ingredients.
+            </li>
+            <li>
+              Check <strong>Resources</strong> and <strong>Visualize</strong> for totals and bottlenecks.
+            </li>
+          </ol>
         </section>
 
-        <section id="help-changelog" className="help-section">
-          <h2 className="help-section-title">Changelog</h2>
+        <section id="help-controls" className="help-section">
+          <h2 className="help-section-title">Useful controls</h2>
+          <HelpTable
+            firstColumn="Action"
+            secondColumn="Control"
+            rows={[
+              ["Combine production locations", "Shift-click location buttons"],
+              ["Treat an ingredient as externally supplied", "Click its icon in the Factory table"],
+              ["Restore an imported ingredient to the production chain", "Click the icon again"],
+              ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
+              ["Change recipe defaults", "Open Settings"],
+              ["Share the current calculation", "Copy plan link"],
+            ]}
+          />
+        </section>
+
+        <section id="help-troubleshooting" className="help-section">
+          <h2 className="help-section-title">Something looks wrong?</h2>
+          <HelpTable
+            firstColumn="Problem"
+            secondColumn="Check"
+            rows={[
+              ["An item cannot be produced", "Enabled recipes and selected locations"],
+              ["An ingredient is missing from the chain", "Whether it is marked as imported"],
+              ["The calculator chose an unexpected resource", "Resource priorities and alternate recipes"],
+              ["Quality production is incomplete", "Recycling and quality progression limits"],
+              ["Machine counts look higher than expected", "Recipe, modules, beacons, and machine quality"],
+            ]}
+          />
+        </section>
+
+        <details id="help-changelog" className="help-section help-changelog">
+          <summary>Changelog</summary>
           <div className="changelog-timeline">
             <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">
               <li>
@@ -148,23 +152,36 @@ export function HelpPanel() {
               </li>
             </ChangelogEntry>
           </div>
-        </section>
+        </details>
       </div>
     </div>
   )
 }
 
-interface ReferenceRowProps {
-  term: string
-  children: ReactNode
+interface HelpTableProps {
+  firstColumn: string
+  secondColumn: string
+  rows: ReadonlyArray<readonly [string, string]>
 }
 
-function ReferenceRow({ term, children }: ReferenceRowProps) {
+function HelpTable({ firstColumn, secondColumn, rows }: HelpTableProps) {
   return (
-    <div className="help-reference-row">
-      <dt>{term}</dt>
-      <dd>{children}</dd>
-    </div>
+    <table className="help-table">
+      <thead>
+        <tr>
+          <th scope="col">{firstColumn}</th>
+          <th scope="col">{secondColumn}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([first, second]) => (
+          <tr key={first}>
+            <td>{first}</td>
+            <td>{second}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

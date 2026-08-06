@@ -73,6 +73,21 @@ test("player-facing copy describes Factorio behavior instead of implementation d
   }
 })
 
+test("Help is task-oriented and keeps the changelog secondary", async () => {
+  const help = await readFile(resolve(root, "src/react/HelpPanel.tsx"), "utf8")
+
+  assert.ok(help.includes("<h1>Help</h1>"))
+  assert.ok(help.includes("Factorio 2.1.13"))
+  assert.ok(help.includes('id="help-using"'))
+  assert.ok(help.includes("Using the calculator"))
+  assert.ok(help.includes("Shift-click location buttons"))
+  assert.ok(help.includes("An ingredient is missing from the chain"))
+  assert.ok(help.includes('<details id="help-changelog"'))
+  assert.ok(!help.includes("Quick Reference &amp; Workflows"))
+  assert.ok(!help.includes("help-reference-list"))
+  assert.ok(!help.includes("Plan Factorio production chains"))
+})
+
 test("factory rerenders clear machine controls from every reused result row", async () => {
   const results = await readFile(resolve(root, "src/results.ts"), "utf8")
   const machineCleanup = 'row.selectAll("td.building-icon > :not(.recipe-selector)").remove()'

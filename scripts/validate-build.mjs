@@ -53,7 +53,7 @@ for (const requiredText of [
   "factory_tab_tools",
   "location_toolbar",
   "help-about",
-  "help-faq",
+  "help-using",
   "help-changelog",
   "factory_density_comfortable",
   "factory_density_compact",
