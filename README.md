@@ -2,7 +2,7 @@
 
 A browser calculator for Factorio.
 
-This fork includes experimental **Factorio Space Age 2.1.13** data.
+This fork supports experimental **Factorio Space Age 2.1.14** using the unchanged 2.1.13 prototype data.
 
 ## Player-facing behavior
 

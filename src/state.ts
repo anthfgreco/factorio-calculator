@@ -507,7 +507,8 @@ class Modification {
 }
 
 export const MODIFICATIONS = new Map([
-  ["space-age-2-1-13", new Modification("Space Age 2.1.13 (EXPERIMENTAL)", "space-age-2.1.13.json", false)],
+  // 2.1.14 has no calculator-relevant prototype changes, so it intentionally reuses the 2.1.13 export and URL key.
+  ["space-age-2-1-13", new Modification("Space Age 2.1.14 (EXPERIMENTAL)", "space-age-2.1.13.json", false)],
   ["2-0-55", new Modification("Vanilla 2.0.55", "vanilla-2.0.55.json", false)],
   ["1-1-110", new Modification("Vanilla 1.1.110", "vanilla-1.1.110.json", true)],
   ["1-1-110x", new Modification("Vanilla 1.1.110 - Expensive", "vanilla-1.1.110-expensive.json", true)],

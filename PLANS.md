@@ -2,7 +2,37 @@
 
 Use an execution plan for changes that span multiple modules, alter architecture or persisted behavior, or require more than one validation loop. Keep it current while work is active.
 
-## Active plan: strict typed application architecture
+## Completed plan: Factorio 2.1.14 compatibility label
+
+### Goal
+
+Present the calculator as compatible with Factorio Space Age 2.1.14 without claiming that a new prototype export was generated.
+
+### Context and constraints
+
+- Factorio 2.1.14 is a bugfix-only release with no calculator-relevant prototype changes.
+- Keep the 2.1.13 generated dataset, sprite assets, exporter target, dataset filename, and URL key unchanged.
+- Preserve existing 2.1.13 shared links and calculations.
+
+### Done when
+
+- Player-facing version labels and app metadata say 2.1.14.
+- The changelog explains compatibility without implying recipe changes.
+- UI behavior, old links, runtime datasets, and the release gate pass.
+
+### Steps
+
+1. [x] Update app metadata and player-facing compatibility labels.
+2. [x] Add matching Help and public changelog entries.
+3. [x] Add focused rendered-UI coverage.
+4. [x] Run UI/E2E checks and the release gate.
+
+### Decision log
+
+- Reuse the 2.1.13 dataset because 2.1.14 does not change inputs consumed by the calculator.
+- Keep the internal `space-age-2-1-13` key so existing URLs remain canonical and no false dataset version is introduced.
+
+## Previous plan: strict typed application architecture
 
 ### Goal
 

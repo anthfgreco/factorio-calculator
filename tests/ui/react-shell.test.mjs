@@ -55,6 +55,8 @@ test("React shell renders the complete accessible calculator workflow", () => {
     "Resources",
     "Settings",
     "Help",
+    "Factorio 2.1.14",
+    "Confirmed compatibility with Factorio 2.1.14; recipes and production values are unchanged.",
     "Early Space Age",
     "Established megabase",
     "Default module (all eligible slots)",

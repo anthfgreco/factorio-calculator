@@ -8,7 +8,7 @@ export function HelpPanel() {
           <header className="help-header">
             <h1>Help</h1>
             <div className="help-meta">
-              <span>Factorio 2.1.13</span>
+              <span>Factorio 2.1.14</span>
               <span className="meta-separator">•</span>
               <span>Space Age</span>
               <span className="meta-separator">•</span>
@@ -68,6 +68,10 @@ export function HelpPanel() {
         <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
+            <ChangelogEntry date="2026-08-06" title="Factorio 2.1.14">
+              <li>Confirmed compatibility with Factorio 2.1.14; recipes and production values are unchanged.</li>
+            </ChangelogEntry>
+
             <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">
               <li>
                 Updated Space Age recipes for Factorio 2.1.13, including faster recycling for recipes that produce
