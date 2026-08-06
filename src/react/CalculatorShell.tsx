@@ -65,9 +65,9 @@ function PlannerToolbar({ actions }: CalculatorShellProps) {
           <option value="">Custom</option>
           <option value="early">Early game</option>
           <option value="pre-rocket">Pre-rocket</option>
-          <option value="first-planets">First planets</option>
+          <option value="first-planets">Early Space Age</option>
           <option value="late-space-age">Late Space Age</option>
-          <option value="megabase">Megabase</option>
+          <option value="megabase">Established megabase</option>
         </select>
       </div>
       <div className="planner-actions">

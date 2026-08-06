@@ -259,7 +259,7 @@ export function SettingsPanel({ actions }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Default module:</td>
+            <td className="setting-label">Default module (all eligible slots):</td>
             <td>
               <span id="default_module" />
             </td>

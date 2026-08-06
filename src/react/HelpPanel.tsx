@@ -13,7 +13,7 @@ export function HelpPanel() {
               <span>Space Age</span>
               <span className="meta-separator">•</span>
               <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noopener noreferrer">
-                GitHub Repository
+                Source on GitHub
               </a>
             </div>
           </header>
@@ -65,7 +65,7 @@ export function HelpPanel() {
           />
         </section>
 
-        <details id="help-changelog" className="help-section help-changelog">
+        <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
             <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">

@@ -58,64 +58,40 @@ export function changeFactoryDensity(event: Event) {
 export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age" | "megabase"
 
 type PresetDefinition = {
-  planets: string[]
   miningProductivity: number
   belt: string
-  module: string | null
-  beaconModule: string | null
-  beaconCount: number
   beltStackSize: number
   maxQualityLevel: number
 }
 
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   early: {
-    planets: ["nauvis"],
     miningProductivity: 0,
     belt: "transport-belt",
-    module: null,
-    beaconModule: null,
-    beaconCount: 0,
     beltStackSize: 1,
     maxQualityLevel: 0,
   },
   "pre-rocket": {
-    planets: ["nauvis"],
     miningProductivity: 20,
     belt: "fast-transport-belt",
-    module: "productivity-module",
-    beaconModule: null,
-    beaconCount: 0,
     beltStackSize: 1,
     maxQualityLevel: 0,
   },
   "first-planets": {
-    planets: ["nauvis", "vulcanus", "fulgora", "gleba"],
-    miningProductivity: 50,
+    miningProductivity: 30,
     belt: "express-transport-belt",
-    module: "productivity-module-2",
-    beaconModule: "speed-module-2",
-    beaconCount: 4,
-    beltStackSize: 2,
+    beltStackSize: 1,
     maxQualityLevel: 2,
   },
   "late-space-age": {
-    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
     miningProductivity: 100,
     belt: "turbo-transport-belt",
-    module: "productivity-module-3",
-    beaconModule: "speed-module-3",
-    beaconCount: 8,
     beltStackSize: 4,
     maxQualityLevel: 4,
   },
   megabase: {
-    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
     miningProductivity: 300,
     belt: "turbo-transport-belt",
-    module: "productivity-module-3",
-    beaconModule: "speed-module-3",
-    beaconCount: 12,
     beltStackSize: 4,
     maxQualityLevel: 4,
   },
@@ -126,22 +102,11 @@ function getByKey(collection: Map<any, any> | null, key: string | null) {
   return collection.get(key) ?? null
 }
 
-function syncProgressionPresetControls() {
+function syncProgressionControls() {
   document.querySelectorAll<HTMLInputElement>('#belt_selector input[type="radio"]').forEach((input) => {
     input.checked = input.value === spec.belt?.key
   })
 
-  document
-    .querySelectorAll<HTMLInputElement>(
-      '#default_module input[type="radio"], #secondary_module input[type="radio"], #default_beacon input[type="radio"]',
-    )
-    .forEach((input) => {
-      let datum = (input as HTMLInputElement & { __data__?: { checked?: () => boolean } }).__data__
-      input.checked = datum?.checked?.() ?? false
-    })
-
-  let beaconCount = document.getElementById("default_beacon_count") as HTMLInputElement | null
-  if (beaconCount !== null) beaconCount.value = spec.defaultBeaconCount.toDecimal()
   let beltStack = document.getElementById("belt_stack_size") as HTMLSelectElement | null
   if (beltStack !== null) beltStack.value = spec.beltStackSize.toString()
   let maxQuality = document.getElementById("max_quality") as HTMLSelectElement | null
@@ -153,36 +118,17 @@ export function applyProgressionPreset(event: Event) {
   if (!(select instanceof HTMLSelectElement) || !(select.value in PROGRESSION_PRESETS)) return
   let preset = PROGRESSION_PRESETS[select.value as ProgressionPreset]
 
-  spec.selectedPlanets.clear()
-  for (let key of preset.planets) {
-    let planet = getByKey(spec.planets, key)
-    if (planet !== null) spec.selectPlanet(planet)
-  }
-  if (spec.selectedPlanets.size === 0 && spec.planets?.size) {
-    spec.selectPlanet(spec.planets.values().next().value)
-  }
-
   spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
   let belt = getByKey(spec.belts, preset.belt)
   if (belt !== null) spec.belt = belt
-  spec.defaultModule = getByKey(spec.modules, preset.module)
-  spec.secondaryDefaultModule = null
-  spec.defaultBeacon = [getByKey(spec.modules, preset.beaconModule), getByKey(spec.modules, preset.beaconModule)]
-  spec.defaultBeaconCount = Rational.from_float(preset.beaconCount)
   spec.beltStackSize = Rational.from_float(preset.beltStackSize)
   spec.maxQualityLevel = preset.maxQualityLevel
   for (let target of spec.buildTargets) {
     target.setQuality(target.qualityLevel)
   }
-  spec.spec.clear()
 
-  document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle: any) => {
-    let location = toggle.__data__
-    toggle.classList.toggle("selected", spec.selectedPlanets.has(location))
-    toggle.setAttribute("aria-pressed", String(spec.selectedPlanets.has(location)))
-  })
   syncMiningProductivityControls()
-  syncProgressionPresetControls()
+  syncProgressionControls()
   spec.updateSolution()
 }
 
