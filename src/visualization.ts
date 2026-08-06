@@ -1,4 +1,4 @@
-import { color, curveBasis, line, select, type Selection } from "d3"
+import { color, curveBasis, line, select, type BaseType, type Selection } from "d3"
 import dagre from "@dagrejs/dagre"
 import { spec } from "./factory.js"
 import {
@@ -40,7 +40,9 @@ const ZOOM_SCALE = 100
 const MAX_SCALE = 10
 const ASPECT_RATIO = 16 / 9
 
-export function installSVGEvents(svg: Selection<SVGSVGElement, unknown, null, undefined>): void {
+export function installSVGEvents<PElement extends BaseType, PDatum>(
+  svg: Selection<SVGSVGElement, unknown, PElement, PDatum>,
+): void {
   const selectedNode = svg.node()
   if (!(selectedNode instanceof SVGSVGElement)) throw new Error("Graph SVG is unavailable")
   const node: SVGSVGElement = selectedNode
@@ -238,12 +240,12 @@ export function renderBoxGraph(
   let edges = svg
     .append("g")
     .classed("edges", true)
-    .selectAll("g")
+    .selectAll<SVGGElement, GraphLink>("g")
     .data(links)
     .join("g")
     .classed("edge", true)
     .classed("fuel", (d: GraphLink) => d.fuel)
-    .each(function (this: Element, d: GraphLink) {
+    .each(function (d: GraphLink) {
       d.elements.push(this)
     })
   edges
@@ -275,11 +277,11 @@ export function renderBoxGraph(
   let edgeLabels = svg
     .append("g")
     .classed("edgeLabels", true)
-    .selectAll("g")
+    .selectAll<SVGGElement, GraphLink>("g")
     .data(links)
     .join("g")
     .classed("edgeLabel", true)
-    .each(function (this: Element, d: GraphLink) {
+    .each(function (d: GraphLink) {
       d.elements.push(this)
     })
   edgeLabels
@@ -327,7 +329,13 @@ export function renderBoxGraph(
     .attr("dy", "0.35em")
     .text((d: GraphLink) => d.label.text)
 
-  let rects = svg.append("g").classed("nodes", true).selectAll("g").data(nodes).join("g").classed("node", true)
+  let rects = svg
+    .append("g")
+    .classed("nodes", true)
+    .selectAll<SVGGElement, GraphNodeContract>("g")
+    .data(nodes)
+    .join("g")
+    .classed("node", true)
   renderNode(rects, boxlineNodeMargin, "left", recipeColors, ignore)
 
   svg
@@ -507,7 +515,7 @@ export function renderTotals(totals: Totals, ignore: ReadonlySet<Item>): void {
   }
 
   const callback = (): void => {
-    const svg = select<SVGSVGElement>("svg#graph")
+    const svg = select<SVGSVGElement, unknown>("svg#graph")
     let tab = select("#graph_tab")
     if (visualizerRender === "zoom") {
       tab.style("min-width", 0)

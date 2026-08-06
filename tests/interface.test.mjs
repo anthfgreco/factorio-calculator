@@ -197,11 +197,12 @@ test("player-facing copy excludes implementation terminology", async () => {
 })
 
 test("repository agent guardrails and validation lanes are installed", async () => {
-  const [agents, packageJson, buildBudgets, performanceBudgets] = await Promise.all([
+  const [agents, packageJson, buildBudgets, performanceBudgets, playwrightConfig] = await Promise.all([
     read("AGENTS.md"),
     read("package.json"),
     read("config/build-budgets.json"),
     read("config/performance-budgets.json"),
+    read("playwright.config.ts"),
   ])
   const scripts = JSON.parse(packageJson).scripts
   for (const command of ["doctor", "check:quick", "test:core", "test:ui", "test:e2e", "bench:check", "verify"]) {
@@ -210,4 +211,8 @@ test("repository agent guardrails and validation lanes are installed", async () 
   assert.match(agents, /^# Code Review Rules$/m)
   assert.ok(JSON.parse(buildBudgets).requiredDeferredModuleFragments.includes("src/visualization.ts"))
   assert.ok(JSON.parse(performanceBudgets).solverScenarios["1001"])
+  assert.equal(scripts["test:e2e"], "playwright test")
+  assert.ok(playwrightConfig.includes('testDir: "./tests/e2e"'))
+  assert.ok(playwrightConfig.includes("webServer:"))
+  assert.ok(playwrightConfig.includes('trace: "on-first-retry"'))
 })

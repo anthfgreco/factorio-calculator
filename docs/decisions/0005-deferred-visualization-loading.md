@@ -10,4 +10,4 @@ Load `visualization.ts`, `graph.ts`, and layout dependencies only in response to
 
 ## Consequences
 
-The build manifest and Chromium workflow enforce chunk separation. New graph dependencies must remain behind the dynamic import.
+The emitted Rollup module graph enforces chunk separation, while the Playwright Chromium workflow verifies graph rendering. New graph dependencies must remain behind the dynamic import.

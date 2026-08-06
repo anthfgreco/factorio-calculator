@@ -77,9 +77,9 @@ export class Belt {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     t.append("b").text(`Max throughput: `)
-    t.append(() => new Text(`${spec.format.rate(this.rate)}/${spec.format.longRate}`))
+    t.append("span").text(`${spec.format.rate(this.rate)}/${spec.format.longRate}`)
     return requireElement(t.node(), "tooltip")
   }
 }
@@ -145,9 +145,9 @@ export class Fuel {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     t.append("b").text("Energy: ")
-    t.append(() => new Text(self.valueString()))
+    t.append("span").text(self.valueString())
     return requireElement(t.node(), "tooltip")
   }
 }
@@ -304,7 +304,7 @@ export class Building {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     let line = t.append("div")
     line.append("b").text("Energy consumption: ")
     let { power, suffix } = powerRepresentation(this.power)
@@ -368,7 +368,7 @@ export class Miner extends Building {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     let line = t.append("div")
     line.append("b").text("Energy consumption: ")
     let { power, suffix } = powerRepresentation(this.power)
@@ -405,7 +405,7 @@ export class OffshorePump extends Building {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     let line = t.append("div")
     line.append("b").text("Pumping speed: ")
     line.append("span").text(`${spec.format.rate(this.pumpingSpeed)}/${spec.format.rateName}`)
@@ -552,7 +552,7 @@ function renderTooltipBase(this: Building): HTMLElement {
   let t = create("div").classed("frame", true)
   let header = t.append("h3")
   header.append(() => self.icon.make(32, true))
-  header.append(() => new Text(self.name))
+  header.append("span").text(self.name)
   return requireElement(t.node(), "tooltip")
 }
 
@@ -801,7 +801,7 @@ export class Module {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     let line
     if (!this.power.isZero()) {
       line = t.append("div")
@@ -850,7 +850,7 @@ export function moduleDropdown<GElement extends Element, TDatum, PElement extend
     | ((datum: TDatum, index: number, groups: GElement[]) => readonly ModuleDropdownCell[]),
 ): void {
   selector.each(function (datum, index, groups) {
-    const cells = typeof data === "function" ? data(datum, index, groups) : data
+    const cells = typeof data === "function" ? data(datum, index, Array.from(groups)) : data
     renderModuleDropdown(this, cells)
   })
 }
@@ -878,7 +878,7 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
     .join(
       (enter) => {
         const inputs = enter.append("span").classed("input", true)
-        const label = addInputs<ModuleDropdownOption>(
+        const label = addInputs(
           inputs,
           (option) => option.cell.name,
           (option) => option.checked(),

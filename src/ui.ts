@@ -18,8 +18,6 @@ import {
 // Build targets
 // -----------------------------------------------------------------------------
 
-type UiSelection = Selection<Element, unknown, BaseType, unknown>
-
 function hasRecipeCategories(recipe: Recipe | null | undefined): boolean {
   return recipe !== null && recipe !== undefined && (recipe.categories.size > 0 || recipe.category !== null)
 }
@@ -161,8 +159,8 @@ function searchTargets(this: HTMLInputElement, event: KeyboardEvent): void {
 
   // handle enter key press (select target if only one is visible)
   if (event.key === "Enter") {
-    const labels = dropdown.selectAll("label").filter(function (this: Element) {
-      return this instanceof HTMLElement && this.style.display !== "none"
+    const labels = dropdown.selectAll<HTMLElement, unknown>("label").filter(function () {
+      return this.style.display !== "none"
     })
     // don't do anything if more than one icon is visible
     if (labels.size() === 1) {
@@ -181,8 +179,7 @@ function searchTargets(this: HTMLInputElement, event: KeyboardEvent): void {
   // hide non-matching labels & icons
   let currentHrHasContent = false
   const searchState: { lastHrWithContent: HTMLElement | null } = { lastHrWithContent: null }
-  dropdown.selectAll("hr, label").each(function (this: Element, item: unknown) {
-    if (!(this instanceof HTMLElement)) return
+  dropdown.selectAll<HTMLElement, unknown>("hr, label").each(function (item: unknown) {
     if (this.tagName === "HR") {
       if (currentHrHasContent) {
         this.style.display = ""
@@ -221,14 +218,14 @@ export class BuildTarget implements FactoryBuildTarget {
   qualityNoticeKind: "warning" | null = null
   qualityConflictPreviousQuality: number | null = null
   readonly element: HTMLElement
-  readonly recipeSelector: UiSelection
+  readonly recipeSelector: Selection<HTMLSpanElement, undefined, null, undefined>
   readonly qualitySelector: HTMLSelectElement
   readonly buildingInput: HTMLInputElement
   readonly rateInput: HTMLInputElement
-  readonly locationWarning: UiSelection
-  readonly qualityNotice: UiSelection
-  readonly qualityNoticeMessage: UiSelection
-  readonly qualityNoticeAction: UiSelection
+  readonly locationWarning: Selection<HTMLDivElement, undefined, null, undefined>
+  readonly qualityNotice: Selection<HTMLDivElement, undefined, null, undefined>
+  readonly qualityNoticeMessage: Selection<HTMLSpanElement, undefined, null, undefined>
+  readonly qualityNoticeAction: Selection<HTMLButtonElement, undefined, null, undefined>
   compatibleLocations: Planet[] = []
 
   constructor(index: number, itemKey: string, item: Item, itemGroups: ItemGroups) {
@@ -273,7 +270,7 @@ export class BuildTarget implements FactoryBuildTarget {
         .selectAll("span")
         .data((d: Item[]) => d)
         .join("span")
-      let itemLabel = addInputs<Item>(items, targetInputName, (d: Item) => d === this.item, itemHandler(this))
+      let itemLabel = addInputs(items, targetInputName, (d: Item) => d === this.item, itemHandler(this))
       itemLabel.append((d: Item) => {
         const node = selection.node()
         return d.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
@@ -467,7 +464,7 @@ export class BuildTarget implements FactoryBuildTarget {
         spec.selectPlanet(location)
       }
     }
-    selectAll("#planet_selector .toggle")
+    selectAll<HTMLButtonElement, Planet>("#planet_selector .toggle")
       .classed("selected", (location: Planet) => spec.selectedPlanets.has(location))
       .attr("aria-pressed", (location: Planet) => String(spec.selectedPlanets.has(location)))
     refreshRecipeSettings(spec)

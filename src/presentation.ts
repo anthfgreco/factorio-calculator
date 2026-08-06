@@ -1,5 +1,5 @@
 import { create, local, select, type BaseType, type Selection, type ValueFn } from "d3"
-import tippy, { delegate, hideAll, type Instance, type Props } from "tippy.js"
+import tippy, { delegate, hideAll, type DelegateInstance, type Instance, type Props } from "tippy.js"
 import type { CalculatorData } from "./data.js"
 
 // -----------------------------------------------------------------------------
@@ -11,7 +11,7 @@ interface TooltipRegistryEntry {
   destroy(): void
 }
 
-let textTooltipDelegate: readonly Instance[] | null = null
+let textTooltipDelegate: DelegateInstance | null = null
 const tooltipRegistry = new Set<TooltipRegistryEntry>()
 
 function tooltipProps(): Partial<Props> {
@@ -407,7 +407,7 @@ export function addInputs<
   PDatum = unknown,
 >(
   selector: Selection<GElement, TDatum, PElement, PDatum>,
-  name: string | ValueFn<GElement, TDatum, string>,
+  name: string | ((datum: TDatum) => string),
   checked: ValueFn<GElement, TDatum, boolean>,
   callback: (this: HTMLInputElement, datum: TDatum) => void,
 ) {
@@ -419,7 +419,7 @@ export function addInputs<
       callback.call(this, d)
     })
     .attr("id", () => "input-" + inputId++)
-    .attr("name", name)
+    .attr("name", typeof name === "string" ? name : (datum: TDatum) => name(datum))
     .attr("type", "radio")
     .property("checked", checked)
   let label = selector.append("label").attr("for", () => "input-" + labelFor++)

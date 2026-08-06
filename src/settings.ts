@@ -68,7 +68,6 @@ import {
 } from "./state.js"
 
 type SettingsMap = ReadonlyMap<string, string>
-type AnySelection = Selection<BaseType, unknown, BaseType, unknown>
 type RadioOption = Belt | Fuel
 
 function requirePlanets(): Map<string, Planet> {
@@ -130,8 +129,8 @@ function updateRecipeToggleState(
   element.setAttribute("aria-pressed", String(enabled))
 }
 
-function makeRecipeToggles(
-  container: AnySelection,
+function makeRecipeToggles<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
+  container: Selection<GElement, TDatum, PElement, PDatum>,
   recipes: readonly Recipe[],
   specification: FactorySpecification,
 ): void {
@@ -157,8 +156,8 @@ function makeRecipeToggles(
   toggles.append((recipe: Recipe) => recipe.icon.make(32))
 }
 
-function makeRecipeGroups(
-  container: AnySelection,
+function makeRecipeGroups<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
+  container: Selection<GElement, TDatum, PElement, PDatum>,
   groups: readonly RecipeSettingsGroup[],
   specification: FactorySpecification,
 ): void {
@@ -451,7 +450,7 @@ function renderLocationSelector(hasMultipleLocations: boolean): void {
       } else {
         spec.selectOnePlanet(location)
       }
-      selectAll("#planet_selector .toggle")
+      selectAll<HTMLButtonElement, Planet>("#planet_selector .toggle")
         .classed("selected", (candidate: Planet) => spec.selectedPlanets.has(candidate))
         .attr("aria-pressed", (candidate: Planet) => String(spec.selectedPlanets.has(candidate)))
       refreshRecipeSettings(spec)
@@ -946,8 +945,14 @@ interface RadioSettingOption {
   readonly icon: Icon
 }
 
-function radioSetting<TOption extends RadioSettingOption>(
-  form: AnySelection,
+function radioSetting<
+  TOption extends RadioSettingOption,
+  GElement extends BaseType,
+  TDatum,
+  PElement extends BaseType,
+  PDatum,
+>(
+  form: Selection<GElement, TDatum, PElement, PDatum>,
   name: string,
   data: readonly TOption[],
   checked: (option: TOption) => boolean,

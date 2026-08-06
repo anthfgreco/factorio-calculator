@@ -1,6 +1,6 @@
 # Testing and Verification
 
-The repository uses strict TypeScript, Node's test runner, purpose-built validation scripts, and a dependency-free Chromium DevTools harness.
+The repository uses strict TypeScript, Node's test runner, purpose-built validation scripts, and Playwright for browser workflows.
 
 ## Validation lanes
 
@@ -57,7 +57,13 @@ Covers application-store lifecycle and commands, URL codec/history behavior, run
 pnpm test:e2e
 ```
 
-Starts Vite and drives Chromium through the DevTools protocol without an additional browser-test dependency. It verifies:
+Playwright starts Vite through the configured `webServer` and runs the Chromium project. Install its pinned browser once after installing dependencies:
+
+```bash
+pnpm exec playwright install chromium
+```
+
+The workflow verifies:
 
 - default dataset and successful calculation
 - target addition
@@ -67,7 +73,7 @@ Starts Vite and drives Chromium through the DevTools protocol without an additio
 - critical controls render at a mobile viewport
 - uncaught browser errors fail the test
 
-Set `CHROME_PATH` when Chromium is not in a standard location.
+Use `pnpm test:e2e:ui` for Playwright's interactive test runner. Traces are retained on the first retry in CI.
 
 ## Dataset validation
 

@@ -51,7 +51,8 @@ pnpm run doctor          # Validate Node, pnpm, lockfile, datasets, and required
 pnpm check:quick         # ~5s architecture, type-debt, and global strict TypeScript lane
 pnpm test:core           # ~3s exact solver and named Factorio scenarios
 pnpm test:ui             # Store, URL, state, and interface behavior
-pnpm test:e2e            # ~20s critical Chromium workflows
+pnpm test:e2e            # ~20s Playwright Chromium workflows
+pnpm test:e2e:ui         # Interactive Playwright runner
 pnpm bench               # Report exact 500- and 1,000-step solver medians
 pnpm bench:check         # Enforce conservative solver performance budgets
 pnpm validate:runtime    # Load and verify every bundled dataset

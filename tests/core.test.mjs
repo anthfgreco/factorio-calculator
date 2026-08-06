@@ -992,6 +992,7 @@ test("burner machines use their own fuel category and consumption-module effects
   const summary = getFactorySummary(factorySpec, {
     rates: new Map([[biofluxRecipe, one]]),
     items: new Set(),
+    proportionate: [],
   })
   assert.equal(summary.fuelRates.get(nutrientFuel).toString(), efficientFuelAmount.toString())
 

@@ -21,7 +21,7 @@ Use the smallest meaningful lane while iterating, then the release gate before d
 ```text
 check:quick  ~5 seconds   architecture, type-debt, and full strict TypeScript
 test:core    ~3 seconds   exact solver, scenarios, and deterministic behavior
-test:e2e    ~20 seconds   critical Chromium workflows
+test:e2e    ~20 seconds   critical Playwright Chromium workflows
 verify        release gate
 ```
 

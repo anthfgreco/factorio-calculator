@@ -1,4 +1,4 @@
-import { select } from "d3"
+import { select, type BaseType, type Selection } from "d3"
 import { bindCalculatorSpecification } from "./application/store.js"
 import { parseCalculatorData } from "./data.js"
 import { Matrix } from "./math.js"
@@ -70,19 +70,23 @@ function isDebugMetadata(value: unknown): value is DebugMetadata {
   )
 }
 
-function renderMatrix(d: ReturnType<typeof select>, A: Matrix, m: DebugMetadata): void {
+function renderMatrix<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
+  d: Selection<GElement, TDatum, PElement, PDatum>,
+  A: Matrix,
+  m: DebugMetadata,
+): void {
   let table = d.append("table").attr("border", 1)
   let header = table.append("tr")
   header.append("th")
   for (let item of m.items) {
     let th = header.append("th")
-    th.append(() => new Text("s"))
+    th.append("span").text("s")
     th.append(() => item.icon.make(32)).classed("item-icon", true)
   }
   for (let t of m.targets) {
     let th = header.append("th")
     th.append(() => t.item.icon.make(32))
-    th.append(() => new Text("\u21d0"))
+    th.append("span").text("\u21d0")
     th.append(() => t.recipe.icon.make(32))
   }
   header.append("th").text("tax")
@@ -101,9 +105,9 @@ function renderMatrix(d: ReturnType<typeof select>, A: Matrix, m: DebugMetadata)
     if (recipe !== undefined) {
       label.append(() => recipe.icon.make(32)).classed("item-icon", true)
     } else if (r === A.rows - 2) {
-      label.append(() => new Text("tax"))
+      label.append("span").text("tax")
     } else {
-      label.append(() => new Text("answer"))
+      label.append("span").text("answer")
     }
     for (let c = 0; c < A.cols; c++) {
       let x = A.index(r, c)

@@ -1,4 +1,4 @@
-import { color, select, style, type Selection } from "d3"
+import { color, select, style, type BaseType, type Selection } from "d3"
 import * as d3sankey from "./vendor/d3-sankey/index.js"
 import { spec } from "./factory.js"
 import { Item, Recipe } from "./recipes.js"
@@ -482,8 +482,8 @@ function recipeIcon(node: GraphNode): IconCoordinates {
   return node.recipe
 }
 
-export function renderNode(
-  rects: Selection<Element, GraphNode, Element, unknown>,
+export function renderNode<GElement extends BaseType, PElement extends BaseType, PDatum>(
+  rects: Selection<GElement, GraphNode, PElement, PDatum>,
   nodeMargin: number,
   justification: GraphJustification,
   recipeColors: RecipeColorMap,
@@ -707,7 +707,13 @@ export function renderSankey(data: GraphData, direction: GraphDirection, ignore:
   svg.selectAll("g").remove()
 
   // Node rects
-  let rects = svg.append("g").classed("nodes", true).selectAll("g").data(nodes).join("g").classed("node", true)
+  let rects = svg
+    .append("g")
+    .classed("nodes", true)
+    .selectAll<SVGGElement, GraphNode>("g")
+    .data(nodes)
+    .join("g")
+    .classed("node", true)
 
   let nodeJust: GraphJustification = "left"
   if (direction === "down") {
@@ -719,11 +725,11 @@ export function renderSankey(data: GraphData, direction: GraphDirection, ignore:
   let link = svg
     .append("g")
     .classed("links", true)
-    .selectAll("g")
+    .selectAll<SVGGElement, GraphLink>("g")
     .data(links)
     .join("g")
     .classed("link", true)
-    .each(function (this: Element, d: GraphLink) {
+    .each(function (d: GraphLink) {
       d.elements.push(this)
     })
   //.style("mix-blend-mode", "multiply")
@@ -792,7 +798,7 @@ export function renderSankey(data: GraphData, direction: GraphDirection, ignore:
   }
 
   // Overlay transparent rect on top of each node, for click events.
-  const rectElements = svg.selectAll<SVGGraphicsElement>("g.node rect").nodes()
+  const rectElements = svg.selectAll<SVGGraphicsElement, GraphNode>("g.node rect").nodes()
   const overlayData: { readonly rect: DOMRect; readonly node: GraphNode }[] = []
   // Flash the graph tab to be visible, so that the graph is laid out and
   // the BBox is not empty.

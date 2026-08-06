@@ -69,9 +69,9 @@ export class Item {
     let t = create("div").classed("frame", true)
     let header = t.append("h3")
     header.append(() => self.icon.make(32, true, undefined))
-    header.append(() => new Text(self.name))
+    header.append("span").text(self.name)
     if (extra) {
-      t.append(() => extra)
+      requireElement(t.node(), "item tooltip").append(extra)
     }
     return requireElement(t.node(), "item tooltip")
   }
@@ -264,9 +264,9 @@ export class Recipe implements SolverRecipe {
     if (this.products.length === 1 && this.products[0]!.item.name === this.name && one.less(this.products[0]!.amount)) {
       name = this.products[0]!.amount.toDecimal() + " \u00d7 " + name
     }
-    header.append(() => new Text("\u00A0" + name))
+    header.append("span").text("\u00A0" + name)
     if (extra) {
-      t.append(() => extra)
+      requireElement(t.node(), "recipe tooltip").append(extra)
     }
     if (this.ingredients.length === 0) {
       return requireElement(t.node(), "recipe tooltip")
@@ -402,7 +402,8 @@ function makeRecipe(_data: CalculatorData, items: Map<string, Item>, d: RecipeDa
   let time = Rational.from_float_approximate(d.energy_required)
   const products: Ingredient<Item, Rational>[] = []
   for (let result of d.results) {
-    const item = requireItem(items, result.name)
+    const item = items.get(result.name)
+    if (item === undefined) return null
     let amount = getExpectedResultAmount(result)
     products.push(new Ingredient(item, amount, getProductivityAmount(result, amount)))
   }

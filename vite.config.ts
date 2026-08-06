@@ -24,6 +24,7 @@ export default defineConfig({
   },
 })
 
+// Emit Rollup's real module ownership so build budgets can prove visualization stays deferred.
 function moduleGraphManifest(): Plugin {
   let projectRoot = ""
 
@@ -59,6 +60,7 @@ function moduleGraphManifest(): Plugin {
   }
 }
 
+// Stabilize absolute Rollup module IDs across machines before writing the validation artifact.
 function normalizeModuleId(moduleId: string, projectRoot: string): string {
   const normalized = normalizePath(moduleId).replace(/\?.*$/, "")
   const rootPrefix = `${projectRoot}/`

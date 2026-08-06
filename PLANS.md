@@ -48,7 +48,7 @@ Enable full repository-wide strict TypeScript, establish one typed calculator st
 - React will not absorb D3 or high-volume result rendering solely for framework consistency.
 - The uploaded repository is the sole implementation base; older migration artifacts are reference material only.
 - The exact module allowlist remains the narrow dependency contract; six architectural layers additionally reject upward dependencies and make ownership visible in diagnostics.
-- `test:e2e` remains separate from `verify` so releases can run in environments without Chromium; browser-facing changes and release candidates should run it when Chromium is available.
+- `test:e2e` remains separate from `verify`; install Playwright's pinned Chromium browser before running browser-facing changes and release candidates.
 - The release gate uses the pinned Node 22.22.3 and pnpm dependency installation, so rerun it after `pnpm install --frozen-lockfile`.
 
 ## Template

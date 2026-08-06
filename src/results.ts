@@ -1,4 +1,4 @@
-import { create, select, selectAll, type BaseType, type Selection } from "d3"
+import { create, select, selectAll } from "d3"
 import type { Instance } from "tippy.js"
 import {
   FactorySpecification,
@@ -31,7 +31,6 @@ import { getAssignedLocation, getCompatibleLocations as getPlanningLocations, ge
 import { type FactoryRecipe, getRecipeGroups, isFactoryRecipe, isItem, topoSort } from "./results/grouping.js"
 import { getFactorySummary } from "./results/summary.js"
 
-type AnySelection<TDatum = unknown> = Selection<BaseType, TDatum, BaseType, unknown>
 export { getRecipeGroups, topoSort } from "./results/grouping.js"
 export { getFactorySummary } from "./results/summary.js"
 export type { FactorySummary } from "./results/summary.js"
@@ -94,15 +93,16 @@ export function makeRecipeSelector(row: RecipeSelectorRow): HTMLElement | null {
     .on("click", (event: Event) => event.preventDefault())
   summary.append(() => row.item.icon.make(32, true))
 
-  let menu: ReturnType<typeof create> | null = null
+  let menu: HTMLDivElement | null = null
   const ensureMenu = (instance: Instance): void => {
     if (menu !== null) {
-      instance.setContent(requireNode(menu.node(), "recipe selector menu"))
+      instance.setContent(menu)
       return
     }
-    menu = create("div").classed("recipe-selector-menu", true)
-    menu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
-    const groups = menu
+    const createdMenu = create("div").classed("recipe-selector-menu", true)
+    menu = requireNode(createdMenu.node(), "recipe selector menu")
+    createdMenu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
+    const groups = createdMenu
       .selectAll<HTMLElement, RecipeSelectorGroup>("section.recipe-selector-group")
       .data(getRecipeSelectorGroups(recipes, row.recipe), (entry: RecipeSelectorGroup) => entry.key)
       .join("section")
@@ -140,7 +140,7 @@ export function makeRecipeSelector(row: RecipeSelectorRow): HTMLElement | null {
       }
       return recipeDetails.length > 0 ? `${recipe.name} — ${recipeDetails.join(", ")}` : recipe.name
     })
-    instance.setContent(requireNode(menu.node(), "recipe selector menu"))
+    instance.setContent(requireNode(createdMenu.node(), "recipe selector menu"))
   }
 
   const detailsNode = requireNode(details.node(), "recipe selector")
@@ -205,7 +205,7 @@ function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: reado
     .data(options)
     .join("div")
     .classed("machine-option", true)
-  const labels = addInputs<MachineOption>(
+  const labels = addInputs(
     choices,
     `machine-selector-${machineSelectorCount++}`,
     (option) => option.building === override,
