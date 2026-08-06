@@ -58,42 +58,80 @@ export function changeFactoryDensity(event: Event) {
 export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age" | "megabase"
 
 type PresetDefinition = {
+  planets: string[]
   miningProductivity: number
   belt: string
   beltStackSize: number
   maxQualityLevel: number
+  defaultMachines: string[]
 }
 
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   early: {
+    planets: ["nauvis"],
     miningProductivity: 0,
     belt: "transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 0,
+    defaultMachines: ["assembling-machine-1", "chemical-plant", "stone-furnace", "electric-mining-drill"],
   },
   "pre-rocket": {
+    planets: ["nauvis"],
     miningProductivity: 20,
     belt: "fast-transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 0,
+    defaultMachines: ["assembling-machine-2", "chemical-plant", "steel-furnace", "electric-mining-drill"],
   },
   "first-planets": {
+    planets: ["nauvis", "space-platform"],
     miningProductivity: 30,
     belt: "express-transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 2,
+    defaultMachines: [
+      "assembling-machine-3",
+      "chemical-plant",
+      "foundry",
+      "electromagnetic-plant",
+      "biochamber",
+      "electric-furnace",
+      "electric-mining-drill",
+    ],
   },
   "late-space-age": {
+    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
     miningProductivity: 100,
     belt: "turbo-transport-belt",
     beltStackSize: 4,
     maxQualityLevel: 4,
+    defaultMachines: [
+      "assembling-machine-3",
+      "chemical-plant",
+      "foundry",
+      "electromagnetic-plant",
+      "biochamber",
+      "cryogenic-plant",
+      "electric-furnace",
+      "big-mining-drill",
+    ],
   },
   megabase: {
+    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
     miningProductivity: 300,
     belt: "turbo-transport-belt",
     beltStackSize: 4,
     maxQualityLevel: 4,
+    defaultMachines: [
+      "assembling-machine-3",
+      "chemical-plant",
+      "foundry",
+      "electromagnetic-plant",
+      "biochamber",
+      "cryogenic-plant",
+      "electric-furnace",
+      "big-mining-drill",
+    ],
   },
 }
 
@@ -111,12 +149,26 @@ function syncProgressionControls() {
   if (beltStack !== null) beltStack.value = spec.beltStackSize.toString()
   let maxQuality = document.getElementById("max_quality") as HTMLSelectElement | null
   if (maxQuality !== null) maxQuality.value = String(spec.maxQualityLevel)
+
+  document.querySelectorAll<HTMLInputElement>('#building_selector input[type="checkbox"]').forEach((input) => {
+    let building = (input as HTMLInputElement & { __data__?: any }).__data__
+    input.checked = building === undefined ? false : spec.isAutomaticBuildingEnabled(building)
+  })
 }
 
 export function applyProgressionPreset(event: Event) {
   let select = event.target
   if (!(select instanceof HTMLSelectElement) || !(select.value in PROGRESSION_PRESETS)) return
   let preset = PROGRESSION_PRESETS[select.value as ProgressionPreset]
+
+  spec.selectedPlanets.clear()
+  for (let key of preset.planets) {
+    let planet = getByKey(spec.planets, key)
+    if (planet !== null) spec.selectPlanet(planet)
+  }
+  if (spec.selectedPlanets.size === 0 && spec.planets?.size) {
+    spec.selectPlanet(spec.planets.values().next().value)
+  }
 
   spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
   let belt = getByKey(spec.belts, preset.belt)
@@ -126,6 +178,17 @@ export function applyProgressionPreset(event: Event) {
   for (let target of spec.buildTargets) {
     target.setQuality(target.qualityLevel)
   }
+
+  spec.clearBuildingOverrides()
+  spec.setAutomaticBuildingPreferences(
+    preset.defaultMachines.map((key) => getByKey(spec.buildingKeys, key)).filter((building) => building !== null),
+  )
+
+  document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle: any) => {
+    let location = toggle.__data__
+    toggle.classList.toggle("selected", spec.selectedPlanets.has(location))
+    toggle.setAttribute("aria-pressed", String(spec.selectedPlanets.has(location)))
+  })
 
   syncMiningProductivityControls()
   syncProgressionControls()

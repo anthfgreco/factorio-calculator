@@ -13,6 +13,50 @@ const AQUILO_MACHINE_HEAT_KW: Readonly<Record<string, number>> = {
 const DEFAULT_AQUILO_MACHINE_HEAT_KW = 100
 const AQUILO_BEACON_HEAT_W = Rational.from_integer(400_000)
 
+export type QualityTargetFeasibility =
+  | {
+      status: "feasible"
+      qualityChance: Rational
+    }
+  | {
+      status: "auto-configurable"
+      building: any
+      module: any
+      slotCount: number
+    }
+  | {
+      status: "conflict"
+      building: any
+      module: any
+      reason: "explicit-building" | "explicit-modules"
+    }
+  | {
+      status: "unavailable"
+      reason: "no-compatible-building" | "no-module-slots" | "no-quality-module" | "module-incompatible"
+    }
+
+function isQualityModule(module): boolean {
+  return module !== null && module !== undefined && module.quality !== undefined && zero.less(module.quality)
+}
+
+function moduleTier(module): number {
+  if (module === null || module === undefined) return 1
+  const match = String(module.key ?? "").match(/(\d+)$/)
+  return match === null ? 1 : Number(match[1])
+}
+
+function getModuleSpecWithoutMutation(specification, recipe) {
+  return specification.spec?.get(recipe) ?? null
+}
+
+function getQualityChanceFromModules(modules): Rational {
+  let quality = zero
+  for (const module of modules ?? []) {
+    if (module) quality = quality.add(module.quality)
+  }
+  return Rational.max(zero, Rational.min(one, quality))
+}
+
 export function qualityProbability(chance: Rational, targetLevel: number, maxLevel: number): Rational {
   if (targetLevel <= 0) return one
   if (targetLevel > maxLevel || chance.less(zero) || chance.isZero()) return zero
@@ -26,13 +70,117 @@ export function qualityProbability(chance: Rational, targetLevel: number, maxLev
 }
 
 export function getRecipeQualityChance(specification, recipe): Rational {
-  const moduleSpec = specification.getModuleSpec(recipe)
-  if (!moduleSpec) return zero
-  let quality = zero
-  for (const module of moduleSpec.modules) {
-    if (module) quality = quality.add(module.quality)
+  const building = specification.getBuilding(recipe)
+  const moduleSpec = getModuleSpecWithoutMutation(specification, recipe)
+  let modules = moduleSpec?.building === building ? moduleSpec.modules : null
+  if (modules === null && building !== null && building !== undefined && building.moduleSlots > 0) {
+    const defaultModule = specification.getDefaultModule?.(recipe, building) ?? null
+    modules = Array.from({ length: building.moduleSlots }, () => defaultModule)
   }
-  return Rational.max(zero, Rational.min(one, quality))
+  return getQualityChanceFromModules(modules)
+}
+
+function chooseQualityModule(specification, recipe, building, moduleSpec, qualityModules) {
+  const compatible = qualityModules.filter((module) => module.canUse(recipe, building))
+  if (compatible.length === 0) return null
+
+  const existing = moduleSpec?.modules?.find(
+    (module) => isQualityModule(module) && module.canUse(recipe, building) && compatible.includes(module),
+  )
+  if (existing !== undefined) return existing
+
+  const defaultModule = specification.defaultModule
+  if (isQualityModule(defaultModule) && compatible.includes(defaultModule)) {
+    return defaultModule
+  }
+
+  if (defaultModule !== null && defaultModule !== undefined) {
+    const preferredTier = moduleTier(defaultModule)
+    const sameTier = compatible.find((module) => moduleTier(module) === preferredTier)
+    if (sameTier !== undefined) return sameTier
+
+    const lowerTiers = compatible
+      .filter((module) => moduleTier(module) < preferredTier)
+      .sort((a, b) => moduleTier(b) - moduleTier(a))
+    if (lowerTiers.length > 0) return lowerTiers[0]
+  }
+
+  return [...compatible].sort((a, b) => moduleTier(a) - moduleTier(b))[0]
+}
+
+export function getQualityTargetFeasibility(
+  specification,
+  recipe,
+  qualityLevel: number,
+  options: { ignoreExplicit?: boolean } = {},
+): QualityTargetFeasibility {
+  if (qualityLevel <= 0) {
+    return { status: "feasible", qualityChance: one }
+  }
+
+  if (recipe === null || recipe === undefined || qualityLevel > specification.maxQualityLevel) {
+    return { status: "unavailable", reason: "no-quality-module" }
+  }
+
+  const qualityChance = getRecipeQualityChance(specification, recipe)
+  if (!qualityProbability(qualityChance, qualityLevel, specification.maxQualityLevel).isZero()) {
+    return { status: "feasible", qualityChance }
+  }
+
+  const currentBuilding = specification.getBuilding(recipe)
+  const moduleSpec = getModuleSpecWithoutMutation(specification, recipe)
+  const buildingOverrideSource =
+    specification.getBuildingOverrideSource?.(recipe) ??
+    (specification.getBuildingOverride?.(recipe) === null ? "default" : "user")
+  if (!options.ignoreExplicit && buildingOverrideSource === "user") {
+    return {
+      status: "conflict",
+      building: currentBuilding,
+      module: moduleSpec?.modules?.find((module) => module !== null) ?? null,
+      reason: "explicit-building",
+    }
+  }
+  if (!options.ignoreExplicit && moduleSpec?.moduleSource === "user") {
+    return {
+      status: "conflict",
+      building: currentBuilding,
+      module: moduleSpec.modules.find((module) => module !== null) ?? null,
+      reason: "explicit-modules",
+    }
+  }
+
+  const compatibleBuildings = specification.getCompatibleBuildings?.(recipe, true) ?? []
+  if (compatibleBuildings.length === 0) {
+    return { status: "unavailable", reason: "no-compatible-building" }
+  }
+
+  const qualityModules = [...(specification.modules?.values?.() ?? [])].filter(isQualityModule)
+  if (qualityModules.length === 0) {
+    return { status: "unavailable", reason: "no-quality-module" }
+  }
+
+  const orderedBuildings = compatibleBuildings.includes(currentBuilding)
+    ? [currentBuilding, ...compatibleBuildings.filter((building) => building !== currentBuilding)]
+    : compatibleBuildings
+  let moduleCapableBuilding = false
+  for (const building of orderedBuildings) {
+    if (building.moduleSlots <= 0) continue
+    moduleCapableBuilding = true
+    const module = chooseQualityModule(specification, recipe, building, moduleSpec, qualityModules)
+    if (module !== null) {
+      return {
+        status: "auto-configurable",
+        building,
+        module,
+        slotCount: building.moduleSlots,
+      }
+    }
+  }
+
+  if (!moduleCapableBuilding) {
+    return { status: "unavailable", reason: "no-module-slots" }
+  }
+  return { status: "unavailable", reason: "module-incompatible" }
 }
 
 export function getQualityTargetMultiplier(specification, recipe, qualityLevel: number): Rational {

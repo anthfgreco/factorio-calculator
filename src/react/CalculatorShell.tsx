@@ -33,7 +33,14 @@ function TargetsPanel({ actions }: CalculatorShellProps) {
     <section className="targets-panel" aria-labelledby="targets_title">
       <div className="targets-heading">
         <span id="targets_title">Production targets</span>
-        <span className="targets-hint">Choose outputs, then set a machine count or rate.</span>
+        <span className="targets-hint">Choose an output, then set its quality, machine count, or production rate.</span>
+      </div>
+      <div className="production-target-header" aria-hidden="true">
+        <span />
+        <span>Output</span>
+        <span>Quality</span>
+        <span>Machines</span>
+        <span>Rate/min</span>
       </div>
       <ul id="targets">
         <li id="plusButton">

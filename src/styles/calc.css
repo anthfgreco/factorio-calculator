@@ -157,6 +157,20 @@ label.selected {
 .location-warning button {
   margin-top: 0.5em;
 }
+.quality-notice {
+  max-width: 46em;
+  margin: 0.35rem 0 0.25rem 2.5rem;
+  padding: 0.4rem 0.65rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+  background-color: var(--medium);
+}
+.quality-notice-message {
+  margin-right: 0.55rem;
+}
+.quality-notice button {
+  margin-top: 0.15rem;
+}
 /* settings */
 table#settings {
   border-collapse: collapse;

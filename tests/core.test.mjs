@@ -28,7 +28,8 @@ const {
   getRecipeProductivityResearch,
 } = await load("models")
 const { getExpectedResultAmount, getItems, getRecipes } = await load("recipes")
-const { FactorySpecification } = await load("factory")
+const { FactorySpecification, resetSpec } = await load("factory")
+const { handleTargetQualityChange } = await load("ui")
 const { getFactorySummary } = await load("results")
 const { PriorityList } = await load("priorities")
 const { Ingredient, solve, SolverFailure } = await load("solver")
@@ -39,6 +40,7 @@ const {
   getFreshnessReport,
   getPollution,
   getPollutionComponents,
+  getQualityTargetFeasibility,
   getRocketLaunchReport,
   getTransportFlows,
   qualityProbability,
@@ -896,6 +898,38 @@ test("automatic machines support explicit multiple selections without selecting 
   assert.equal(factorySpec.isAutomaticBuildingEnabled(am2), true)
 })
 
+test("automatic machine preferences choose compatible baseline and specialized machines", async () => {
+  const { factorySpec, recipes, planets } = await setupTestFactory()
+  factorySpec.setAutomaticBuildingPreferences(
+    ["assembling-machine-1", "chemical-plant", "stone-furnace", "electric-mining-drill"].map((key) =>
+      factorySpec.buildingKeys.get(key),
+    ),
+  )
+
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  assert.equal(factorySpec.getBuilding(recipes.get("iron-gear-wheel")).key, "assembling-machine-1")
+  assert.equal(factorySpec.getBuilding(recipes.get("sulfuric-acid")).key, "chemical-plant")
+  assert.equal(factorySpec.getBuilding(recipes.get("iron-plate")).key, "stone-furnace")
+
+  const preferredKeys = [
+    "assembling-machine-3",
+    "chemical-plant",
+    "foundry",
+    "electromagnetic-plant",
+    "biochamber",
+    "cryogenic-plant",
+    "electric-furnace",
+    "big-mining-drill",
+  ]
+  factorySpec.setAutomaticBuildingPreferences(preferredKeys.map((key) => factorySpec.buildingKeys.get(key)))
+
+  assert.equal(factorySpec.getBuilding(recipes.get("iron-gear-wheel")).key, "assembling-machine-3")
+  assert.equal(factorySpec.getBuilding(recipes.get("iron-plate")).key, "electric-furnace")
+
+  factorySpec.selectOnePlanet(planets.get("fulgora"))
+  assert.equal(factorySpec.getBuilding(recipes.get("processing-unit")).key, "electromagnetic-plant")
+})
+
 test("recipe building overrides reject incompatible machines", async () => {
   const { factorySpec, recipes, planets } = await setupTestFactory()
   const recipe = recipes.get("processing-unit")
@@ -1190,6 +1224,200 @@ test("quality probability collapses repeated upgrades into the highest unlocked 
   assert.equal(qualityProbability(chance, 1, 4).toString(), "9/40")
   assert.equal(qualityProbability(chance, 4, 4).toString(), "1/4000")
   assert.equal(qualityProbability(chance, 2, 2).toString(), "1/40")
+})
+
+test("default advanced circuit quality target recommends assembling machine 2 and quality module 1", async () => {
+  const { factorySpec, recipes, items, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("advanced-circuit")
+  const item = items.get("advanced-circuit")
+  const unrelatedRecipe = recipes.get("electronic-circuit")
+  const assemblingMachine1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const assemblingMachine2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const qualityModule1 = modules.get("quality-module")
+
+  assert.equal(factorySpec.getBuilding(recipe), assemblingMachine1)
+  const unrelatedBuilding = factorySpec.getBuilding(unrelatedRecipe)
+  const feasibility = getQualityTargetFeasibility(factorySpec, recipe, 1)
+  assert.equal(feasibility.status, "auto-configurable")
+  assert.equal(feasibility.building, assemblingMachine2)
+  assert.equal(feasibility.module, qualityModule1)
+  assert.equal(feasibility.slotCount, 2)
+
+  const globalDefault = factorySpec.defaultModule
+  assert.equal(factorySpec.applyQualityTargetConfiguration(recipe, feasibility), true)
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  assert.equal(moduleSpec.building, assemblingMachine2)
+  assert.deepEqual(moduleSpec.modules, [qualityModule1, qualityModule1])
+  assert.equal(factorySpec.defaultModule, globalDefault)
+  assert.equal(factorySpec.getBuilding(unrelatedRecipe), unrelatedBuilding)
+  assert.equal(factorySpec.spec.has(unrelatedRecipe), false)
+
+  factorySpec.buildTargets = [{ item, recipe, qualityLevel: 1, changedBuilding: false, getRate: () => one }]
+  assert.doesNotThrow(() => factorySpec.updateSolution())
+  assert.equal(factorySpec.lastError, null)
+  assert.ok(factorySpec.lastTotals !== null)
+})
+
+test("target quality handler configures only the advanced circuit and keeps results valid", async () => {
+  const runtime = await createTestRuntime()
+  const factorySpec = resetSpec()
+  configureModelRuntime({
+    getSpecification: () => factorySpec,
+    useLegacyCalculation: () => false,
+  })
+  factorySpec.setData(
+    runtime.items,
+    runtime.recipes,
+    runtime.planets,
+    runtime.modules,
+    runtime.buildings,
+    runtime.belts,
+    runtime.fuel,
+    runtime.itemGroups,
+    runtime.recipeProductivityResearch,
+    runtime.beaconPower,
+  )
+  factorySpec.setDefaultPriority()
+  factorySpec.selectOnePlanet(runtime.planets.get("nauvis"))
+
+  const item = runtime.items.get("advanced-circuit")
+  const recipe = runtime.recipes.get("advanced-circuit")
+  const unrelatedRecipe = runtime.recipes.get("electronic-circuit")
+  const unrelatedBuilding = factorySpec.getBuilding(unrelatedRecipe)
+  const target = {
+    item,
+    recipe,
+    qualityLevel: 0,
+    changedBuilding: false,
+    getRate: () => one,
+    setQuality(level) {
+      this.qualityLevel = level
+    },
+    clearQualityWarning() {
+      this.warningCleared = true
+    },
+    showQualityUnavailable() {
+      throw new Error("The default quality target should be configurable")
+    },
+  }
+  factorySpec.buildTargets = [target]
+
+  handleTargetQualityChange(target, 1)
+
+  const moduleSpec = factorySpec.getModuleSpec(recipe)
+  assert.equal(target.qualityLevel, 1)
+  assert.equal(target.warningCleared, true)
+  assert.equal(
+    moduleSpec.modules.every((module) => module.key === "quality-module"),
+    true,
+  )
+  assert.equal(factorySpec.getBuilding(unrelatedRecipe), unrelatedBuilding)
+  assert.equal(factorySpec.lastError, null)
+  assert.ok(factorySpec.lastTotals !== null)
+
+  handleTargetQualityChange(target, 1)
+  handleTargetQualityChange(target, 0)
+  assert.equal(target.qualityLevel, 0)
+  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
+  assert.equal(
+    factorySpec.getModuleSpec(recipe).modules.every((module) => module.key === "quality-module"),
+    true,
+  )
+})
+
+test("quality target recommendation follows the default module tier and stays idempotent", async () => {
+  const { factorySpec, recipes, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("advanced-circuit")
+  const speedModule2 = modules.get("speed-module-2")
+  const qualityModule2 = modules.get("quality-module-2")
+  factorySpec.setDefaultModule(speedModule2)
+
+  const first = getQualityTargetFeasibility(factorySpec, recipe, 1)
+  assert.equal(first.status, "auto-configurable")
+  assert.equal(first.module, qualityModule2)
+  assert.equal(factorySpec.applyQualityTargetConfiguration(recipe, first), true)
+  assert.equal(getQualityTargetFeasibility(factorySpec, recipe, 1).status, "feasible")
+  assert.equal(
+    factorySpec.getModuleSpec(recipe).modules.every((module) => module === qualityModule2),
+    true,
+  )
+})
+
+test("quality feasibility preserves compatible configuration and identifies explicit conflicts", async () => {
+  const { factorySpec, recipes, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("advanced-circuit")
+  const assemblingMachine1 = factorySpec.buildingKeys.get("assembling-machine-1")
+  const assemblingMachine2 = factorySpec.buildingKeys.get("assembling-machine-2")
+  const qualityModule1 = modules.get("quality-module")
+  const productivityModule1 = modules.get("productivity-module")
+
+  factorySpec.setBuildingOverride(recipe, assemblingMachine2)
+  const configured = factorySpec.getModuleSpec(recipe)
+  configured.setModule(0, qualityModule1)
+  configured.setModule(1, qualityModule1)
+  assert.equal(getQualityTargetFeasibility(factorySpec, recipe, 1).status, "feasible")
+
+  factorySpec.setBuildingOverride(recipe, assemblingMachine1)
+  assert.deepEqual(getQualityTargetFeasibility(factorySpec, recipe, 1), {
+    status: "conflict",
+    building: assemblingMachine1,
+    module: null,
+    reason: "explicit-building",
+  })
+
+  const secondFactory = await setupTestFactory()
+  secondFactory.factorySpec.selectOnePlanet(secondFactory.planets.get("nauvis"))
+  const secondRecipe = secondFactory.recipes.get("advanced-circuit")
+  secondFactory.factorySpec.setMinimumBuilding(secondFactory.factorySpec.buildingKeys.get("assembling-machine-2"))
+  const secondSpec = secondFactory.factorySpec.getModuleSpec(secondRecipe)
+  secondSpec.setModule(0, productivityModule1)
+  assert.equal(getQualityTargetFeasibility(secondFactory.factorySpec, secondRecipe, 1).status, "conflict")
+  assert.equal(getQualityTargetFeasibility(secondFactory.factorySpec, secondRecipe, 1).reason, "explicit-modules")
+})
+
+test("quality feasibility reports unavailable module and machine paths without solving", async () => {
+  const { factorySpec, recipes, modules, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("advanced-circuit")
+  const assemblingMachine1 = factorySpec.buildingKeys.get("assembling-machine-1")
+
+  factorySpec.modules = new Map([...modules].filter(([, module]) => module.category !== "quality"))
+  assert.deepEqual(getQualityTargetFeasibility(factorySpec, recipe, 1), {
+    status: "unavailable",
+    reason: "no-quality-module",
+  })
+
+  const noSlotsFactory = await setupTestFactory()
+  noSlotsFactory.factorySpec.selectOnePlanet(noSlotsFactory.planets.get("nauvis"))
+  const noSlotsRecipe = noSlotsFactory.recipes.get("advanced-circuit")
+  noSlotsFactory.factorySpec.getCompatibleBuildings = () => [assemblingMachine1]
+  assert.deepEqual(getQualityTargetFeasibility(noSlotsFactory.factorySpec, noSlotsRecipe, 1), {
+    status: "unavailable",
+    reason: "no-module-slots",
+  })
+
+  const normal = getQualityTargetFeasibility(factorySpec, recipe, 0)
+  assert.equal(normal.status, "feasible")
+  assert.equal(factorySpec.getBuilding(recipe), assemblingMachine1)
+})
+
+test("the solver still rejects a manually constructed impossible quality target", async () => {
+  const { factorySpec, recipes, items, planets } = await setupTestFactory()
+  factorySpec.selectOnePlanet(planets.get("nauvis"))
+  const recipe = recipes.get("advanced-circuit")
+  factorySpec.buildTargets = [
+    {
+      item: items.get("advanced-circuit"),
+      recipe,
+      qualityLevel: 1,
+      changedBuilding: false,
+      getRate: () => one,
+    },
+  ]
+  assert.throws(() => factorySpec.solve(), /cannot produce Uncommon output/)
 })
 
 test("exact-quality targets scale the selected recipe by its direct yield", async () => {

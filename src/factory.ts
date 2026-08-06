@@ -1,5 +1,5 @@
 import { Formatter, half, one, Rational, zero } from "./math.js"
-import { ModuleSpec, type Fuel, type FuelCollection } from "./models.js"
+import { ModuleSpec, type ConfigurationSource, type Fuel, type FuelCollection } from "./models.js"
 import type { PriorityList } from "./priorities.js"
 import {
   applyPriorities,
@@ -299,6 +299,8 @@ export class FactorySpecification {
   buildings: Map<string, any> | null
   buildingKeys: Map<string, any> | null
   buildingOverrides: Map<any, any>
+  buildingOverrideSources: Map<any, ConfigurationSource>
+  recipeConfigurationRevisions: Map<any, number>
   belts: Map<string, any> | null
   fuels: FuelCollection | null
   itemGroups: any
@@ -348,6 +350,8 @@ export class FactorySpecification {
     this.buildings = null
     this.buildingKeys = null
     this.buildingOverrides = new Map()
+    this.buildingOverrideSources = new Map()
+    this.recipeConfigurationRevisions = new Map()
     this.belts = null
     this.fuels = null
 
@@ -534,18 +538,24 @@ export class FactorySpecification {
   getBuildingOverride(recipe) {
     return this.buildingOverrides.get(recipe) ?? null
   }
+  getBuildingOverrideSource(recipe): ConfigurationSource {
+    if (!this.buildingOverrides.has(recipe)) return "default"
+    return this.buildingOverrideSources.get(recipe) ?? "user"
+  }
   getBuilding(recipe) {
     return this.getBuildingOverride(recipe) ?? this.getAutomaticBuilding(recipe)
   }
-  setBuildingOverride(recipe, building) {
+  setBuildingOverride(recipe, building, source: ConfigurationSource = "user") {
     if (building !== null && (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))) {
       return false
     }
 
     if (building === null) {
       this.buildingOverrides.delete(recipe)
+      this.buildingOverrideSources.delete(recipe)
     } else {
       this.buildingOverrides.set(recipe, building)
+      this.buildingOverrideSources.set(recipe, source)
     }
 
     let moduleSpec = this.spec.get(recipe)
@@ -553,6 +563,93 @@ export class FactorySpecification {
     if (moduleSpec !== undefined && selectedBuilding !== null && moduleSpec.building !== selectedBuilding) {
       moduleSpec.setBuilding(selectedBuilding, this)
     }
+    if (source === "user") this.notifyRecipeConfigurationChanged(recipe)
+    else this.recordRecipeConfigurationChange(recipe)
+    return true
+  }
+  recordRecipeConfigurationChange(recipe) {
+    this.recipeConfigurationRevisions.set(recipe, (this.recipeConfigurationRevisions.get(recipe) ?? 0) + 1)
+  }
+  notifyRecipeConfigurationChanged(recipe) {
+    this.recordRecipeConfigurationChange(recipe)
+    for (const target of this.buildTargets) {
+      if (target.recipe === recipe) {
+        target.invalidateQualityUndo?.(recipe)
+      }
+    }
+  }
+  captureRecipeConfiguration(recipe) {
+    const moduleSpec = this.spec.get(recipe)
+    return {
+      hasBuildingOverride: this.buildingOverrides.has(recipe),
+      buildingOverride: this.buildingOverrides.get(recipe) ?? null,
+      buildingOverrideSource: this.getBuildingOverrideSource(recipe),
+      revision: this.getRecipeConfigurationRevision(recipe),
+      moduleSpec:
+        moduleSpec === undefined
+          ? null
+          : {
+              object: moduleSpec,
+              building: moduleSpec.building,
+              modules: [...moduleSpec.modules],
+              moduleSource: moduleSpec.moduleSource,
+              beaconModules: [...moduleSpec.beaconModules],
+              beaconCount: moduleSpec.beaconCount,
+            },
+    }
+  }
+  restoreRecipeConfiguration(recipe, snapshot) {
+    if (snapshot.hasBuildingOverride) {
+      this.buildingOverrides.set(recipe, snapshot.buildingOverride)
+      this.buildingOverrideSources.set(recipe, snapshot.buildingOverrideSource)
+    } else {
+      this.buildingOverrides.delete(recipe)
+      this.buildingOverrideSources.delete(recipe)
+    }
+
+    if (snapshot.moduleSpec === null) {
+      this.spec.delete(recipe)
+      return
+    }
+
+    const moduleSpec = snapshot.moduleSpec.object
+    moduleSpec.building = snapshot.moduleSpec.building
+    moduleSpec.modules = [...snapshot.moduleSpec.modules]
+    moduleSpec.moduleSource = snapshot.moduleSpec.moduleSource
+    moduleSpec.beaconModules = [...snapshot.moduleSpec.beaconModules]
+    moduleSpec.beaconCount = snapshot.moduleSpec.beaconCount
+    this.spec.set(recipe, moduleSpec)
+  }
+  getRecipeConfigurationFingerprint(recipe): string {
+    const moduleSpec = this.spec.get(recipe)
+    const moduleKey = (module) => (module === null || module === undefined ? null : module.key)
+    return JSON.stringify({
+      buildingOverride: this.buildingOverrides.has(recipe) ? (this.buildingOverrides.get(recipe)?.key ?? null) : null,
+      buildingOverrideSource: this.getBuildingOverrideSource(recipe),
+      moduleBuilding: moduleKey(moduleSpec?.building),
+      modules: moduleSpec?.modules?.map(moduleKey) ?? null,
+      moduleSource: moduleSpec?.moduleSource ?? "default",
+      beaconModules: moduleSpec?.beaconModules?.map(moduleKey) ?? null,
+      beaconCount: moduleSpec?.beaconCount?.toString() ?? null,
+    })
+  }
+  getRecipeConfigurationRevision(recipe): number {
+    return this.recipeConfigurationRevisions.get(recipe) ?? 0
+  }
+  applyQualityTargetConfiguration(recipe, recommendation) {
+    if (recommendation?.status !== "auto-configurable") return false
+    const { building, module, slotCount } = recommendation
+    if (!this.setBuildingOverride(recipe, building, "automatic-quality")) return false
+    const moduleSpec = this.getModuleSpec(recipe)
+    if (moduleSpec === undefined || moduleSpec.building !== building || !module.canUse(recipe, building)) return false
+    for (let index = 0; index < slotCount; index++) {
+      if (!moduleSpec.setModule(index, module, "automatic-quality")) {
+        // setModule returns false when an effect-neutral module is selected;
+        // the assignment is still valid, so only reject an unavailable slot.
+        if (moduleSpec.getModule(index) !== module) return false
+      }
+    }
+    moduleSpec.moduleSource = "automatic-quality"
     return true
   }
   getBuildingGroup(building) {
@@ -564,6 +661,31 @@ export class FactorySpecification {
     group.building = building
     group.selectedBuildings = new Set([building])
     this.updateBuildingGroup(group)
+  }
+  setAutomaticBuildingPreferences(buildings) {
+    let selections = new Map<any, any[]>()
+    for (let building of buildings) {
+      let group = this.getBuildingGroup(building)
+      let selected = selections.get(group)
+      if (selected === undefined) {
+        selected = []
+        selections.set(group, selected)
+      }
+      selected.push(building)
+    }
+
+    for (let group of new Set<any>(this.buildings.values())) {
+      let selected = selections.get(group) ?? [group.getDefault()]
+      this.setMinimumBuilding(selected[0])
+      for (let building of selected.slice(1)) {
+        this.setAutomaticBuildingEnabled(building, true)
+      }
+    }
+  }
+  clearBuildingOverrides() {
+    for (let recipe of [...this.buildingOverrides.keys()]) {
+      this.setBuildingOverride(recipe, null)
+    }
   }
   setAutomaticBuildingEnabled(building, enabled) {
     let group = this.getBuildingGroup(building)
@@ -656,33 +778,43 @@ export class FactorySpecification {
   }
   setDefaultModule(module) {
     for (let [recipe, moduleSpec] of this.spec) {
+      if (moduleSpec.moduleSource !== "default") continue
+      let changed = false
       for (let i = 0; i < moduleSpec.modules.length; i++) {
         if (moduleSpec.modules[i] !== this.defaultModule) {
           continue
         }
         if (module === null || module.canUse(recipe, moduleSpec.building)) {
           moduleSpec.modules[i] = module
+          changed = true
         } else if (
           this.secondaryDefaultModule === null ||
           this.secondaryDefaultModule.canUse(recipe, moduleSpec.building)
         ) {
           moduleSpec.modules[i] = this.secondaryDefaultModule
+          changed = true
         } else {
           moduleSpec.modules[i] = null
+          changed = true
         }
       }
+      if (changed) this.notifyRecipeConfigurationChanged(recipe)
     }
     this.defaultModule = module
   }
   setSecondaryDefaultModule(module) {
     if (this.secondaryDefaultModule !== this.defaultModule) {
       for (let [recipe, moduleSpec] of this.spec) {
+        if (moduleSpec.moduleSource !== "default") continue
+        let changed = false
         for (let i = 0; i < moduleSpec.modules.length; i++) {
           let m = moduleSpec.modules[i]
           if (m === this.secondaryDefaultModule) {
             moduleSpec.modules[i] = !module || module.canUse(recipe, moduleSpec.building) ? module : null
+            changed = true
           }
         }
+        if (changed) this.notifyRecipeConfigurationChanged(recipe)
       }
     }
     this.secondaryDefaultModule = module

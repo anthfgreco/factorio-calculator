@@ -13,6 +13,8 @@ export interface ModelRuntimeContext {
   useLegacyCalculation(): boolean
 }
 
+export type ConfigurationSource = "default" | "automatic-quality" | "user"
+
 let context: ModelRuntimeContext | null = null
 
 export function configureModelRuntime(nextContext: ModelRuntimeContext): void {
@@ -907,8 +909,10 @@ export class ModuleSpec {
   [key: string]: any
   constructor(recipe, spec) {
     this.recipe = recipe
+    this.owner = spec
     this.building = null
     this.modules = []
+    this.moduleSource = "default" as ConfigurationSource
     this.beaconModules = spec.defaultBeacon.map((module) => (module === null || module.canBeacon() ? module : null))
     this.beaconCount = spec.defaultBeaconCount
   }
@@ -938,7 +942,7 @@ export class ModuleSpec {
     return this.modules[index]
   }
   // Returns true if the module change requires a recalculation.
-  setModule(index, module) {
+  setModule(index, module, source: ConfigurationSource = "user") {
     if (index >= this.modules.length) {
       return false
     }
@@ -950,6 +954,14 @@ export class ModuleSpec {
       (oldModule && (oldModule.hasProdEffect() || oldModule.hasQualityEffect())) ||
       (module && (module.hasProdEffect() || module.hasQualityEffect()))
     this.modules[index] = module
+    if (source !== "default") {
+      this.moduleSource = source
+    }
+    if (source === "user") {
+      this.owner?.notifyRecipeConfigurationChanged?.(this.recipe)
+    } else if (source === "automatic-quality") {
+      this.owner?.recordRecipeConfigurationChange?.(this.recipe)
+    }
     return needRecalc
   }
   setBeaconModule(module, i) {

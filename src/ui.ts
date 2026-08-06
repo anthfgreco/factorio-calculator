@@ -5,7 +5,7 @@ import { one, Rational, zero } from "./math.js"
 import { addInputs, makeDropdown, reapTooltips } from "./presentation.js"
 import { formatLocationList, getUnavailableLocationInfo, itemMatchesSearch } from "./data.js"
 import { refreshRecipeSettings } from "./settings.js"
-import { getRecipeQualityChance, qualityProbability, QUALITY_TIERS } from "./planning.js"
+import { getQualityTargetFeasibility, getRecipeQualityChance, qualityProbability, QUALITY_TIERS } from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Build targets
@@ -56,6 +56,76 @@ function changeRateHandler(target) {
   return function () {
     target.rateChanged()
     spec.updateSolution()
+  }
+}
+
+function getTargetQualityRecipe(target) {
+  return target.recipe ?? spec.getRecipes(target.item)[0] ?? null
+}
+
+function applyAutomaticQualityConfiguration(target, recipe, qualityLevel, previousQuality, recommendation) {
+  if (!spec.applyQualityTargetConfiguration(recipe, recommendation)) {
+    target.setQuality(previousQuality)
+    target.showQualityUnavailable(qualityLevel)
+    return false
+  }
+
+  target.clearQualityWarning()
+  spec.updateSolution()
+  return true
+}
+
+export function handleTargetQualityChange(target, requestedQuality) {
+  const previousQuality = target.qualityLevel
+  target.setQuality(requestedQuality)
+  const qualityLevel = target.qualityLevel
+
+  if (qualityLevel <= 0) {
+    target.clearQualityWarning()
+    spec.updateSolution()
+    return
+  }
+
+  const recipe = getTargetQualityRecipe(target)
+  if (recipe === null) {
+    target.setQuality(previousQuality)
+    target.showQualityUnavailable(qualityLevel)
+    return
+  }
+
+  const feasibility = getQualityTargetFeasibility(spec, recipe, qualityLevel)
+  if (feasibility.status === "feasible") {
+    target.clearQualityWarning()
+    spec.updateSolution()
+    return
+  }
+
+  if (feasibility.status === "auto-configurable") {
+    applyAutomaticQualityConfiguration(target, recipe, qualityLevel, previousQuality, feasibility)
+    return
+  }
+
+  if (feasibility.status === "conflict") {
+    target.qualityConflictPreviousQuality = previousQuality
+    target.showQualityConflict(qualityLevel)
+    return
+  }
+
+  target.setQuality(previousQuality)
+  target.showQualityUnavailable(qualityLevel)
+}
+
+function configureQualityFromNotice(target) {
+  const recipe = getTargetQualityRecipe(target)
+  if (recipe === null || target.qualityLevel <= 0) return
+
+  const recommendation = getQualityTargetFeasibility(spec, recipe, target.qualityLevel, { ignoreExplicit: true })
+  if (recommendation.status === "auto-configurable") {
+    const previousQuality = target.qualityConflictPreviousQuality ?? target.qualityLevel
+    applyAutomaticQualityConfiguration(target, recipe, target.qualityLevel, previousQuality, recommendation)
+  } else if (recommendation.status === "unavailable") {
+    target.setQuality(target.qualityLevel)
+    target.showQualityUnavailable(target.qualityLevel)
   }
 }
 
@@ -138,8 +208,10 @@ export class BuildTarget {
     this.buildings = one
     this.rate = zero
     this.qualityLevel = 0
+    this.qualityNoticeKind = null
+    this.qualityConflictPreviousQuality = null
 
-    let element = d3.create("li").classed("target", true)
+    let element = d3.create("li").classed("target production-target-row", true)
     element
       .append("button")
       .classed("targetButton ui", true)
@@ -151,6 +223,7 @@ export class BuildTarget {
     const targetInputName = `target-${targetCount}`
     let itemOptionsRendered = false
     let dropdown: any
+    const itemColumn = element.append("span").classed("production-target-item", true)
 
     const renderItemOptions = (selection: any) => {
       if (itemOptionsRendered) {
@@ -178,7 +251,7 @@ export class BuildTarget {
     }
 
     dropdown = makeDropdown(
-      element,
+      itemColumn,
       (selection) => {
         renderItemOptions(selection)
         const search = selection.select(".search").node() as HTMLInputElement | null
@@ -195,20 +268,21 @@ export class BuildTarget {
 
     targetCount++
 
-    this.buildingLabel = element.append("label").classed(SELECTED_INPUT, true).text(" Machines ").node()
+    this.recipeSelector = itemColumn.append("span").classed("production-target-recipe", true)
+    const settings = element.append("span").classed("production-target-settings", true)
 
-    this.recipeSelector = element.append("span")
-
-    this.qualitySelector = element
+    const qualityInputId = `target-quality-${targetCount}`
+    this.qualitySelector = settings
       .append("select")
       .classed("target-quality", true)
+      .attr("id", qualityInputId)
+      .attr("aria-label", `Quality for ${item.name}`)
       .attr(
         "data-tooltip",
-        "Choose the quality tier you want. The calculator accounts for the chance from the selected quality modules.",
+        "Choose the output quality tier. The calculator uses the chance from the selected quality modules.",
       )
       .on("change", (event) => {
-        this.qualityLevel = Number(event.target.value)
-        spec.updateSolution()
+        handleTargetQualityChange(this, Number(event.target.value))
       })
       .node()
     d3.select(this.qualitySelector)
@@ -219,23 +293,24 @@ export class BuildTarget {
       .text((d) => d.name)
     this.setQuality(0)
 
-    this.buildingInput = element
+    this.buildingInput = settings
       .append("input")
+      .classed("target-machine-count", true)
+      .classed(SELECTED_INPUT, true)
       .on("change", changeBuildingCountHandler(this))
       .attr("type", "text")
       .attr("value", 1)
       .attr("size", 3)
+      .attr("aria-label", "Machines")
       .attr(
         "title",
         "Enter a value to specify the number of buildings. The rate will be determined based on the number of items a single building can make.",
       )
       .node()
 
-    this.rateLabel = element.append("label").node()
-    this.setRateLabel()
-
-    this.rateInput = element
+    this.rateInput = settings
       .append("input")
+      .classed("target-rate", true)
       .on("change", changeRateHandler(this))
       .attr("type", "text")
       .attr("value", "")
@@ -245,6 +320,7 @@ export class BuildTarget {
         "Enter a value to specify the rate. The number of buildings will be determined based on the rate.",
       )
       .node()
+    this.setRateLabel()
 
     this.locationWarning = element
       .append("div")
@@ -260,11 +336,65 @@ export class BuildTarget {
       .text("Enable compatible locations")
       .on("click", () => this.enableCompatibleLocations())
 
+    this.qualityNotice = element
+      .append("div")
+      .classed("quality-notice", true)
+      .attr("aria-live", "polite")
+      .style("display", "none")
+    this.qualityNoticeMessage = this.qualityNotice.append("span").classed("quality-notice-message", true)
+    this.qualityNoticeAction = this.qualityNotice
+      .append("button")
+      .classed("ui", true)
+      .attr("type", "button")
+      .style("display", "none")
+
     this.compatibleLocations = []
     this.displayRecipes()
   }
   setRateLabel() {
-    this.rateLabel.textContent = " Rate/" + spec.format.longRate + " "
+    this.rateInput?.setAttribute("aria-label", "Rate per " + spec.format.longRate)
+  }
+  hideQualityNotice() {
+    this.qualityNoticeKind = null
+    this.qualityNoticeMessage.text("")
+    this.qualityNoticeAction.text("").style("display", "none").on("click", null)
+    this.qualityNotice.style("display", "none")
+  }
+  clearQualityNotice() {
+    this.qualityConflictPreviousQuality = null
+    this.hideQualityNotice()
+  }
+  clearQualityWarning() {
+    this.qualityConflictPreviousQuality = null
+    if (this.qualityNoticeKind === "warning") {
+      this.hideQualityNotice()
+    }
+  }
+  showQualityNotice(kind, message, actionText = null, action = null) {
+    this.qualityNoticeKind = kind
+    this.qualityNoticeMessage.text(message)
+    if (actionText === null || action === null) {
+      this.qualityNoticeAction.text("").style("display", "none").on("click", null)
+    } else {
+      this.qualityNoticeAction.text(actionText).style("display", null).on("click", action)
+    }
+    this.qualityNotice.style("display", null)
+  }
+  showQualityConflict(qualityLevel) {
+    const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
+    this.showQualityNotice(
+      "warning",
+      `${tier} output requires a machine with module slots and at least one quality module.`,
+      "Configure automatically",
+      () => configureQualityFromNotice(this),
+    )
+  }
+  showQualityUnavailable(qualityLevel) {
+    const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
+    this.showQualityNotice(
+      "warning",
+      `${tier} ${this.item.name} is unavailable with the currently enabled machines and modules.`,
+    )
   }
   displayLocationWarning() {
     let info = getUnavailableLocationInfo(spec, this.item)
@@ -296,6 +426,7 @@ export class BuildTarget {
     spec.updateSolution()
   }
   displayRecipes() {
+    const previousRecipe = this.recipe
     this.recipeSelector.selectAll("*").remove()
     let recipes = []
     let found = false
@@ -319,9 +450,11 @@ export class BuildTarget {
     }
     if (recipes.length === 0) {
       this.defaultRecipe = null
+      if (previousRecipe !== this.recipe) this.clearQualityNotice()
       return
     } else if (recipes.length === 1) {
       this.recipe = recipes[0]
+      if (previousRecipe !== this.recipe) this.clearQualityNotice()
       return
     }
     // If there are multiple valid recipes, render the recipe dropdown.
@@ -337,12 +470,13 @@ export class BuildTarget {
       (d) => self.recipe === d,
       (d) => {
         self.recipe = d
+        self.clearQualityNotice()
         spec.updateSolution()
       },
     )
     labels.append((d) => d.icon.make(32, false, dropdown.node()))
     recipeSelectorCount++
-    this.recipeSelector.append("span").text(" \u00d7 ")
+    if (previousRecipe !== this.recipe) this.clearQualityNotice()
   }
   getRate() {
     this.setRateLabel()
@@ -384,8 +518,8 @@ export class BuildTarget {
   }
   buildingsChanged() {
     this.changedBuilding = true
-    this.buildingLabel.classList.add(SELECTED_INPUT)
-    this.rateLabel.classList.remove(SELECTED_INPUT)
+    this.buildingInput.classList.add(SELECTED_INPUT)
+    this.rateInput.classList.remove(SELECTED_INPUT)
     this.buildings = Rational.from_string(this.buildingInput.value)
     this.rate = zero
     this.rateInput.value = ""
@@ -397,8 +531,8 @@ export class BuildTarget {
   }
   rateChanged() {
     this.changedBuilding = false
-    this.buildingLabel.classList.remove(SELECTED_INPUT)
-    this.rateLabel.classList.add(SELECTED_INPUT)
+    this.buildingInput.classList.remove(SELECTED_INPUT)
+    this.rateInput.classList.add(SELECTED_INPUT)
     this.buildings = zero
     this.rate = Rational.from_string(this.rateInput.value).div(spec.format.rateFactor)
     this.buildingInput.value = ""
