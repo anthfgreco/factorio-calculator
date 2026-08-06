@@ -56,3 +56,34 @@ test("critical calculator controls remain visible on mobile", async ({ page }) =
   await expect(page.locator(".tabs")).toBeVisible()
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
+
+test("opening a target picker and selecting a shorter target do not shift the page", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1032 })
+  await page.goto("/calc.html")
+
+  const targetsHeading = page.locator(".targets-heading")
+  const plannerToolbar = page.locator(".planner-toolbar")
+  const initialLeft = await targetsHeading.evaluate((element) => element.getBoundingClientRect().left)
+  const initialToolbarTop = await plannerToolbar.evaluate((element) => element.getBoundingClientRect().top)
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight))
+    .toBe(true)
+
+  await page.locator(".production-target-item .dropdownWrapper").click()
+  await expect(page.locator(".itemDropdown.open")).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollHeight > document.documentElement.clientHeight))
+    .toBe(true)
+  await expect
+    .poll(() => plannerToolbar.evaluate((element) => element.getBoundingClientRect().top))
+    .toBe(initialToolbarTop)
+
+  await page.locator(".itemDropdown.open label").filter({ hasText: "Iron plate" }).first().click()
+  await expect(page.locator(".itemDropdown input:checked + label .target-item-name")).toHaveText("Iron plate")
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollHeight <= document.documentElement.clientHeight))
+    .toBe(true)
+
+  await expect(page.locator("html")).toHaveCSS("scrollbar-gutter", "stable")
+  await expect.poll(() => targetsHeading.evaluate((element) => element.getBoundingClientRect().left)).toBe(initialLeft)
+})

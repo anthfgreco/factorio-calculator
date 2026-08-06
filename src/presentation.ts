@@ -292,6 +292,10 @@ export function makeDropdown<GElement extends BaseType, TDatum, PElement extends
   let tippyInstance: Instance | null = null
   let destroyed = false
   const hiddenState = { isVisible: false }
+  const clearStableWrapperSize = (): void => {
+    wrapperNode.style.removeProperty("width")
+    wrapperNode.style.removeProperty("height")
+  }
   const instance = {
     reference: wrapperNode,
     get state() {
@@ -301,6 +305,9 @@ export function makeDropdown<GElement extends BaseType, TDatum, PElement extends
       if (destroyed) {
         return
       }
+      const wrapperBounds = wrapperNode.getBoundingClientRect()
+      wrapperNode.style.width = `${wrapperBounds.width}px`
+      wrapperNode.style.height = `${wrapperBounds.height}px`
       tippyInstance ??= tippy(wrapperNode, {
         ...tooltipProps(),
         animation: false,
@@ -349,6 +356,7 @@ export function makeDropdown<GElement extends BaseType, TDatum, PElement extends
           wrapperNode.classList.remove("open")
           dropdownNode.classList.remove("open")
           wrapper.attr("aria-expanded", "false")
+          clearStableWrapperSize()
           onClose?.(select(dropdownNode))
         },
       })
@@ -362,6 +370,7 @@ export function makeDropdown<GElement extends BaseType, TDatum, PElement extends
         return
       }
       destroyed = true
+      clearStableWrapperSize()
       if (escapeHandler !== null) {
         document.removeEventListener("keydown", escapeHandler)
         escapeHandler = null

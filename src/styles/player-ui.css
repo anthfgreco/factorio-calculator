@@ -19,6 +19,7 @@
 }
 html {
   color-scheme: dark;
+  scrollbar-gutter: stable;
 }
 body {
   max-width: 1680px;
