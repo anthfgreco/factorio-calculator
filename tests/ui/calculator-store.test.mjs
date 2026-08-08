@@ -65,6 +65,19 @@ test("calculator store publishes stable snapshots from the bound specification",
   assert.ok(notifications >= 2)
 })
 
+test("calculator store publishes display-rate changes", () => {
+  const store = new BrowserCalculatorStore(createBrowserPort())
+  const specification = new FactorySpecification()
+  store.bindSpecification(specification)
+
+  assert.equal(store.getSnapshot().settings.displayRate, "m")
+
+  specification.format.setDisplayRate("s")
+  specification.notifyStateChanged()
+
+  assert.equal(store.getSnapshot().settings.displayRate, "s")
+})
+
 test("calculator store surfaces calculation failures without throwing during render", () => {
   const store = new BrowserCalculatorStore(createBrowserPort())
   const specification = new FactorySpecification()

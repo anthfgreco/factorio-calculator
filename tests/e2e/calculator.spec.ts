@@ -25,6 +25,9 @@ test("calculator workflow persists settings and renders the graph", async ({ pag
 
   await page.getByRole("button", { name: "Settings" }).click()
   await expect(page.locator("#settings_button")).toHaveClass(/active/)
+  await expect(page.locator(".production-target-header")).toContainText("Rate/min")
+  await page.locator("#s_rate").check()
+  await expect(page.locator(".production-target-header")).toContainText("Rate/s")
   await page.locator("#title_setting").fill(title)
   await expect(page).toHaveTitle(title)
   await expect(page).toHaveURL(/#.+/)
@@ -33,6 +36,7 @@ test("calculator workflow persists settings and renders the graph", async ({ pag
   await page.reload()
   await expect(page).toHaveTitle(title)
   await expect(page.locator("#targets > li.target")).toHaveCount(2)
+  await expect(page.locator(".production-target-header")).toContainText("Rate/s")
   await expect.poll(() => new URL(page.url()).hash).toBe(persistedHash)
 
   await page.getByRole("button", { name: "Settings" }).click()

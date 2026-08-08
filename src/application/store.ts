@@ -44,6 +44,7 @@ const INITIAL_SNAPSHOT: CalculatorSnapshot = {
   errorMessage: null,
   targets: [],
   settings: {
+    displayRate: "m",
     ratePrecision: 3,
     countPrecision: 1,
     displayFormat: "decimal",
@@ -105,6 +106,7 @@ function createSnapshot(
       qualityLevel: target.qualityLevel,
     })),
     settings: {
+      displayRate: specification.format.rateName,
       ratePrecision: specification.format.ratePrecision,
       countPrecision: specification.format.countPrecision,
       displayFormat: specification.format.displayFormat,

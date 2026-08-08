@@ -3,7 +3,14 @@ import { Fragment, type ChangeEvent } from "react"
 import { HelpPanel } from "./HelpPanel.js"
 import { SettingsPanel } from "./SettingsPanel.js"
 import { isProgressionPreset } from "../application/contracts.js"
+import type { DisplayRate } from "../math.js"
 import type { CalculatorCommands, CalculatorSnapshot } from "./types.js"
+
+const DISPLAY_RATE_UNITS: Readonly<Record<DisplayRate, string>> = {
+  s: "s",
+  m: "min",
+  h: "h",
+}
 
 interface CalculatorShellProps {
   commands: CalculatorCommands
@@ -41,7 +48,7 @@ function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
         <span>Output</span>
         <span>Quality</span>
         <span>Machines</span>
-        <span>Rate/min</span>
+        <span>Rate/{DISPLAY_RATE_UNITS[snapshot.settings.displayRate]}</span>
       </div>
       <ul id="targets">
         <li id="plusButton">

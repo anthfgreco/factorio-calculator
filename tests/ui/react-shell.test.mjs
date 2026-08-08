@@ -26,6 +26,7 @@ const snapshot = {
   errorMessage: null,
   targets: [],
   settings: {
+    displayRate: "m",
     ratePrecision: 3,
     countPrecision: 1,
     displayFormat: "decimal",
@@ -90,4 +91,20 @@ test("React shell preserves imperative mount points and snapshot-owned controls"
 test("React shell disables target addition until the dataset is ready", () => {
   assert.match(loadingHtml, /class="add-target-button ui"[^>]*disabled=""/)
   assert.doesNotMatch(html, /class="add-target-button ui"[^>]*disabled=""/)
+})
+
+test("React shell labels production target rates with the selected display rate", () => {
+  for (const [displayRate, label] of [
+    ["s", "Rate/s"],
+    ["m", "Rate/min"],
+    ["h", "Rate/h"],
+  ]) {
+    const rateHtml = renderToStaticMarkup(
+      createElement(CalculatorShell, {
+        commands,
+        snapshot: { ...snapshot, settings: { ...snapshot.settings, displayRate } },
+      }),
+    )
+    assert.match(rateHtml, new RegExp(`>${label.replace("/", "\\/")}<`))
+  }
 })

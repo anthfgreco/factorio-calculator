@@ -1,4 +1,4 @@
-import type { DisplayFormat } from "../math.js"
+import type { DisplayFormat, DisplayRate } from "../math.js"
 
 export type CalculatorTab = "totals" | "graph" | "settings" | "resources" | "debug" | "help"
 export type FactoryDensity = "comfortable" | "compact"
@@ -36,6 +36,7 @@ export interface TargetSnapshot {
 }
 
 export interface CalculatorSettingsSnapshot {
+  readonly displayRate: DisplayRate
   readonly ratePrecision: number
   readonly countPrecision: number
   readonly displayFormat: DisplayFormat
