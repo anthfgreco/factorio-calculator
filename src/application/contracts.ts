@@ -42,6 +42,7 @@ export interface CalculatorSettingsSnapshot {
   readonly displayFormat: DisplayFormat
   readonly miningProductivityPercent: string
   readonly beltStackSize: string
+  readonly beltStackDefaultPolicy: "auto" | "stacked" | "unstacked"
   readonly bufferMinutes: string
   readonly freshnessDelayMinutes: string
   readonly maxQualityLevel: number

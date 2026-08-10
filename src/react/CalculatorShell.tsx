@@ -51,7 +51,7 @@ function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
         <span>Quality</span>
         <span>Machines</span>
         <span>Rate/{DISPLAY_RATE_UNITS[snapshot.settings.displayRate]}</span>
-        <span data-tooltip="Uses the Belt and Belt stacking selected in Settings.">Belts</span>
+        <span data-tooltip="Uses each item's belt stacking setting.">Belts</span>
       </div>
       <ul id="targets">
         <li id="plusButton">

@@ -5574,6 +5574,7 @@
     ],
     "mining_drills": [
         {
+            "drops_full_belt_stacks": true,
             "energy_source": {
                 "emissions_per_minute": {
                     "pollution": 40

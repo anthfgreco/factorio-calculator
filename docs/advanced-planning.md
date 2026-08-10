@@ -44,7 +44,7 @@ Aquilo heat estimates cover production machines and configured beacons according
 
 ## Logistics
 
-Solid-item rows report belt equivalents using the selected belt-stack height, stacks per interval, buffer slots for the selected duration, and cargo-wagon loads.
+Solid-item rows report belt equivalents, inventory-stack flow, buffer slots, and cargo-wagon loads. Belt research sets the maximum stack height. Auto applies that height only to guaranteed direct stacked output, such as a selected big mining drill; mixed or ambiguous production stays at ×1. Use the selector beside any Factory-row belt count for stack-inserter, recycler, or other item-specific layouts.
 
 ## Technology progression
 

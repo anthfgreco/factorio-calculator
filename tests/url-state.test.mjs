@@ -13,6 +13,7 @@ if (!build) {
 const {
   bytesToBinaryString,
   serializeAutomaticBuildings,
+  serializeBeltStackOverrides,
   serializeBuildingOverrides,
   serializeModuleSettings,
   serializeRecipeProductivityLevels,
@@ -165,7 +166,13 @@ test("URL recipe productivity levels are stable and omit defaults or unknown res
 const { compressCalculatorSettings, parseCalculatorFragment, parseSettingsParameters } = await import(
   pathToFileURL(resolve(build, "url/codec.js")).href
 )
-const { formatTargetSetting, parseTargetSetting } = await import(pathToFileURL(resolve(build, "url/codec.js")).href)
+const {
+  formatBeltStackItemSettings,
+  formatTargetSetting,
+  parseBeltStackItemSettings,
+  parseBeltStackSettingPolicy,
+  parseTargetSetting,
+} = await import(pathToFileURL(resolve(build, "url/codec.js")).href)
 const { CalculatorUrlHistory } = await import(pathToFileURL(resolve(build, "url/history.js")).href)
 
 const nodeBase64 = {
@@ -229,6 +236,33 @@ test("production target URL settings reject malformed modes without weakening ol
   })
   for (const malformed of ["", "advanced-circuit", "advanced-circuit:x:1", "advanced-circuit:b:", "x:b:1:q1:q2"]) {
     assert.equal(parseTargetSetting(malformed), null)
+  }
+})
+
+test("belt-stack URL settings preserve item policies in stable order", () => {
+  const ironOre = { key: "iron-ore" }
+  const processingUnit = { key: "processing-unit" }
+  const factorySpec = {
+    beltStackOverrides: new Map([
+      [processingUnit, "unstacked"],
+      [ironOre, "stacked"],
+    ]),
+  }
+
+  assert.equal(serializeBeltStackOverrides(factorySpec), "iron-ore:stacked,processing-unit:unstacked")
+  const settings = [
+    { itemKey: "iron-ore", policy: "stacked" },
+    { itemKey: "processing-unit", policy: "unstacked" },
+  ]
+  assert.equal(formatBeltStackItemSettings(settings), "iron-ore:stacked,processing-unit:unstacked")
+  assert.deepEqual(parseBeltStackItemSettings(formatBeltStackItemSettings(settings)), settings)
+})
+
+test("belt-stack URL settings reject malformed or duplicate item policies", () => {
+  assert.equal(parseBeltStackSettingPolicy("auto"), "auto")
+  assert.equal(parseBeltStackSettingPolicy("all"), null)
+  for (const malformed of ["iron-ore", ":stacked", "iron-ore:all", "iron-ore:stacked,iron-ore:unstacked"]) {
+    assert.equal(parseBeltStackItemSettings(malformed), null)
   }
 })
 

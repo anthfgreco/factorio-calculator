@@ -6,7 +6,7 @@ import {
   type PlanningSettingValue,
   type ProgressionPreset,
 } from "./application/contracts.js"
-import { spec } from "./factory.js"
+import { isBeltStackPolicy, spec } from "./factory.js"
 import { type DisplayFormat, Rational } from "./math.js"
 import { Building, Planet } from "./models.js"
 import type { Item } from "./recipes.js"
@@ -171,6 +171,8 @@ function syncProgressionControls(): void {
 
   let beltStack = document.getElementById("belt_stack_size") as HTMLSelectElement | null
   if (beltStack !== null) beltStack.value = spec.beltStackSize.toString()
+  let beltStackPolicy = document.getElementById("belt_stack_default_policy") as HTMLSelectElement | null
+  if (beltStackPolicy !== null) beltStackPolicy.value = spec.beltStackDefaultPolicy
   let maxQuality = document.getElementById("max_quality") as HTMLSelectElement | null
   if (maxQuality !== null) maxQuality.value = String(spec.maxQualityLevel)
 
@@ -197,6 +199,8 @@ export function applyProgressionPresetValue(value: ProgressionPreset): void {
   let belt = getByKey(spec.belts, preset.belt)
   if (belt !== null) spec.belt = belt
   spec.beltStackSize = Rational.from_float(preset.beltStackSize)
+  spec.beltStackDefaultPolicy = "auto"
+  spec.beltStackOverrides.clear()
   spec.maxQualityLevel = preset.maxQualityLevel
   for (let target of spec.buildTargets) {
     target.setQuality(target.qualityLevel)
@@ -231,6 +235,10 @@ export function setPlanningSetting(input: PlanningSettingValue): void {
   switch (input.id) {
     case "belt_stack_size":
       spec.beltStackSize = Rational.from_string(input.value)
+      break
+    case "belt_stack_default_policy":
+      if (!isBeltStackPolicy(input.value)) return
+      spec.beltStackDefaultPolicy = input.value
       break
     case "buffer_minutes":
       spec.bufferMinutes = Rational.max(Rational.from_float(0), Rational.from_string(input.value || "0"))

@@ -148,6 +148,7 @@ test("dataset parser accepts the generated Space Age dataset", async () => {
   assert.equal(data.planets.find((planet) => planet.key === "nauvis").pollutant_type, "pollution")
   assert.equal(data.planets.find((planet) => planet.key === "gleba").pollutant_type, "spores")
   assert.deepEqual(data.plants.find((plant) => plant.key === "yumako-tree").harvest_emissions, { spores: 15 })
+  assert.equal(data.mining_drills.find((machine) => machine.key === "big-mining-drill").drops_full_belt_stacks, true)
 })
 
 test("Factorio 2.1.13 recycling times scale with recipe result counts", async () => {
@@ -200,6 +201,15 @@ test("dataset parser rejects malformed machine effect lists", async () => {
   assert.throws(
     () => parseCalculatorData(raw),
     (error) => error instanceof DatasetValidationError && error.path === "crafting_machines[0].allowed_effects",
+  )
+})
+
+test("dataset parser rejects malformed belt-stack capabilities", async () => {
+  const raw = JSON.parse(await getTestDatasetText())
+  raw.mining_drills[0].drops_full_belt_stacks = "yes"
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "mining_drills[0].drops_full_belt_stacks",
   )
 })
 

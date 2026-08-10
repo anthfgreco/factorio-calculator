@@ -735,7 +735,7 @@ ul#targets {
 .production-target-header,
 ul#targets li.production-target-row {
   display: grid;
-  grid-template-columns: 2rem 180px 104px 72px 88px 72px;
+  grid-template-columns: 2rem 180px 104px 72px 88px 88px;
   align-items: center;
   gap: 8px;
   width: max-content;
@@ -779,6 +779,22 @@ ul#targets li.production-target-row {
 }
 .target-setting-field {
   display: contents;
+}
+.target-belts-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.25rem;
+}
+.target-belts-field .target-field-label {
+  grid-column: 1 / -1;
+}
+.target-belt-stack-height,
+.belt-stack-height {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
 }
 .target-field-label {
   display: none;
@@ -983,7 +999,17 @@ td.item-identity {
   color: var(--muted);
 }
 .logistics-cell {
-  min-width: 3.5rem;
+  min-width: 9rem;
+  white-space: nowrap;
+}
+.logistics-cell .belt-stack-policy {
+  width: 5.35rem;
+  margin-left: 0.35rem;
+  padding: 0.12rem 0.2rem;
+  font-size: 0.68rem;
+}
+.logistics-cell .belt-stack-height {
+  margin-left: 0.3rem;
 }
 .power-cell {
   min-width: 6.4rem;

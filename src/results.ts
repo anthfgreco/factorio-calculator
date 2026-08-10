@@ -4,6 +4,7 @@ import {
   FactorySpecification,
   getItemProductionRecipes,
   getRecipeLocations,
+  isBeltStackPolicy,
   setRecipeEnabled,
   spec,
 } from "./factory.js"
@@ -894,7 +895,7 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
     new Header("Item", 2, false, null, null, "left"),
     new Header(`Rate / ${spec.format.rateName}`, 1, false, null, null, "right"),
     ...(showSurplus ? [new Header(`Surplus / ${spec.format.rateName}`, 1, true, null, null, "right")] : []),
-    new Header("Belts", 1, false, `Equivalent ${belt.name} belts at the selected rate`, belt.icon, "right"),
+    new Header("Belts", 1, false, `Select stacking per item; counts use ${belt.name}`, belt.icon, "right"),
     new Header("Machines", 2, false, null, null, "center"),
     ...(showLocations ? [new Header("Location", 1, false, null, null, "left")] : []),
     new Header("Modules", 1, false, null, null, "left"),
@@ -966,11 +967,23 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
 
       rows.append("td").classed("item right-align", true).append("tt").classed("item-rate", true)
       rows.append("td").classed("item surplus right-align", true).append("tt").classed("surplus-rate", true)
-      rows
-        .append("td")
-        .classed("item right-align logistics-cell pad-right", true)
-        .append("tt")
-        .classed("belt-count", true)
+      const logisticsCell = rows.append("td").classed("item right-align logistics-cell pad-right", true)
+      logisticsCell.append("tt").classed("belt-count", true)
+      const beltStackPolicy = logisticsCell
+        .append("select")
+        .classed("belt-stack-policy", true)
+        .attr("title", "Set belt stacking for this item")
+        .on("change", function (this: HTMLSelectElement, _event: Event, row: DisplayRow) {
+          const value = this.value
+          if (value !== "" && !isBeltStackPolicy(value)) return
+          spec.setBeltStackOverride(requireRowItem(row), value === "" ? null : value)
+          spec.updateSolution()
+        })
+      beltStackPolicy.append("option").attr("value", "").text("Default")
+      beltStackPolicy.append("option").attr("value", "auto").text("Auto")
+      beltStackPolicy.append("option").attr("value", "stacked").text("Stacked")
+      beltStackPolicy.append("option").attr("value", "unstacked").text("Unstacked")
+      logisticsCell.append("span").classed("belt-stack-height", true)
 
       rows.append("td").classed("pad building building-icon leftmost right-align", true)
       rows.append("td").classed("right-align building", true).append("tt").classed("building-count", true)
@@ -1087,15 +1100,47 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
       const rate = requireItemRate(totals.items, item, "item")
       const logistics = getLogistics(item, rate, spec)
       if (logistics === null) throw new Error(`Missing solid logistics report for ${item.key}`)
-      return `Equivalent ${belt.name} belts at stack height ${spec.beltStackSize.toDecimal()}. ${spec.format.rate(logistics.stackRate)} stacks/${spec.format.rateName}; ${logistics.bufferSlots.toDecimal(0)} slots for a ${spec.bufferMinutes.toDecimal()} minute buffer; ${spec.format.count(logistics.wagonLoads)} cargo wagons/${spec.format.rateName}.`
+      const stackHeight = spec.getEffectiveBeltStackSize(item).toDecimal()
+      const policy = spec.getBeltStackPolicy(item)
+      const source = spec.getBeltStackPolicySource(item)
+      const policyText =
+        policy === "auto"
+          ? spec.isItemAutomaticallyBeltStacked(item)
+            ? "Auto: direct output"
+            : "Auto: unstacked"
+          : policy === "stacked"
+            ? source === "override"
+              ? "Stacked override"
+              : "Default: stacked"
+            : source === "override"
+              ? "Unstacked override"
+              : "Default: unstacked"
+      const stackLabel = logistics.stackRate.equal(one) ? "stack" : "stacks"
+      const slotLabel = logistics.bufferSlots.equal(one) ? "slot" : "slots"
+      const wagonLabel = logistics.wagonLoads.equal(one) ? "load" : "loads"
+      return `${belt.name} equivalent at ×${stackHeight} (${policyText}). ${spec.format.rate(logistics.stackRate)} inventory ${stackLabel}/${spec.format.rateName} · ${logistics.bufferSlots.toDecimal(0)} buffer ${slotLabel} (${spec.bufferMinutes.toDecimal()}m) · ${spec.format.count(logistics.wagonLoads)} wagon ${wagonLabel}/${spec.format.rateName}.`
     })
     .selectAll<HTMLElement, DisplayRow>("tt.belt-count")
     .text((row: DisplayRow) => {
       const item = requireRowItem(row)
-      return spec.format.alignCount(spec.getBeltCount(requireItemRate(totals.items, item, "item")))
+      return spec.format.alignCount(spec.getBeltCount(item, requireItemRate(totals.items, item, "item")))
     })
+  beltRows
+    .selectAll<HTMLSelectElement, DisplayRow>("select.belt-stack-policy")
+    .property("hidden", false)
+    .attr("aria-label", (row: DisplayRow) => `Belt stacking for ${requireRowItem(row).name}`)
+    .property("value", (row: DisplayRow) => {
+      const item = requireRowItem(row)
+      return spec.getBeltStackPolicySource(item) === "default" ? "" : spec.getBeltStackPolicy(item)
+    })
+  beltRows
+    .selectAll<HTMLElement, DisplayRow>("span.belt-stack-height")
+    .property("hidden", false)
+    .text((row: DisplayRow) => `×${spec.getEffectiveBeltStackSize(requireRowItem(row)).toDecimal()}`)
 
   const pipeRows = itemRows.filter((row: DisplayRow) => requireRowItem(row).phase === "fluid")
+  pipeRows.selectAll<HTMLSelectElement, DisplayRow>("select.belt-stack-policy").property("hidden", true)
+  pipeRows.selectAll<HTMLElement, DisplayRow>("span.belt-stack-height").property("hidden", true)
   pipeRows
     .selectAll<HTMLTableCellElement, DisplayRow>("td.logistics-cell")
     .attr("data-tooltip", usesLegacyCalculation() ? "Legacy maximum pipe length" : null)
@@ -1235,7 +1280,7 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
     .classed("right-align", true)
     .append("tt")
     .classed("belt-count pad-right", true)
-    .text((row: BreakdownRow) => spec.format.alignCount(row.rate.div(belt.rate)))
+    .text((row: BreakdownRow) => spec.format.alignCount(spec.getBeltCount(row.item, row.rate)))
 
   const breakdownPipeRows = breakdownRows.filter((row: BreakdownRow) => row.item.phase === "fluid")
   breakdownPipeRows.append("td").append(() => new PipeIcon().icon.make(32))

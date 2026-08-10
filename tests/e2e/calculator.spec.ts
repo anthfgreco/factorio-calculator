@@ -59,6 +59,7 @@ test("production targets activate displayed values and preserve belt intent", as
   const machines = target.locator(".target-machine-count")
   const rate = target.locator(".target-rate")
   const belts = target.locator(".target-belts")
+  const targetItemName = await target.locator(".target-item-name").innerText()
 
   await machines.fill("24")
   await machines.press("Enter")
@@ -80,7 +81,11 @@ test("production targets activate displayed values and preserve belt intent", as
 
   await page.getByRole("button", { name: "Settings" }).click()
   await page.locator("#belt_stack_size").selectOption("4")
+  await expect(rate).toHaveValue("450")
+  await page.getByRole("button", { name: "Factory" }).click()
+  await page.getByRole("combobox", { name: `Belt stacking for ${targetItemName}` }).selectOption("stacked")
   await expect(rate).toHaveValue("1800")
+  await page.getByRole("button", { name: "Settings" }).click()
   await page.locator('#belt_selector input[value="fast-transport-belt"]').evaluate((element) => {
     if (!(element instanceof HTMLInputElement) || element.labels?.[0] === undefined) {
       throw new Error("Expected the fast belt input to have a clickable label")
@@ -94,6 +99,8 @@ test("production targets activate displayed values and preserve belt intent", as
   await expect(reloadedTarget.locator(".target-belts")).toHaveValue("0.5")
   await expect(reloadedTarget.locator(".target-belts")).toHaveClass(/selected/)
   await expect(reloadedTarget.locator(".target-rate")).toHaveValue("3600")
+  await page.getByRole("button", { name: "Factory" }).click()
+  await expect(page.getByRole("combobox", { name: `Belt stacking for ${targetItemName}` })).toHaveValue("stacked")
 
   await reloadedTarget.locator(".production-target-item .dropdownWrapper").click()
   await page
@@ -106,6 +113,14 @@ test("production targets activate displayed values and preserve belt intent", as
   await expect(reloadedTarget.locator(".target-rate")).toHaveValue("3600")
 
   expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
+test("legacy belt-stack links keep their all-stacked behavior", async ({ page }) => {
+  await page.goto("/calc.html#bstack=4")
+
+  await page.getByRole("button", { name: "Settings" }).click()
+  await expect(page.locator("#belt_stack_size")).toHaveValue("4")
+  await expect(page.locator("#belt_stack_default_policy")).toHaveValue("stacked")
 })
 
 test("critical calculator controls remain visible on mobile", async ({ page }) => {

@@ -2,6 +2,45 @@
 
 Use an execution plan for changes that span multiple modules, alter architecture or persisted behavior, or require more than one validation loop. Keep it current while work is active.
 
+## Completed plan: item-aware belt stacking
+
+### Goal
+
+Separate the researched maximum belt-stack height from the per-item logistics assumption, so players can stack only selected items while direct-stack producers such as big mining drills remain clear and useful.
+
+### Context and constraints
+
+- Factorio belt-stack research sets a global maximum height, but only stack inserters, big mining drills, and recyclers create belt stacks; the calculator must not imply that research stacks every solid item automatically.
+- `FactorySpecification` remains the exact policy owner. React owns the stable Settings structure, while target rows and result rows remain imperatively rendered.
+- Belt targets preserve belt count as intent and must use the target item's effective stack height.
+- Existing URLs containing only `bstack` must retain their historical all-solid stacking result; new item policy state must round-trip deterministically and fail safely.
+- Direct-stack producer capability must come from the generated Factorio data boundary rather than hard-coded entity names.
+- Per-item policy is a logistics assumption over scalar item totals; route-level mixtures of stacked and unstacked belts remain outside the current solver model.
+
+### Done when
+
+- Settings distinguish maximum researched stack height from the default `Auto`, `Stacked`, or `Unstacked` item treatment; each Factory item row exposes its own override.
+- Results and belt targets visibly show the effective `×1` to `×4` treatment, with precise player-facing explanations and unambiguous inventory-stack terminology.
+- Auto uses direct-stack-capable selected producers conservatively; explicit item overrides take precedence.
+- Totals, targets, visualization, presets, and URLs use one item-aware exact capacity policy.
+- Generated data, exact scenarios, UI/state, URL compatibility, E2E behavior, runtime datasets, build budgets, and the release gate pass.
+
+### Steps
+
+1. [x] Characterize current global behavior and add the data-backed direct-stack capability.
+2. [x] Add item policy state and exact item-aware belt conversion at the factory boundary.
+3. [x] Implement typed settings, URL persistence, target/result indicators, and consistent visualization behavior.
+4. [x] Add exact mechanic, state, URL, UI, and critical browser coverage.
+5. [x] Regenerate affected outputs, format, run focused validation and the release gate, then review the final diff.
+
+### Decision log
+
+- Keep one researched maximum height; per-item settings choose whether that maximum is used rather than inventing per-item research levels.
+- Use `Auto`, `Stacked`, and `Unstacked`. Auto assumes direct belt output only when the active production source is unambiguously capable of dropping full belt stacks; ambiguous or mixed sources fall back to unstacked.
+- Put item overrides beside belt results in the Factory table, where their effect is visible, rather than behind a separate Settings editor.
+- New plans use Auto by default. Legacy URLs with `bstack` but no policy parameter decode as Stacked to preserve their previous calculations.
+- Explicit per-item overrides are sparse, deterministic URL state. A compact Factory-row selector sits beside the visible effective height without making DOM state authoritative.
+
 ## Completed plan: belt-based production targets
 
 ### Goal

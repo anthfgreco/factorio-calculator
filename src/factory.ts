@@ -61,6 +61,11 @@ export const DEFAULT_BUILDING_KEYS = new Set([
 
 export type FactoryRecipe = Recipe | DisabledRecipe
 export type TargetBasis = "machines" | "rate" | "belts"
+export type BeltStackPolicy = "auto" | "stacked" | "unstacked"
+
+export function isBeltStackPolicy(value: string): value is BeltStackPolicy {
+  return value === "auto" || value === "stacked" || value === "unstacked"
+}
 
 export interface FactoryBuildTarget {
   index: number
@@ -388,6 +393,8 @@ export class FactorySpecification {
   priority = new PriorityList()
   defaultPriority: Map<PrioritizedRecipe, Rational>[] = []
   beltStackSize = one
+  beltStackDefaultPolicy: BeltStackPolicy = "auto"
+  readonly beltStackOverrides = new Map<Item, BeltStackPolicy>()
   bufferMinutes = one
   freshnessDelayMinutes = zero
   readonly resourceYields = new Map<Recipe, Rational>()
@@ -908,13 +915,39 @@ export class FactorySpecification {
     if (location === null) this.recipeLocations.delete(recipe)
     else this.recipeLocations.set(recipe, location)
   }
-  getBeltCount(rate: Rational): Rational {
-    if (this.belt === null) throw new Error("No transport belt is selected")
-    return rate.div(this.belt.rate.mul(this.beltStackSize))
+  getBeltStackPolicy(item: Item): BeltStackPolicy {
+    return this.beltStackOverrides.get(item) ?? this.beltStackDefaultPolicy
   }
-  getRateForBeltCount(beltCount: Rational): Rational {
+  getBeltStackPolicySource(item: Item): "default" | "override" {
+    return this.beltStackOverrides.has(item) ? "override" : "default"
+  }
+  setBeltStackOverride(item: Item, policy: BeltStackPolicy | null): void {
+    if (policy === null) this.beltStackOverrides.delete(item)
+    else this.beltStackOverrides.set(item, policy)
+  }
+  isItemAutomaticallyBeltStacked(item: Item, recipe: Recipe | null = null): boolean {
+    if (recipe !== null) return this.getBuilding(recipe)?.dropsFullBeltStacks ?? false
+    const producers = this.lastTotals?.producers.get(item)
+    if (producers === undefined || producers.size === 0) return false
+    for (const producer of producers.keys()) {
+      if (!(producer instanceof Recipe) || !(this.getBuilding(producer)?.dropsFullBeltStacks ?? false)) return false
+    }
+    return true
+  }
+  getEffectiveBeltStackSize(item: Item, recipe: Recipe | null = null): Rational {
+    const policy = this.getBeltStackPolicy(item)
+    if (policy === "stacked" || (policy === "auto" && this.isItemAutomaticallyBeltStacked(item, recipe))) {
+      return this.beltStackSize
+    }
+    return one
+  }
+  getBeltCount(item: Item, rate: Rational, recipe: Recipe | null = null): Rational {
     if (this.belt === null) throw new Error("No transport belt is selected")
-    return this.belt.rate.mul(this.beltStackSize).mul(beltCount)
+    return rate.div(this.belt.rate.mul(this.getEffectiveBeltStackSize(item, recipe)))
+  }
+  getRateForBeltCount(item: Item, beltCount: Rational, recipe: Recipe | null = null): Rational {
+    if (this.belt === null) throw new Error("No transport belt is selected")
+    return this.belt.rate.mul(this.getEffectiveBeltStackSize(item, recipe)).mul(beltCount)
   }
   getFuelForBuilding(building: Building | null): Fuel | null {
     if (building === null || building.fuel === null || this.fuels === null) {

@@ -82,6 +82,7 @@ export interface MachineData extends SpriteReference {
   allowed_effects?: string[]
   crafting_categories?: string[]
   crafting_speed?: number
+  drops_full_belt_stacks?: boolean
   energy_source?: EnergySourceData
   energy_usage?: number
   module_slots?: number
@@ -393,6 +394,9 @@ function validateMachines(value: unknown, path: string): void {
       for (let [effectIndex, effect] of effects.entries()) {
         requireString(effect, `${machinePath}.allowed_effects[${effectIndex}]`)
       }
+    }
+    if (machine.drops_full_belt_stacks !== undefined && typeof machine.drops_full_belt_stacks !== "boolean") {
+      throw new DatasetValidationError(`${machinePath}.drops_full_belt_stacks`, "expected a boolean")
     }
   }
 }

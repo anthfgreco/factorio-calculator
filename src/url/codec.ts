@@ -8,6 +8,12 @@ export interface Base64Codec {
 }
 
 export type TargetSettingMode = "f" | "r" | "b"
+export type BeltStackSettingPolicy = "auto" | "stacked" | "unstacked"
+
+export interface BeltStackItemSetting {
+  readonly itemKey: string
+  readonly policy: BeltStackSettingPolicy
+}
 
 export interface TargetSetting {
   readonly itemKey: string
@@ -46,6 +52,30 @@ export function parseTargetSetting(setting: string): TargetSetting | null {
     recipeKey,
     qualityLevel: qualityPart === undefined ? 0 : Number(qualityPart.slice(1)),
   }
+}
+
+export function parseBeltStackSettingPolicy(value: string): BeltStackSettingPolicy | null {
+  return value === "auto" || value === "stacked" || value === "unstacked" ? value : null
+}
+
+export function formatBeltStackItemSettings(settings: readonly BeltStackItemSetting[]): string {
+  return settings.map((setting) => `${setting.itemKey}:${setting.policy}`).join(",")
+}
+
+export function parseBeltStackItemSettings(value: string): BeltStackItemSetting[] | null {
+  if (value === "") return []
+  const settings: BeltStackItemSetting[] = []
+  const seen = new Set<string>()
+  for (const part of value.split(",")) {
+    const separator = part.lastIndexOf(":")
+    if (separator <= 0) return null
+    const itemKey = part.slice(0, separator)
+    const policy = parseBeltStackSettingPolicy(part.slice(separator + 1))
+    if (policy === null || seen.has(itemKey)) return null
+    seen.add(itemKey)
+    settings.push({ itemKey, policy })
+  }
+  return settings
 }
 
 export function bytesToBinaryString(bytes: Uint8Array): string {

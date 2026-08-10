@@ -44,6 +44,7 @@ export function HelpPanel() {
               ["Treat an ingredient as externally supplied", "Click its icon in the Factory table"],
               ["Restore an imported ingredient to the production chain", "Click the icon again"],
               ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
+              ["Change belt stacking for one item", "Use the stacking selector beside its belt count"],
               ["Change recipe defaults", "Open Settings"],
               ["Share the current calculation", "Copy plan link"],
             ]}
@@ -68,8 +69,9 @@ export function HelpPanel() {
         <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
-            <ChangelogEntry date="2026-08-10" title="Belt Production Targets">
-              <li>Added belt throughput as a production target using the selected belt and stacking settings.</li>
+            <ChangelogEntry date="2026-08-10" title="Belt Targets & Stacking">
+              <li>Added belt throughput as a production target.</li>
+              <li>Added Auto stacking, direct big-drill detection, and per-item controls in Factory.</li>
               <li>Pressing Enter now makes a displayed Machines, Rate, or Belts value the active target.</li>
             </ChangelogEntry>
 

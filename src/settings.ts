@@ -66,7 +66,7 @@ import {
   visualizerRender,
   visualizerType,
 } from "./state.js"
-import { parseTargetSetting } from "./url/codec.js"
+import { parseBeltStackItemSettings, parseBeltStackSettingPolicy, parseTargetSetting } from "./url/codec.js"
 
 type SettingsMap = ReadonlyMap<string, string>
 type RadioOption = Belt | Fuel
@@ -1235,6 +1235,21 @@ function renderDebugCheckbox(settings: SettingsMap) {
 
 function renderPlanningSettings(settings: SettingsMap) {
   spec.beltStackSize = Rational.from_string(settings.get("bstack") ?? "1")
+  const serializedStackPolicy = settings.get("bstackmode")
+  spec.beltStackDefaultPolicy =
+    serializedStackPolicy === undefined
+      ? settings.has("bstack")
+        ? "stacked"
+        : "auto"
+      : (parseBeltStackSettingPolicy(serializedStackPolicy) ?? "auto")
+  spec.beltStackOverrides.clear()
+  const stackItemSettings = parseBeltStackItemSettings(settings.get("bstackitems") ?? "")
+  if (stackItemSettings !== null) {
+    for (const entry of stackItemSettings) {
+      const item = spec.items.get(entry.itemKey)
+      if (item?.phase === "solid") spec.setBeltStackOverride(item, entry.policy)
+    }
+  }
   spec.bufferMinutes = Rational.from_string(settings.get("buffer") ?? "1")
   spec.freshnessDelayMinutes = Rational.from_string(settings.get("fresh") ?? "0")
   spec.maxQualityLevel = Number(settings.get("maxq") ?? "4")
@@ -1275,6 +1290,7 @@ function renderPlanningSettings(settings: SettingsMap) {
   }
 
   ;(document.getElementById("belt_stack_size") as HTMLSelectElement).value = spec.beltStackSize.toString()
+  ;(document.getElementById("belt_stack_default_policy") as HTMLSelectElement).value = spec.beltStackDefaultPolicy
   ;(document.getElementById("buffer_minutes") as HTMLInputElement).value = spec.bufferMinutes.toDecimal()
   ;(document.getElementById("freshness_delay") as HTMLInputElement).value = spec.freshnessDelayMinutes.toDecimal()
   ;(document.getElementById("max_quality") as HTMLSelectElement).value = String(spec.maxQualityLevel)

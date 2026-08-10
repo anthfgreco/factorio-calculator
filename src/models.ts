@@ -231,6 +231,7 @@ export class Building {
     conditions: readonly SurfaceConditionData[] = [],
     allowedEffects: readonly string[] | Readonly<Record<string, boolean>> | null = null,
     emissions: Readonly<Record<string, number>> | null = null,
+    readonly dropsFullBeltStacks = false,
   ) {
     this.categories = new Set(categories)
     this.conditions = conditions
@@ -333,8 +334,24 @@ export class Miner extends Building {
     conditions: readonly SurfaceConditionData[] = [],
     allowedEffects: readonly string[] | null = null,
     emissions: Readonly<Record<string, number>> | null = null,
+    dropsFullBeltStacks = false,
   ) {
-    super(key, name, col, row, categories, zero, zero, moduleSlots, power, fuel, conditions, allowedEffects, emissions)
+    super(
+      key,
+      name,
+      col,
+      row,
+      categories,
+      zero,
+      zero,
+      moduleSlots,
+      power,
+      fuel,
+      conditions,
+      allowedEffects,
+      emissions,
+      dropsFullBeltStacks,
+    )
   }
   override less(other: Building): boolean {
     return other instanceof Miner ? this.miningSpeed.less(other.miningSpeed) : super.less(other)
@@ -636,6 +653,7 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
         d.energy_source?.emissions_per_minute ?? null,
+        d.drops_full_belt_stacks ?? false,
       ),
     )
   }
@@ -682,6 +700,7 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
         d.energy_source?.emissions_per_minute ?? null,
+        d.drops_full_belt_stacks ?? false,
       ),
     )
   }

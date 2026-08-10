@@ -237,6 +237,7 @@ export class BuildTarget implements FactoryBuildTarget {
   readonly buildingInput: HTMLInputElement
   readonly rateInput: HTMLInputElement
   readonly beltInput: HTMLInputElement
+  readonly beltStackHeight: HTMLSpanElement
   readonly rateFieldLabel: HTMLLabelElement
   readonly locationWarning: Selection<HTMLDivElement, undefined, null, undefined>
   readonly qualityNotice: Selection<HTMLDivElement, undefined, null, undefined>
@@ -333,10 +334,7 @@ export class BuildTarget implements FactoryBuildTarget {
       .classed("target-quality", true)
       .attr("id", qualityInputId)
       .attr("aria-label", `Quality for ${item.name}`)
-      .attr(
-        "data-tooltip",
-        "Choose the output quality tier. The calculator uses the chance from the selected quality modules.",
-      )
+      .attr("data-tooltip", "Set the output quality; module chances are applied automatically.")
       .on("change", (event: Event) => {
         const target = event.target
         if (target instanceof HTMLSelectElement) handleTargetQualityChange(this, Number(target.value))
@@ -364,10 +362,7 @@ export class BuildTarget implements FactoryBuildTarget {
       .attr("value", 1)
       .attr("size", 3)
       .attr("aria-label", "Machines")
-      .attr(
-        "title",
-        "Enter a value to specify the number of buildings. The rate will be determined based on the number of items a single building can make.",
-      )
+      .attr("title", "Set the required machine count.")
       .node() as HTMLInputElement
 
     const rateInputId = `target-rate-${targetCount}`
@@ -386,10 +381,7 @@ export class BuildTarget implements FactoryBuildTarget {
       .attr("id", rateInputId)
       .attr("value", "")
       .attr("size", 5)
-      .attr(
-        "data-tooltip",
-        "Enter a value to specify the rate. The number of buildings will be determined based on the rate.",
-      )
+      .attr("data-tooltip", "Set the required output rate.")
       .node() as HTMLInputElement
 
     const beltInputId = `target-belts-${targetCount}`
@@ -405,10 +397,15 @@ export class BuildTarget implements FactoryBuildTarget {
       .attr("value", "")
       .attr("size", 3)
       .attr("aria-label", "Belts")
-      .attr("data-tooltip", "Enter a value to target full belts. Uses the Belt and Belt stacking selected in Settings.")
       .node() as HTMLInputElement
+    this.beltStackHeight = beltField
+      .append("span")
+      .classed("target-belt-stack-height", true)
+      .attr("aria-hidden", "true")
+      .node() as HTMLSpanElement
     this.setRateLabel()
     this.syncBeltInputAvailability()
+    this.syncBeltStackHeight()
 
     this.locationWarning = element
       .append("div")
@@ -610,6 +607,7 @@ export class BuildTarget implements FactoryBuildTarget {
   getRate(): Rational {
     this.setRateLabel()
     this.syncBeltInputAvailability()
+    this.syncBeltStackHeight()
     let rate = zero
     let recipe = this.recipe
     if (!hasRecipeCategories(recipe) && this.changedBuilding) {
@@ -634,7 +632,7 @@ export class BuildTarget implements FactoryBuildTarget {
     if (this.basis === "machines") {
       rate = qualityRate === null ? zero : qualityRate.mul(this.buildings)
     } else if (this.basis === "belts") {
-      rate = spec.getRateForBeltCount(this.belts)
+      rate = spec.getRateForBeltCount(this.item, this.belts, this.recipe ?? this.defaultRecipe)
     } else {
       rate = this.rate
     }
@@ -649,7 +647,7 @@ export class BuildTarget implements FactoryBuildTarget {
     }
     this.rateInput.value = spec.format.rate(rate)
     if (this.item.phase === "solid" && this.basis !== "belts") {
-      this.beltInput.value = spec.format.count(spec.getBeltCount(rate))
+      this.beltInput.value = spec.format.count(spec.getBeltCount(this.item, rate, this.recipe ?? this.defaultRecipe))
     }
     return rate
   }
@@ -699,11 +697,38 @@ export class BuildTarget implements FactoryBuildTarget {
     }
     this.basis = "rate"
     this.buildings = zero
-    this.rate = spec.getRateForBeltCount(beltCount)
+    this.rate = spec.getRateForBeltCount(this.item, beltCount, this.recipe ?? this.defaultRecipe)
     this.belts = zero
     this.rateInput.value = spec.format.rate(this.rate)
     this.syncSelectedInput()
     this.syncBeltInputAvailability()
+  }
+  syncBeltStackHeight(): void {
+    if (this.item.phase !== "solid") {
+      this.beltStackHeight.textContent = ""
+      return
+    }
+    const recipe = this.recipe ?? this.defaultRecipe
+    const height = spec.getEffectiveBeltStackSize(this.item, recipe).toDecimal()
+    const policy = spec.getBeltStackPolicy(this.item)
+    const source = spec.getBeltStackPolicySource(this.item)
+    this.beltStackHeight.textContent = `×${height}`
+    const policyText =
+      policy === "auto"
+        ? spec.isItemAutomaticallyBeltStacked(this.item, recipe)
+          ? "Auto: direct output"
+          : "Auto: unstacked"
+        : policy === "stacked"
+          ? source === "override"
+            ? "Stacked override"
+            : "Default: stacked"
+          : source === "override"
+            ? "Unstacked override"
+            : "Default: unstacked"
+    this.beltInput.setAttribute(
+      "data-tooltip",
+      `Full two-lane belts at ×${height} (${policyText}). Change item stacking in Factory.`,
+    )
   }
   setQuality(level: number | string): void {
     let maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))

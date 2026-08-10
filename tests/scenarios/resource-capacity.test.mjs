@@ -13,23 +13,47 @@ test("pumpjack field yield scales fluid resource capacity", async () => {
 })
 
 test("belt stacking changes throughput capacity without changing item rate", async () => {
-  const { specification, math } = await setupSpaceAgeFactory()
+  const { specification, items, math } = await setupSpaceAgeFactory()
+  const ironOre = items.get("iron-ore")
+  const ironPlate = items.get("iron-plate")
   specification.beltStackSize = math.Rational.from_integer(4)
-  assert.equal(specification.getBeltCount(math.Rational.from_integer(45)).toString(), "3/4")
+  specification.setBeltStackOverride(ironOre, "stacked")
+
+  assert.equal(specification.getBeltCount(ironOre, math.Rational.from_integer(45)).toString(), "3/4")
+  assert.equal(specification.getBeltCount(ironPlate, math.Rational.from_integer(45)).toString(), "3")
 })
 
 test("belt targets use full two-lane throughput and the selected stack height", async () => {
-  const { specification, math } = await setupSpaceAgeFactory()
+  const { specification, items, math } = await setupSpaceAgeFactory()
+  const ironPlate = items.get("iron-plate")
   const half = math.Rational.from_floats(1, 2)
+  specification.beltStackDefaultPolicy = "stacked"
 
-  assert.equal(specification.getRateForBeltCount(math.Rational.from_integer(1)).toString(), "15")
+  assert.equal(specification.getRateForBeltCount(ironPlate, math.Rational.from_integer(1)).toString(), "15")
 
   specification.beltStackSize = math.Rational.from_integer(4)
-  assert.equal(specification.getRateForBeltCount(half).toString(), "30")
+  assert.equal(specification.getRateForBeltCount(ironPlate, half).toString(), "30")
 
   specification.belt = specification.belts.get("turbo-transport-belt")
-  assert.equal(specification.getRateForBeltCount(math.Rational.from_integer(1)).toString(), "240")
-  assert.equal(specification.getBeltCount(math.Rational.from_integer(120)).toString(), "1/2")
+  assert.equal(specification.getRateForBeltCount(ironPlate, math.Rational.from_integer(1)).toString(), "240")
+  assert.equal(specification.getBeltCount(ironPlate, math.Rational.from_integer(120)).toString(), "1/2")
+})
+
+test("Auto recognizes guaranteed stacked output from big mining drills", async () => {
+  const { specification, items, recipes, math } = await setupSpaceAgeFactory()
+  const ironOre = items.get("iron-ore")
+  const miningRecipe = recipes.get("iron-ore")
+  const bigMiningDrill = specification.buildingKeys.get("big-mining-drill")
+  const electricMiningDrill = specification.buildingKeys.get("electric-mining-drill")
+  specification.beltStackSize = math.Rational.from_integer(4)
+
+  assert.equal(bigMiningDrill.dropsFullBeltStacks, true)
+  assert.equal(electricMiningDrill.dropsFullBeltStacks, false)
+  assert.equal(specification.setBuildingOverride(miningRecipe, bigMiningDrill), true)
+  assert.equal(specification.getEffectiveBeltStackSize(ironOre, miningRecipe).toString(), "4")
+
+  assert.equal(specification.setBuildingOverride(miningRecipe, electricMiningDrill), true)
+  assert.equal(specification.getEffectiveBeltStackSize(ironOre, miningRecipe).toString(), "1")
 })
 
 test("asteroid collection caps identify an over-capacity plan", async () => {

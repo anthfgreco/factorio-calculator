@@ -14,7 +14,7 @@ This fork supports experimental **Factorio Space Age 2.1.14** using the unchange
 - Configurable pumpjack/resource yield and asteroid-chunk collection capacities.
 - Surface-aware pollution, configured beacon-equivalent electricity, and Aquilo production heat.
 - Space Age rocket-silo throughput with 50-part rockets, buffered launch overlap, launches per selected interval, and visible launch-animation bottlenecks.
-- Belt stacking, stack throughput, configurable buffers, and cargo-wagon loads.
+- Item-aware belt stacking with automatic big-drill detection, stack throughput, buffers, and cargo-wagon loads.
 - Progression presets that set the quality ceiling and belt-stacking research.
 - Directly labeled Factory rows, in-row recipe/building/location selection, searchable settings, persistent URL state, and a one-click plan link.
 

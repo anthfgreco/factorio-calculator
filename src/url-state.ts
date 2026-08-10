@@ -2,6 +2,7 @@ import {
   compressCalculatorSettings,
   parseCalculatorFragment,
   bytesToBinaryString,
+  formatBeltStackItemSettings,
   formatTargetSetting,
 } from "./url/codec.js"
 import { CalculatorUrlHistory } from "./url/history.js"
@@ -142,6 +143,14 @@ export function serializeRecipeProductivityLevels(factorySpec: FactorySpecificat
     .map(([researchKey, level]) => `${researchKey}:${level}`)
 }
 
+export function serializeBeltStackOverrides(factorySpec: FactorySpecification): string {
+  return formatBeltStackItemSettings(
+    [...factorySpec.beltStackOverrides]
+      .sort(([a], [b]) => a.key.localeCompare(b.key))
+      .map(([item, policy]) => ({ itemKey: item.key, policy })),
+  )
+}
+
 export { bytesToBinaryString } from "./url/codec.js"
 
 export function formatSettings(
@@ -197,6 +206,15 @@ export function formatSettings(
     settings += "belt=" + spec.belt.key + "&"
   }
   if (!spec.beltStackSize.equal(Rational.from_float(1))) settings += "bstack=" + spec.beltStackSize.toString() + "&"
+  const beltStackOverrides = serializeBeltStackOverrides(spec)
+  if (
+    !spec.beltStackSize.equal(Rational.from_float(1)) ||
+    spec.beltStackDefaultPolicy !== "auto" ||
+    beltStackOverrides !== ""
+  ) {
+    settings += "bstackmode=" + spec.beltStackDefaultPolicy + "&"
+  }
+  if (beltStackOverrides !== "") settings += "bstackitems=" + beltStackOverrides + "&"
   if (!spec.bufferMinutes.equal(Rational.from_float(1))) settings += "buffer=" + spec.bufferMinutes.toString() + "&"
   if (!spec.freshnessDelayMinutes.isZero()) settings += "fresh=" + spec.freshnessDelayMinutes.toString() + "&"
   let resourceYields = [...spec.resourceYields]

@@ -36,6 +36,7 @@ test("calculator store publishes stable snapshots from the bound specification",
   assert.equal(initial.datasetKey, "space-age-2-1-13")
   assert.equal(initial.status, "loading")
   assert.equal(initial.targets.length, 0)
+  assert.equal(initial.settings.beltStackDefaultPolicy, "auto")
 
   specification.buildTargets.push({
     index: 0,

@@ -150,14 +150,33 @@ export function SettingsPanel({ commands, snapshot }: SettingsPanelProps) {
           </tr>
 
           <tr className="setting-row">
-            <td className="setting-label">Belt stacking</td>
+            <td className="setting-label">Maximum belt stack</td>
             <td>
               <select id="belt_stack_size" value={snapshot.settings.beltStackSize} onChange={onPlanningChange}>
-                <option value="1">1 item high</option>
-                <option value="2">2 items high</option>
-                <option value="3">3 items high</option>
-                <option value="4">4 items high</option>
+                <option value="1">×1 — No belt stacking</option>
+                <option value="2">×2 — Stack inserter research</option>
+                <option value="3">×3 — Belt capacity 1</option>
+                <option value="4">×4 — Belt capacity 2</option>
               </select>
+              <div className="setting-help">Research sets the maximum; items still need a stacking source.</div>
+            </td>
+          </tr>
+
+          <tr className="setting-row compact-setting-row compact-setting-first">
+            <td className="setting-label">Default item stacking</td>
+            <td>
+              <select
+                id="belt_stack_default_policy"
+                value={snapshot.settings.beltStackDefaultPolicy}
+                onChange={onPlanningChange}
+              >
+                <option value="auto">Auto — direct output only</option>
+                <option value="stacked">Stacked — use maximum</option>
+                <option value="unstacked">Unstacked — use ×1</option>
+              </select>
+              <div className="setting-help">
+                Auto detects big drills. Override items stacked by inserters or recyclers.
+              </div>
             </td>
           </tr>
 
