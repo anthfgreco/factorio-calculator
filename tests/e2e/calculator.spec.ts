@@ -51,6 +51,63 @@ test("calculator workflow persists settings and renders the graph", async ({ pag
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
+test("production targets activate displayed values and preserve belt intent", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await page.goto("/calc.html")
+
+  const target = page.locator("#targets > li.target").first()
+  const machines = target.locator(".target-machine-count")
+  const rate = target.locator(".target-rate")
+  const belts = target.locator(".target-belts")
+
+  await machines.fill("24")
+  await machines.press("Enter")
+  await expect(machines).toHaveClass(/selected/)
+  const derivedRate = await rate.inputValue()
+  expect(derivedRate).not.toBe("")
+
+  await rate.click()
+  await rate.press("Enter")
+  await expect(rate).toHaveClass(/selected/)
+  await expect(rate).toHaveValue(derivedRate)
+  await expect(machines).not.toHaveClass(/selected/)
+
+  await belts.fill("0.5")
+  await belts.press("Enter")
+  await expect(belts).toHaveClass(/selected/)
+  await expect(rate).toHaveValue("450")
+  await expect.poll(() => new URL(page.url()).hash).not.toBe("")
+
+  await page.getByRole("button", { name: "Settings" }).click()
+  await page.locator("#belt_stack_size").selectOption("4")
+  await expect(rate).toHaveValue("1800")
+  await page.locator('#belt_selector input[value="fast-transport-belt"]').evaluate((element) => {
+    if (!(element instanceof HTMLInputElement) || element.labels?.[0] === undefined) {
+      throw new Error("Expected the fast belt input to have a clickable label")
+    }
+    element.labels[0].click()
+  })
+  await expect(rate).toHaveValue("3600")
+
+  await page.reload()
+  const reloadedTarget = page.locator("#targets > li.target").first()
+  await expect(reloadedTarget.locator(".target-belts")).toHaveValue("0.5")
+  await expect(reloadedTarget.locator(".target-belts")).toHaveClass(/selected/)
+  await expect(reloadedTarget.locator(".target-rate")).toHaveValue("3600")
+
+  await reloadedTarget.locator(".production-target-item .dropdownWrapper").click()
+  await page
+    .locator(".itemDropdown.open label")
+    .filter({ hasText: /^Water$/ })
+    .click()
+  await expect(reloadedTarget.locator(".target-belts")).toBeDisabled()
+  await expect(reloadedTarget.locator(".target-belts")).toHaveValue("N/A")
+  await expect(reloadedTarget.locator(".target-rate")).toHaveClass(/selected/)
+  await expect(reloadedTarget.locator(".target-rate")).toHaveValue("3600")
+
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
 test("critical calculator controls remain visible on mobile", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page)
   await page.setViewportSize({ width: 390, height: 844 })
@@ -58,6 +115,21 @@ test("critical calculator controls remain visible on mobile", async ({ page }) =
 
   await expect(page.getByRole("button", { name: "Add target" })).toBeVisible()
   await expect(page.locator(".tabs")).toBeVisible()
+  const target = page.locator("#targets > li.target").first()
+  for (const label of ["Quality", "Machines", "Rate/min", "Belts"]) {
+    await expect(target.locator(".target-field-label").filter({ hasText: label })).toBeVisible()
+  }
+
+  const quality = await target.locator(".target-quality-field").boundingBox()
+  const machines = await target.locator(".target-machines-field").boundingBox()
+  const rate = await target.locator(".target-rate-field").boundingBox()
+  const belts = await target.locator(".target-belts-field").boundingBox()
+  if (quality === null || machines === null || rate === null || belts === null) {
+    throw new Error("Expected all mobile target fields to have visible layouts")
+  }
+  expect(Math.abs(quality.x - rate.x)).toBeLessThan(2)
+  expect(Math.abs(machines.x - belts.x)).toBeLessThan(2)
+  expect(rate.y).toBeGreaterThan(quality.y)
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 

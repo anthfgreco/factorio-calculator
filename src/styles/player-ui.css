@@ -735,7 +735,7 @@ ul#targets {
 .production-target-header,
 ul#targets li.production-target-row {
   display: grid;
-  grid-template-columns: 2rem 180px 104px 72px 88px;
+  grid-template-columns: 2rem 180px 104px 72px 88px 72px;
   align-items: center;
   gap: 8px;
   width: max-content;
@@ -777,15 +777,23 @@ ul#targets li.production-target-row {
 .production-target-settings {
   display: contents;
 }
+.target-setting-field {
+  display: contents;
+}
+.target-field-label {
+  display: none;
+}
 .production-target-row .target-quality,
 .production-target-row .target-machine-count,
-.production-target-row .target-rate {
+.production-target-row .target-rate,
+.production-target-row .target-belts {
   width: 100%;
   min-width: 0;
   margin: 0;
 }
 .production-target-row .target-machine-count,
-.production-target-row .target-rate {
+.production-target-row .target-rate,
+.production-target-row .target-belts {
   text-align: right;
 }
 .production-target-row input.selected {
@@ -1407,12 +1415,25 @@ svg.sankey g.edgePathHighlight path.highlighter {
   .production-target-settings {
     display: grid;
     grid-column: 2;
-    grid-template-columns: calc(42% - 8px) calc(24% - 4px) calc(34% - 4px);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
     width: calc(100vw - 4rem);
     min-width: 0;
     max-width: 100%;
     overflow: hidden;
+  }
+
+  .target-setting-field {
+    display: grid;
+    min-width: 0;
+    gap: 0.2rem;
+  }
+
+  .target-field-label {
+    display: block;
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 600;
   }
 
   .progression-presets {

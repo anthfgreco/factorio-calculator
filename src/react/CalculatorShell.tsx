@@ -41,7 +41,9 @@ function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
     <section className="targets-panel" aria-labelledby="targets_title">
       <div className="targets-heading">
         <span id="targets_title">Production targets</span>
-        <span className="targets-hint">Choose an output, then set its quality, machine count, or production rate.</span>
+        <span className="targets-hint">
+          Choose an output, then set its quality, machine count, production rate, or belt throughput.
+        </span>
       </div>
       <div className="production-target-header" aria-hidden="true">
         <span />
@@ -49,6 +51,7 @@ function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
         <span>Quality</span>
         <span>Machines</span>
         <span>Rate/{DISPLAY_RATE_UNITS[snapshot.settings.displayRate]}</span>
+        <span data-tooltip="Uses the Belt and Belt stacking selected in Settings.">Belts</span>
       </div>
       <ul id="targets">
         <li id="plusButton">

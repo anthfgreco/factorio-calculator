@@ -498,7 +498,7 @@ function makeGraph(totals: Totals): GraphData {
     }
     let beltCount = null
     if (item.phase === "solid" && spec.belt !== null) {
-      beltCount = rate.div(spec.belt.rate)
+      beltCount = spec.getBeltCount(rate)
     }
     const extra = from.products.length > 1
     links.push(new GraphEdge(source, target, value, item, rate, fuel, beltCount, extra))

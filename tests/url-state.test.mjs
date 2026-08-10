@@ -165,6 +165,7 @@ test("URL recipe productivity levels are stable and omit defaults or unknown res
 const { compressCalculatorSettings, parseCalculatorFragment, parseSettingsParameters } = await import(
   pathToFileURL(resolve(build, "url/codec.js")).href
 )
+const { formatTargetSetting, parseTargetSetting } = await import(pathToFileURL(resolve(build, "url/codec.js")).href)
 const { CalculatorUrlHistory } = await import(pathToFileURL(resolve(build, "url/history.js")).href)
 
 const nodeBase64 = {
@@ -180,6 +181,56 @@ const nodeBase64 = {
 function compressFragment(value) {
   return `zip=${nodeBase64.encode(bytesToBinaryString(deflateRaw(value)))}`
 }
+
+test("production target URL settings preserve machine, rate, and belt intent", () => {
+  const targets = [
+    {
+      itemKey: "iron-plate",
+      mode: "f",
+      value: "24",
+      recipeKey: "iron-plate",
+      qualityLevel: 0,
+    },
+    {
+      itemKey: "advanced-circuit",
+      mode: "r",
+      value: "198",
+      recipeKey: null,
+      qualityLevel: 2,
+    },
+    {
+      itemKey: "processing-unit",
+      mode: "b",
+      value: "0.5",
+      recipeKey: null,
+      qualityLevel: 0,
+    },
+  ]
+
+  const settings = targets.map(formatTargetSetting)
+  assert.deepEqual(settings, ["iron-plate:f:24:iron-plate", "advanced-circuit:r:198:q2", "processing-unit:b:0.5"])
+  assert.deepEqual(settings.map(parseTargetSetting), targets)
+})
+
+test("production target URL settings reject malformed modes without weakening old links", () => {
+  assert.deepEqual(parseTargetSetting("advanced-circuit:f:24:q1"), {
+    itemKey: "advanced-circuit",
+    mode: "f",
+    value: "24",
+    recipeKey: null,
+    qualityLevel: 1,
+  })
+  assert.deepEqual(parseTargetSetting("advanced-circuit:r:198"), {
+    itemKey: "advanced-circuit",
+    mode: "r",
+    value: "198",
+    recipeKey: null,
+    qualityLevel: 0,
+  })
+  for (const malformed of ["", "advanced-circuit", "advanced-circuit:x:1", "advanced-circuit:b:", "x:b:1:q1:q2"]) {
+    assert.equal(parseTargetSetting(malformed), null)
+  }
+})
 
 test("pure URL codec preserves uncompressed parameter values exactly", () => {
   assert.deepEqual(

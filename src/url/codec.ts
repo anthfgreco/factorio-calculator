@@ -7,6 +7,47 @@ export interface Base64Codec {
   decode(encoded: string): string
 }
 
+export type TargetSettingMode = "f" | "r" | "b"
+
+export interface TargetSetting {
+  readonly itemKey: string
+  readonly mode: TargetSettingMode
+  readonly value: string
+  readonly recipeKey: string | null
+  readonly qualityLevel: number
+}
+
+export function formatTargetSetting(target: TargetSetting): string {
+  let setting = `${target.itemKey}:${target.mode}:${target.value}`
+  if (target.mode === "f" && target.recipeKey !== null) setting += `:${target.recipeKey}`
+  if (target.qualityLevel > 0) setting += `:q${target.qualityLevel}`
+  return setting
+}
+
+export function parseTargetSetting(setting: string): TargetSetting | null {
+  const parts = setting.split(":")
+  const qualityParts = parts.filter((part) => /^q\d+$/.test(part))
+  if (qualityParts.length > 1) return null
+
+  const coreParts = parts.filter((part) => !/^q\d+$/.test(part))
+  const itemKey = coreParts[0]
+  const mode = coreParts[1]
+  const value = coreParts[2]
+  if (itemKey === undefined || itemKey === "" || value === undefined || value === "") return null
+  if (mode !== "f" && mode !== "r" && mode !== "b") return null
+  if ((mode === "f" && coreParts.length > 4) || (mode !== "f" && coreParts.length !== 3)) return null
+
+  const recipeKey = mode === "f" ? (coreParts[3] ?? null) : null
+  const qualityPart = qualityParts[0]
+  return {
+    itemKey,
+    mode,
+    value,
+    recipeKey,
+    qualityLevel: qualityPart === undefined ? 0 : Number(qualityPart.slice(1)),
+  }
+}
+
 export function bytesToBinaryString(bytes: Uint8Array): string {
   const chunkSize = 0x8000
   let result = ""

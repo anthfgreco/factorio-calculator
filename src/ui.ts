@@ -1,5 +1,5 @@
 import { create, select, selectAll, type BaseType, type Selection } from "d3"
-import { spec, type FactoryBuildTarget } from "./factory.js"
+import { spec, type FactoryBuildTarget, type TargetBasis } from "./factory.js"
 import { one, Rational, zero } from "./math.js"
 import type { ItemGroups, Planet } from "./models.js"
 import { Item, Recipe } from "./recipes.js"
@@ -28,9 +28,7 @@ const SELECTED_INPUT = "selected"
 
 function itemHandler(target: BuildTarget): (item: Item) => void {
   return function (item: Item) {
-    target.itemKey = item.key
-    target.item = item
-    target.displayRecipes()
+    target.setItem(item, target.getRate())
     spec.updateSolution()
   }
 }
@@ -53,6 +51,21 @@ function changeRateHandler(target: BuildTarget): () => void {
   return function () {
     target.rateChanged()
     spec.updateSolution()
+  }
+}
+
+function changeBeltCountHandler(target: BuildTarget): () => void {
+  return function () {
+    target.beltsChanged()
+    spec.updateSolution()
+  }
+}
+
+function activateOnEnter(activate: () => void): (event: KeyboardEvent) => void {
+  return function (event: KeyboardEvent) {
+    if (event.key !== "Enter") return
+    event.preventDefault()
+    activate()
   }
 }
 
@@ -211,9 +224,10 @@ export class BuildTarget implements FactoryBuildTarget {
   item: Item
   recipe: Recipe | null = null
   defaultRecipe: Recipe | null = null
-  changedBuilding = true
+  basis: TargetBasis = "machines"
   buildings = one
   rate = zero
+  belts = zero
   qualityLevel = 0
   qualityNoticeKind: "warning" | null = null
   qualityConflictPreviousQuality: number | null = null
@@ -222,6 +236,8 @@ export class BuildTarget implements FactoryBuildTarget {
   readonly qualitySelector: HTMLSelectElement
   readonly buildingInput: HTMLInputElement
   readonly rateInput: HTMLInputElement
+  readonly beltInput: HTMLInputElement
+  readonly rateFieldLabel: HTMLLabelElement
   readonly locationWarning: Selection<HTMLDivElement, undefined, null, undefined>
   readonly qualityNotice: Selection<HTMLDivElement, undefined, null, undefined>
   readonly qualityNoticeMessage: Selection<HTMLSpanElement, undefined, null, undefined>
@@ -310,7 +326,9 @@ export class BuildTarget implements FactoryBuildTarget {
     const settings = element.append("span").classed("production-target-settings", true)
 
     const qualityInputId = `target-quality-${targetCount}`
-    this.qualitySelector = settings
+    const qualityField = settings.append("span").classed("target-setting-field target-quality-field", true)
+    qualityField.append("label").classed("target-field-label", true).attr("for", qualityInputId).text("Quality")
+    this.qualitySelector = qualityField
       .append("select")
       .classed("target-quality", true)
       .attr("id", qualityInputId)
@@ -332,12 +350,17 @@ export class BuildTarget implements FactoryBuildTarget {
       .text((d: { readonly name: string; readonly level: number }) => d.name)
     this.setQuality(0)
 
-    this.buildingInput = settings
+    const buildingInputId = `target-machines-${targetCount}`
+    const buildingField = settings.append("span").classed("target-setting-field target-machines-field", true)
+    buildingField.append("label").classed("target-field-label", true).attr("for", buildingInputId).text("Machines")
+    this.buildingInput = buildingField
       .append("input")
       .classed("target-machine-count", true)
       .classed(SELECTED_INPUT, true)
       .on("change", changeBuildingCountHandler(this))
+      .on("keydown", activateOnEnter(changeBuildingCountHandler(this)))
       .attr("type", "text")
+      .attr("id", buildingInputId)
       .attr("value", 1)
       .attr("size", 3)
       .attr("aria-label", "Machines")
@@ -347,11 +370,20 @@ export class BuildTarget implements FactoryBuildTarget {
       )
       .node() as HTMLInputElement
 
-    this.rateInput = settings
+    const rateInputId = `target-rate-${targetCount}`
+    const rateField = settings.append("span").classed("target-setting-field target-rate-field", true)
+    this.rateFieldLabel = rateField
+      .append("label")
+      .classed("target-field-label", true)
+      .attr("for", rateInputId)
+      .node() as HTMLLabelElement
+    this.rateInput = rateField
       .append("input")
       .classed("target-rate", true)
       .on("change", changeRateHandler(this))
+      .on("keydown", activateOnEnter(changeRateHandler(this)))
       .attr("type", "text")
+      .attr("id", rateInputId)
       .attr("value", "")
       .attr("size", 5)
       .attr(
@@ -359,7 +391,24 @@ export class BuildTarget implements FactoryBuildTarget {
         "Enter a value to specify the rate. The number of buildings will be determined based on the rate.",
       )
       .node() as HTMLInputElement
+
+    const beltInputId = `target-belts-${targetCount}`
+    const beltField = settings.append("span").classed("target-setting-field target-belts-field", true)
+    beltField.append("label").classed("target-field-label", true).attr("for", beltInputId).text("Belts")
+    this.beltInput = beltField
+      .append("input")
+      .classed("target-belts", true)
+      .on("change", changeBeltCountHandler(this))
+      .on("keydown", activateOnEnter(changeBeltCountHandler(this)))
+      .attr("type", "text")
+      .attr("id", beltInputId)
+      .attr("value", "")
+      .attr("size", 3)
+      .attr("aria-label", "Belts")
+      .attr("data-tooltip", "Enter a value to target full belts. Uses the Belt and Belt stacking selected in Settings.")
+      .node() as HTMLInputElement
     this.setRateLabel()
+    this.syncBeltInputAvailability()
 
     this.locationWarning = element
       .append("div")
@@ -392,8 +441,40 @@ export class BuildTarget implements FactoryBuildTarget {
   getBuildingCountInput(): string {
     return this.buildingInput.value
   }
+  get changedBuilding(): boolean {
+    return this.basis === "machines"
+  }
+  getBeltCountInput(): string {
+    return this.beltInput.value
+  }
   setRateLabel(): void {
     this.rateInput?.setAttribute("aria-label", "Rate per " + spec.format.longRate)
+    if (this.rateFieldLabel) {
+      const unit = spec.format.rateName === "m" ? "min" : spec.format.rateName
+      this.rateFieldLabel.textContent = `Rate/${unit}`
+    }
+  }
+  setItem(item: Item, currentRate: Rational): void {
+    this.itemKey = item.key
+    this.item = item
+    if (this.basis === "belts" && item.phase !== "solid") {
+      this.basis = "rate"
+      this.rate = currentRate
+      this.belts = zero
+    }
+    this.syncSelectedInput()
+    this.syncBeltInputAvailability()
+    this.displayRecipes()
+  }
+  syncBeltInputAvailability(): void {
+    const available = this.item.phase === "solid"
+    this.beltInput.disabled = !available
+    if (!available) this.beltInput.value = "N/A"
+  }
+  syncSelectedInput(): void {
+    this.buildingInput.classList.toggle(SELECTED_INPUT, this.basis === "machines")
+    this.rateInput.classList.toggle(SELECTED_INPUT, this.basis === "rate")
+    this.beltInput.classList.toggle(SELECTED_INPUT, this.basis === "belts")
   }
   hideQualityNotice(): void {
     this.qualityNoticeKind = null
@@ -528,6 +609,7 @@ export class BuildTarget implements FactoryBuildTarget {
   }
   getRate(): Rational {
     this.setRateLabel()
+    this.syncBeltInputAvailability()
     let rate = zero
     let recipe = this.recipe
     if (!hasRecipeCategories(recipe) && this.changedBuilding) {
@@ -549,28 +631,36 @@ export class BuildTarget implements FactoryBuildTarget {
       )
       qualityRate = baseRate.mul(probability)
     }
-    if (this.changedBuilding) {
+    if (this.basis === "machines") {
       rate = qualityRate === null ? zero : qualityRate.mul(this.buildings)
-      this.rateInput.value = spec.format.rate(rate)
+    } else if (this.basis === "belts") {
+      rate = spec.getRateForBeltCount(this.belts)
     } else {
       rate = this.rate
+    }
+
+    if (this.basis !== "machines") {
       if (qualityRate !== null && !qualityRate.isZero()) {
         let count = rate.div(qualityRate)
         this.buildingInput.value = spec.format.count(count)
       } else {
         this.buildingInput.value = "N/A"
       }
-      this.rateInput.value = spec.format.rate(rate)
+    }
+    this.rateInput.value = spec.format.rate(rate)
+    if (this.item.phase === "solid" && this.basis !== "belts") {
+      this.beltInput.value = spec.format.count(spec.getBeltCount(rate))
     }
     return rate
   }
   buildingsChanged(): void {
-    this.changedBuilding = true
-    this.buildingInput.classList.add(SELECTED_INPUT)
-    this.rateInput.classList.remove(SELECTED_INPUT)
+    this.basis = "machines"
     this.buildings = Rational.from_string(this.buildingInput.value)
     this.rate = zero
+    this.belts = zero
     this.rateInput.value = ""
+    this.beltInput.value = ""
+    this.syncSelectedInput()
   }
   setBuildings(count: string, recipe: Recipe | null): void {
     this.buildingInput.value = count
@@ -578,16 +668,42 @@ export class BuildTarget implements FactoryBuildTarget {
     this.buildingsChanged()
   }
   rateChanged(): void {
-    this.changedBuilding = false
-    this.buildingInput.classList.remove(SELECTED_INPUT)
-    this.rateInput.classList.add(SELECTED_INPUT)
+    this.basis = "rate"
     this.buildings = zero
     this.rate = Rational.from_string(this.rateInput.value).div(spec.format.rateFactor)
+    this.belts = zero
     this.buildingInput.value = ""
+    if (this.item.phase === "solid") this.beltInput.value = ""
+    this.syncSelectedInput()
   }
   setRate(rate: string): void {
     this.rateInput.value = rate
     this.rateChanged()
+  }
+  beltsChanged(): void {
+    if (this.item.phase !== "solid") return
+    this.basis = "belts"
+    this.buildings = zero
+    this.rate = zero
+    this.belts = Rational.from_string(this.beltInput.value)
+    this.buildingInput.value = ""
+    this.rateInput.value = ""
+    this.syncSelectedInput()
+  }
+  setBelts(belts: string): void {
+    const beltCount = Rational.from_string(belts)
+    this.beltInput.value = belts
+    if (this.item.phase === "solid") {
+      this.beltsChanged()
+      return
+    }
+    this.basis = "rate"
+    this.buildings = zero
+    this.rate = spec.getRateForBeltCount(beltCount)
+    this.belts = zero
+    this.rateInput.value = spec.format.rate(this.rate)
+    this.syncSelectedInput()
+    this.syncBeltInputAvailability()
   }
   setQuality(level: number | string): void {
     let maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))

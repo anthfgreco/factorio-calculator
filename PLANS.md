@@ -2,6 +2,44 @@
 
 Use an execution plan for changes that span multiple modules, alter architecture or persisted behavior, or require more than one validation loop. Keep it current while work is active.
 
+## Completed plan: belt-based production targets
+
+### Goal
+
+Let players target a fraction or multiple of the selected belt's full two-lane throughput alongside machine-count and rate targets, and let Enter activate any displayed target value even when it was not edited.
+
+### Context and constraints
+
+- `BuildTarget` and `#targets` remain imperatively owned by `src/ui.ts`; React owns only the stable header and mount point.
+- Belt targets use exact `Rational` arithmetic and the existing selected belt plus global belt-stack height.
+- Belt and stack changes must recalculate belt-based targets; display-rate changes must not change their physical throughput.
+- Fluids cannot use belt targets, existing `f` and `r` URL targets must remain compatible, and unrelated working-tree changes must be preserved.
+- Desktop and mobile target layouts must remain accessible and usable without moving target state into React or eagerly loading visualization code.
+
+### Done when
+
+- Solid targets expose Machines, Rate, and Belts values with one authoritative basis.
+- Pressing Enter on a derived Machines, Rate, or Belts field makes it authoritative and visibly selected.
+- Belt targets persist through shared links, react to Belt and Belt stacking settings, and safely fall back to rate semantics for fluids.
+- Exact mechanic, UI/state, URL compatibility, and browser behavior are covered.
+- Formatting, focused checks, E2E, runtime validation, and the release gate pass.
+
+### Steps
+
+1. [x] Characterize exact belt capacity, target activation, URL persistence, and responsive layout.
+2. [x] Add an exact target-basis model and belt-rate conversion at the factory boundary.
+3. [x] Implement the third imperative target input, Enter activation, fluid handling, settings reactions, and responsive shell layout.
+4. [x] Add backward-compatible URL persistence and typed URL-boundary coverage.
+5. [x] Add exact scenario, UI/state, URL, and E2E regression coverage.
+6. [x] Format, run focused validation and the release gate, then review the final diff.
+
+### Decision log
+
+- A belt target stores belt count as intent rather than performing a one-time conversion to rate, so changing the selected belt or stack height intentionally changes target throughput.
+- One belt means the selected belt's full two-lane throughput; belt stack height multiplies items per moving stack and inventory stack size is unrelated.
+- Use a three-value target basis rather than multiple booleans so Machines, Rate, and Belts cannot simultaneously be authoritative.
+- Enter activates a field even when its displayed value has not changed; ordinary focus or blur alone does not.
+
 ## Completed plan: Factorio 2.1.14 compatibility label
 
 ### Goal

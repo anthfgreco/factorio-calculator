@@ -23,7 +23,7 @@ export function HelpPanel() {
           <h2 className="help-section-title">Using the calculator</h2>
           <ol className="help-steps">
             <li>Add a production target.</li>
-            <li>Enter a machine count or rate.</li>
+            <li>Enter a machine count, rate, or belt throughput.</li>
             <li>Select the locations available to your factory.</li>
             <li>
               Open <strong>Factory</strong> to choose recipes, machines, modules, and imported ingredients.
@@ -68,6 +68,11 @@ export function HelpPanel() {
         <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
+            <ChangelogEntry date="2026-08-10" title="Belt Production Targets">
+              <li>Added belt throughput as a production target using the selected belt and stacking settings.</li>
+              <li>Pressing Enter now makes a displayed Machines, Rate, or Belts value the active target.</li>
+            </ChangelogEntry>
+
             <ChangelogEntry date="2026-08-06" title="Factorio 2.1.14">
               <li>Confirmed compatibility with Factorio 2.1.14; recipes and production values are unchanged.</li>
             </ChangelogEntry>

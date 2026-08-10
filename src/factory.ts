@@ -60,21 +60,26 @@ export const DEFAULT_BUILDING_KEYS = new Set([
 // -----------------------------------------------------------------------------
 
 export type FactoryRecipe = Recipe | DisabledRecipe
+export type TargetBasis = "machines" | "rate" | "belts"
 
 export interface FactoryBuildTarget {
   index: number
   itemKey: string
   item: Item
   recipe: Recipe | null
-  changedBuilding: boolean
+  readonly changedBuilding: boolean
+  basis: TargetBasis
   buildings: Rational
   rate: Rational
+  belts: Rational
   qualityLevel: number
   readonly defaultRecipe: Recipe | null
   getRate(): Rational
   getBuildingCountInput(): string
+  getBeltCountInput(): string
   setBuildings(value: string, recipe: Recipe | null): void
   setRate(value: string): void
+  setBelts(value: string): void
   setQuality(level: number | string): void
   displayRecipes(): void
   rateChanged(): void
@@ -906,6 +911,10 @@ export class FactorySpecification {
   getBeltCount(rate: Rational): Rational {
     if (this.belt === null) throw new Error("No transport belt is selected")
     return rate.div(this.belt.rate.mul(this.beltStackSize))
+  }
+  getRateForBeltCount(beltCount: Rational): Rational {
+    if (this.belt === null) throw new Error("No transport belt is selected")
+    return this.belt.rate.mul(this.beltStackSize).mul(beltCount)
   }
   getFuelForBuilding(building: Building | null): Fuel | null {
     if (building === null || building.fuel === null || this.fuels === null) {

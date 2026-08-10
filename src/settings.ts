@@ -66,6 +66,7 @@ import {
   visualizerRender,
   visualizerType,
 } from "./state.js"
+import { parseTargetSetting } from "./url/codec.js"
 
 type SettingsMap = ReadonlyMap<string, string>
 type RadioOption = Belt | Fuel
@@ -506,38 +507,35 @@ function renderTargets(settings: SettingsMap) {
   if (targetSetting !== undefined && targetSetting !== "") {
     let targets = targetSetting.split(",")
     for (let targetString of targets) {
-      let parts = targetString.split(":")
-      const itemKey = parts[0]
-      if (itemKey === undefined || !spec.items.has(itemKey)) {
-        console.log("unknown item:", itemKey)
+      const parsed = parseTargetSetting(targetString)
+      if (parsed === null) {
+        console.log("invalid target:", targetString)
         continue
       }
-      const target = spec.addTarget(itemKey)
-      const qualityPart = parts.find((part) => /^q\d+$/.test(part))
-      const coreParts = parts.filter((part) => !/^q\d+$/.test(part))
-      const type = coreParts[1]
-      if (type === "f") {
-        let recipe = null
-        if (coreParts.length > 3) {
-          const recipeKey = coreParts[3]
-          if (recipeKey === undefined || !spec.recipes.has(recipeKey)) {
-            console.log("unknown recipe:", recipeKey)
-            continue
-          }
-          recipe = spec.recipes.get(recipeKey) ?? null
-        }
-        const buildingCount = coreParts[2]
-        if (buildingCount === undefined) throw new Error("Missing target building count")
-        target.setBuildings(buildingCount, recipe)
-        target.displayRecipes()
-      } else if (type === "r") {
-        const rate = coreParts[2]
-        if (rate === undefined) throw new Error("Missing target rate")
-        target.setRate(rate)
-      } else {
-        throw new Error("unknown target type")
+      if (!spec.items.has(parsed.itemKey)) {
+        console.log("unknown item:", parsed.itemKey)
+        continue
       }
-      if (qualityPart) target.setQuality(Number(qualityPart.slice(1)))
+
+      let recipe = null
+      if (parsed.recipeKey !== null) {
+        if (!spec.recipes.has(parsed.recipeKey)) {
+          console.log("unknown recipe:", parsed.recipeKey)
+          continue
+        }
+        recipe = spec.recipes.get(parsed.recipeKey) ?? null
+      }
+
+      const target = spec.addTarget(parsed.itemKey)
+      if (parsed.mode === "f") {
+        target.setBuildings(parsed.value, recipe)
+        target.displayRecipes()
+      } else if (parsed.mode === "r") {
+        target.setRate(parsed.value)
+      } else {
+        target.setBelts(parsed.value)
+      }
+      target.setQuality(parsed.qualityLevel)
     }
   } else {
     spec.addTarget()
@@ -931,7 +929,8 @@ function renderBuildingOverrides(settings: SettingsMap) {
 
 function beltHandler(_event: Event, belt: Belt): void {
   spec.belt = belt
-  spec.display()
+  if (spec.buildTargets.some((target) => target.basis === "belts")) spec.updateSolution()
+  else spec.display()
 }
 
 let radioInput = 0

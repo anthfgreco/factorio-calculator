@@ -1,4 +1,9 @@
-import { compressCalculatorSettings, parseCalculatorFragment, bytesToBinaryString } from "./url/codec.js"
+import {
+  compressCalculatorSettings,
+  parseCalculatorFragment,
+  bytesToBinaryString,
+  formatTargetSetting,
+} from "./url/codec.js"
 import { CalculatorUrlHistory } from "./url/history.js"
 import { sorted } from "./data.js"
 import { DEFAULT_BELT, DEFAULT_FUEL, spec, type FactorySpecification } from "./factory.js"
@@ -259,17 +264,28 @@ export function formatSettings(
     }
   } else {
     for (let target of spec.buildTargets) {
-      let targetString = ""
+      let mode: "f" | "r" | "b"
+      let value: string
       if (target.changedBuilding) {
-        targetString = `${target.itemKey}:f:${target.getBuildingCountInput()}`
-        if (target.recipe !== null && target.recipe !== target.defaultRecipe) {
-          targetString += `:${target.recipe.key}`
-        }
+        mode = "f"
+        value = target.getBuildingCountInput()
+      } else if (target.basis === "belts") {
+        mode = "b"
+        value = target.getBeltCountInput()
       } else {
-        targetString = `${target.itemKey}:r:${target.rate.mul(spec.format.rateFactor).toString()}`
+        mode = "r"
+        value = target.rate.mul(spec.format.rateFactor).toString()
       }
-      if (target.qualityLevel > 0) targetString += `:q${target.qualityLevel}`
-      targetStrings.push(targetString)
+      targetStrings.push(
+        formatTargetSetting({
+          itemKey: target.itemKey,
+          mode,
+          value,
+          recipeKey:
+            mode === "f" && target.recipe !== null && target.recipe !== target.defaultRecipe ? target.recipe.key : null,
+          qualityLevel: target.qualityLevel,
+        }),
+      )
     }
   }
   settings += targetStrings.join(",")

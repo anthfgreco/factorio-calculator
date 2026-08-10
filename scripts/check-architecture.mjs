@@ -56,6 +56,7 @@ const allowedImports = new Map([
       "recipes.ts",
       "state.ts",
       "settings/productivity-research.ts",
+      "url/codec.ts",
     ]),
   ],
   [

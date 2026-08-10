@@ -50,7 +50,8 @@ const loadingHtml = renderToStaticMarkup(
 test("React shell renders the complete accessible calculator workflow", () => {
   for (const text of [
     "Production targets",
-    "Choose an output, then set its quality, machine count, or production rate.",
+    "Choose an output, then set its quality, machine count, production rate, or belt throughput.",
+    "Added belt throughput as a production target using the selected belt and stacking settings.",
     "Factory",
     "Visualize",
     "Resources",
@@ -106,5 +107,6 @@ test("React shell labels production target rates with the selected display rate"
       }),
     )
     assert.match(rateHtml, new RegExp(`>${label.replace("/", "\\/")}<`))
+    assert.match(rateHtml, />Belts</)
   }
 })

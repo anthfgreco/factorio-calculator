@@ -18,6 +18,20 @@ test("belt stacking changes throughput capacity without changing item rate", asy
   assert.equal(specification.getBeltCount(math.Rational.from_integer(45)).toString(), "3/4")
 })
 
+test("belt targets use full two-lane throughput and the selected stack height", async () => {
+  const { specification, math } = await setupSpaceAgeFactory()
+  const half = math.Rational.from_floats(1, 2)
+
+  assert.equal(specification.getRateForBeltCount(math.Rational.from_integer(1)).toString(), "15")
+
+  specification.beltStackSize = math.Rational.from_integer(4)
+  assert.equal(specification.getRateForBeltCount(half).toString(), "30")
+
+  specification.belt = specification.belts.get("turbo-transport-belt")
+  assert.equal(specification.getRateForBeltCount(math.Rational.from_integer(1)).toString(), "240")
+  assert.equal(specification.getBeltCount(math.Rational.from_integer(120)).toString(), "1/2")
+})
+
 test("asteroid collection caps identify an over-capacity plan", async () => {
   const { specification, items, planning, math } = await setupSpaceAgeFactory()
   const chunk = items.get("metallic-asteroid-chunk")
