@@ -14,6 +14,10 @@ interface TooltipRegistryEntry {
 let textTooltipDelegate: DelegateInstance | null = null
 const tooltipRegistry = new Set<TooltipRegistryEntry>()
 
+function formatTooltipText(value: string): string {
+  return value.replace(/\s*·\s*/g, "\n").replace(/\. (?=\S)/g, ".\n")
+}
+
 function tooltipProps(): Partial<Props> {
   return {
     appendTo: () => document.body,
@@ -33,9 +37,9 @@ export function initializeTooltips(): void {
   textTooltipDelegate = delegate(document.body, {
     ...tooltipProps(),
     target: "[data-tooltip]",
-    content: (reference) => reference.getAttribute("data-tooltip") ?? "",
+    content: (reference) => formatTooltipText(reference.getAttribute("data-tooltip") ?? ""),
     onTrigger(instance) {
-      instance.setContent(instance.reference.getAttribute("data-tooltip") ?? "")
+      instance.setContent(formatTooltipText(instance.reference.getAttribute("data-tooltip") ?? ""))
     },
   })
 }
@@ -257,6 +261,10 @@ interface DropdownState {
 type D3Selection = Selection<HTMLElement, unknown, null, undefined>
 type DropdownLifecycle = ((selection: D3Selection) => void) | null
 const dropdownLocal = local<DropdownState>()
+
+export function closeDropdowns(): void {
+  hideAll()
+}
 
 function toggleDropdown(this: HTMLElement): void {
   const state = dropdownLocal.get(this)

@@ -13,7 +13,7 @@ if (!build) {
 const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 
 const { DatasetValidationError, parseCalculatorData } = await load("data")
-const { Matrix, powerRepresentation, Rational, one, zero } = await load("math")
+const { Formatter, Matrix, formatCanadianNumber, powerRepresentation, Rational, one, zero } = await load("math")
 const { itemMatchesSearch } = await load("data")
 const {
   ModuleSpec,
@@ -143,6 +143,13 @@ test("dataset parser accepts the generated Space Age dataset", async () => {
   assert.deepEqual(data.rocket_launch, {
     buffered: true,
     launch_cycle_ticks: 1614,
+    launch_cycle_ticks_by_quality: {
+      epic: 1218,
+      legendary: 1097,
+      normal: 1614,
+      rare: 1301,
+      uncommon: 1423,
+    },
     parts_per_launch: 50,
   })
   assert.equal(data.planets.find((planet) => planet.key === "nauvis").pollutant_type, "pollution")
@@ -223,6 +230,22 @@ test("dataset parser rejects malformed recipe productivity research", async () =
   )
 })
 
+test("dataset parser validates generated equipment quality metadata", async () => {
+  const raw = structuredClone(await getParsedTestData())
+  raw.qualities[4].crafting_speed_multiplier = 0
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "qualities[4].crafting_speed_multiplier",
+  )
+
+  raw.qualities[4].crafting_speed_multiplier = 2.5
+  raw.modules[0].quality_effects.legendary.speed = "fast"
+  assert.throws(
+    () => parseCalculatorData(raw),
+    (error) => error instanceof DatasetValidationError && error.path === "modules[0].quality_effects.legendary.speed",
+  )
+})
+
 test("dataset parser validates advanced planning metadata", async () => {
   const raw = structuredClone(await getParsedTestData())
   raw.plants[0].growth_ticks = "five minutes"
@@ -276,6 +299,20 @@ test("rational display formatting preserves exact rounding semantics", () => {
   assert.equal(Rational.from_string("1999/200").toDecimal(2), "10.00")
   assert.equal(Rational.from_string("-1/8").toDecimal(3), "-0.125")
   assert.equal(Rational.from_string("1/1000").toDecimal(3, zero), "0.001")
+})
+
+test("player number formatting uses exact Canadian grouping", () => {
+  assert.equal(formatCanadianNumber("1234567.89"), "1,234,567.89")
+  assert.equal(formatCanadianNumber("-1234567/3000"), "-1,234,567/3,000")
+  assert.equal(Rational.from_string("1,234.5").toString(), "2469/2")
+  assert.equal(Rational.from_string("3,333,333 + 2/3").toString(), "10000001/3")
+
+  const formatter = new Formatter()
+  formatter.setDisplayRate("s")
+  assert.equal(formatter.rate(Rational.from_string("1234567.89")), "1,234,567.89")
+  assert.equal(formatter.count(Rational.from_integer(1_234_567)), "1,234,567")
+  formatter.displayFormat = "rational"
+  assert.equal(formatter.count(Rational.from_string("10000001/3")), "3,333,333 + 2/3")
 })
 
 test("rational zero and equal-denominator operations keep exact fast paths", () => {
@@ -502,6 +539,9 @@ test("speedEffect clamps total speed multiplier to 20% minimum floor", () => {
   const prod3 = {
     speed: Rational.from_float(-0.15),
     productivity: Rational.from_float(0.1),
+    speedFor() {
+      return this.speed
+    },
   }
   const spec = new ModuleSpec(null, { defaultBeacon: [], defaultBeaconCount: zero })
   spec.modules = Array(8).fill(prod3)

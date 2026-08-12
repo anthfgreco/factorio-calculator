@@ -69,14 +69,23 @@ export function HelpPanel() {
         <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
-            <ChangelogEntry date="2026-08-10" title="Belt Targets & Stacking">
-              <li>Added belt throughput as a production target.</li>
-              <li>Added Auto stacking, direct big-drill detection, and per-item controls in Factory.</li>
-              <li>Pressing Enter now makes a displayed Machines, Rate, or Belts value the active target.</li>
+            <ChangelogEntry date="2026-08-12" title="Machine, Module & Beacon Quality Support">
+              <li>Added quality controls for machines, modules, and beacons.</li>
+              <li>
+                Quality now changes machine speed, module effects, beacon transmission, mining drill drain, and rocket
+                launch speed.
+              </li>
+              <li>Shared plan links now include quality defaults and recipe-specific choices.</li>
+            </ChangelogEntry>
+
+            <ChangelogEntry date="2026-08-10" title="Belt Production Targets & Stacking">
+              <li>Plan production by belt throughput as well as machine count or item rate.</li>
+              <li>Choose automatic or per-item belt stacking, including Big mining drill output.</li>
+              <li>Press Enter on a displayed Machines, Rate, or Belts value to make it the active target.</li>
             </ChangelogEntry>
 
             <ChangelogEntry date="2026-08-06" title="Factorio 2.1.14">
-              <li>Confirmed compatibility with Factorio 2.1.14; recipes and production values are unchanged.</li>
+              <li>Updated to Factorio 2.1.14, production values unchanged.</li>
             </ChangelogEntry>
 
             <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">
@@ -86,80 +95,52 @@ export function HelpPanel() {
               </li>
             </ChangelogEntry>
 
-            <ChangelogEntry date="2026-08-03" title="Advanced Space Age Planning & Correctness">
-              <li>Replaced verbose planning narratives with compact KPIs and actionable diagnostics.</li>
-              <li>Optimized exact rational arithmetic and added a repeatable solver benchmark.</li>
+            <ChangelogEntry date="2026-08-03" title="Space Age Planning">
               <li>
-                Added accurate Gleba crop growth, agricultural-tower sizing, seed returns, spoilage and freshness,
-                agricultural science freshness, and spores.
+                Added planning for Gleba agriculture and freshness, quality targets, production locations, and
+                interplanetary transfers.
               </li>
               <li>
-                Added exact quality targets, quality progression limits, and reporting for output at other quality
-                tiers.
+                Added planning for rocket launches, fluid and asteroid resources, stacked belts, storage, cargo wagons,
+                beacon power, pollution, and Aquilo heat.
               </li>
               <li>
-                Added per-recipe planet and platform assignments, required material transfers, and per-location totals
-                for machines, power, pollution, spores, and heat.
-              </li>
-              <li>
-                Added fluid-resource yields, asteroid collection limits, belt stacking, storage buffers, cargo-wagon
-                loads, beacon power, pollution, and Aquilo production heat.
-              </li>
-              <li>Moved fluid yields and asteroid collection limits into a compact Resource assumptions panel.</li>
-              <li>
-                Fixed incorrect location warnings for requested and imported items, and prevented Gleba crops from
-                growing on Space platforms.
-              </li>
-              <li>
-                Fixed exact-quality totals when a specific recipe is selected and clarified output produced at other
-                quality tiers.
-              </li>
-              <li>
-                Removed unreliable rocket-load and power-infrastructure estimates, and reduced factory-summary clutter.
+                Corrected rocket launch timing, Gleba spores, location warnings, and exact-quality totals, and removed
+                unreliable estimates.
               </li>
             </ChangelogEntry>
 
             <ChangelogEntry date="2026-08-02" title="Machine Selection, Search & Productivity">
               <li>
-                Added exact machine selection directly to each recipe row, with an option to return to automatic
-                selection.
+                Choose a machine for each recipe or let the calculator select one automatically, with preferences
+                preserved in shared plan links.
               </li>
-              <li>
-                Made automatic machine preferences multi-selectable and preserved machine choices in shared plan links.
-              </li>
-              <li>Expanded item search with common chip, circuit, magazine, belt, robot, and factory shorthand.</li>
-              <li>
-                Added independent recipe-productivity research levels for all eight Space Age technologies, with
-                official technology icons and support in shared plan links.
-              </li>
-              <li>Improved tooltip and recipe-menu visibility near screen edges.</li>
+              <li>Search with common Factorio shorthand for circuits, belts, robots, magazines, and more.</li>
+              <li>Set each Space Age recipe productivity technology independently.</li>
+              <li>Tooltips and recipe menus now stay visible near screen edges.</li>
             </ChangelogEntry>
 
             <ChangelogEntry date="2026-07-31" title="Factory Planning & Calculation Fixes">
-              <li>Added clearer factory summaries, calculation errors, location controls, and Help pages.</li>
               <li>
-                Added top-level planet/location selector, factory summary cards, progression presets, direct item
-                labels, and share-link copying.
+                Added factory summaries, progression presets, location controls, clearer errors, and share-link copying.
               </li>
               <li>
-                Corrected machine floor limits for negative speed multipliers, rate display calculations, beacon power
-                warnings, and settings that could fall out of sync as plans changed.
+                Corrected production rates, machine speed limits, catalyst and coolant productivity, burner fuels, and
+                recipes with multiple probabilities.
               </li>
-              <li>
-                Corrected catalyst and coolant productivity, machine-specific burner fuel, and combined Factorio 2.1
-                product probabilities.
-              </li>
-              <li>Made shared plans preserve module positions and recipe choices, including very large factories.</li>
+              <li>Improved location and beacon-power warnings and kept settings in sync as plans change.</li>
+              <li>Shared links now preserve recipe and module choices, including very large factories.</li>
             </ChangelogEntry>
 
-            <ChangelogEntry date="2026-07-30" title="Factorio 2.1.12 and Space Age">
-              <li>Added experimental Factorio 2.1.12 Space Age support and made it the default.</li>
+            <ChangelogEntry date="2026-07-30" title="Factorio 2.1.12 & Space Age">
+              <li>Added Factorio 2.1.12 and Space Age support and made it the default.</li>
               <li>
-                Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe
+                Improved recipe search, aliases, location restrictions, asteroid resources, and per-row recipe
                 selection.
               </li>
               <li>
-                Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.
+                Improved Recipe Settings with search, crafting-category groups, unavailable-recipe filters, and
+                recycling controls.
               </li>
             </ChangelogEntry>
           </div>

@@ -32,6 +32,7 @@ export async function setupSpaceAgeFactory() {
   const buildings = modules.models.getBuildings(data, items)
   const planets = modules.models.getPlanets(data, recipes, buildings)
   const calculatorModules = modules.models.getModules(data, items)
+  const qualities = modules.models.getQualities(data)
   const belts = modules.models.getBelts(data)
   const fuel = modules.models.getFuel(data, items)
   const itemGroups = modules.models.getItemGroups(items, data)
@@ -52,6 +53,7 @@ export async function setupSpaceAgeFactory() {
     itemGroups,
     productivity,
     modules.models.getBeaconPower(data),
+    qualities,
   )
   specification.setDefaultPriority()
   return { ...modules, specification, items, recipes, planets, calculatorModules }

@@ -10,16 +10,26 @@
   <body>
     <h1>Changelog</h1>
 
+    <h2>2026-08-12</h2>
+    <ul>
+      <li>Added quality controls for machines, modules, and beacons.</li>
+      <li>
+        Quality now changes machine speed, module effects, beacon transmission, mining drill drain, and rocket launch
+        speed.
+      </li>
+      <li>Shared plan links now include quality defaults and recipe-specific choices.</li>
+    </ul>
+
     <h2>2026-08-10</h2>
     <ul>
-      <li>Added belt throughput as a production target.</li>
-      <li>Added Auto stacking, direct big-drill detection, and per-item controls in Factory.</li>
-      <li>Pressing Enter now makes a displayed Machines, Rate, or Belts value the active target.</li>
+      <li>Plan production by belt throughput as well as machine count or item rate.</li>
+      <li>Choose automatic or per-item belt stacking, including Big mining drill output.</li>
+      <li>Press Enter on a displayed Machines, Rate, or Belts value to make it the active target.</li>
     </ul>
 
     <h2>2026-08-06</h2>
     <ul>
-      <li>Confirmed compatibility with Factorio 2.1.14; recipes and production values are unchanged.</li>
+      <li>Updated to Factorio 2.1.14, production values unchanged.</li>
     </ul>
 
     <h2>2026-08-05</h2>
@@ -32,74 +42,50 @@
 
     <h2>2026-08-03</h2>
     <ul>
-      <li>Replaced verbose planning narratives with compact KPIs and actionable diagnostics.</li>
-      <li>Optimized exact rational arithmetic and decimal formatting, and added a repeatable solver benchmark.</li>
       <li>
-        Corrected Space Age rocket silos to use 50 parts and overlap buffered rocket construction with the
-        normal-quality launch animation instead of adding both times serially.
+        Added planning for Gleba agriculture and freshness, quality targets, production locations, and interplanetary
+        transfers.
       </li>
       <li>
-        Added rocket launches per selected interval, launch-limited row labels, and a clear warning when additional
-        speed can no longer improve silo throughput.
+        Added planning for rocket launches, fluid and asteroid resources, stacked belts, storage, cargo wagons, beacon
+        power, pollution, and Aquilo heat.
       </li>
       <li>
-        Corrected Gleba spores to include 15 per yumako or jellystem harvest plus 4 per placed agricultural tower, and
-        stopped reporting normal pollution on surfaces that have no pollution.
+        Corrected rocket launch timing, Gleba spores, location warnings, and exact-quality totals, and removed
+        unreliable estimates.
       </li>
-      <li>
-        Added accurate Gleba crop growth, agricultural-tower sizing, seed returns, spoilage and freshness, agricultural
-        science freshness, and spores.
-      </li>
-      <li>Added exact quality targets, quality progression limits, and reporting for output at other quality tiers.</li>
-      <li>
-        Added per-recipe planet and platform assignments, required material transfers, and per-location machine, power,
-        pollution, spores, and heat totals.
-      </li>
-      <li>
-        Added fluid-resource yields, asteroid collection limits, belt stacking, storage buffers, cargo-wagon loads,
-        beacon power, pollution, and Aquilo production heat.
-      </li>
-      <li>Moved fluid yields and asteroid collection limits into a compact Resource assumptions panel.</li>
-      <li>
-        Fixed incorrect location warnings for requested and imported items, and prevented Gleba crops from growing on
-        Space platforms.
-      </li>
-      <li>
-        Fixed exact-quality totals when a specific recipe is selected and clarified output produced at other quality
-        tiers.
-      </li>
-      <li>Removed unreliable estimates and reduced factory-summary clutter.</li>
     </ul>
 
     <h2>2026-08-02</h2>
     <ul>
       <li>
-        Added exact machine selection directly to each recipe row, with an option to return to automatic selection.
+        Choose a machine for each recipe or let the calculator select one automatically, with preferences preserved in
+        shared plan links.
       </li>
-      <li>Made automatic machine preferences multi-selectable and preserved machine choices in shared plan links.</li>
-      <li>Expanded item search with common chip, circuit, magazine, belt, robot, and factory shorthand.</li>
-      <li>Added independent recipe productivity research levels for all eight Space Age technologies.</li>
-      <li>Improved tooltip and recipe-menu visibility near screen edges.</li>
+      <li>Search with common Factorio shorthand for circuits, belts, robots, magazines, and more.</li>
+      <li>Set each Space Age recipe productivity technology independently.</li>
+      <li>Tooltips and recipe menus now stay visible near screen edges.</li>
     </ul>
 
     <h2>2026-07-31</h2>
     <ul>
-      <li>Added factory summaries, clearer calculation errors, share-link copying, and compact location controls.</li>
-      <li>Corrected recipe, machine, module, quality, and beacon compatibility for Factorio 2.1.</li>
-      <li>Added progression presets, direct item labels, compact Factory controls, and clearer visualizations.</li>
+      <li>Added factory summaries, progression presets, location controls, clearer errors, and share-link copying.</li>
       <li>
-        Corrected catalyst/coolant productivity, machine-specific burner fuels, and combined 2.1 product probabilities.
+        Corrected production rates, machine speed limits, catalyst and coolant productivity, burner fuels, and recipes
+        with multiple probabilities.
       </li>
-      <li>Made shared plans preserve module positions and recipe choices, including very large factories.</li>
+      <li>Improved location and beacon-power warnings and kept settings in sync as plans change.</li>
+      <li>Shared links now preserve recipe and module choices, including very large factories.</li>
     </ul>
 
     <h2>2026-07-30</h2>
     <ul>
-      <li>Added experimental Factorio 2.1.12 Space Age support and made it the default.</li>
+      <li>Added Factorio 2.1.12 and Space Age support and made it the default.</li>
+      <li>Improved recipe search, aliases, location restrictions, asteroid resources, and per-row recipe selection.</li>
       <li>
-        Improved recipe search, aliases, location restrictions, asteroid resources, and row-level recipe selection.
+        Improved Recipe Settings with search, crafting-category groups, unavailable-recipe filters, and recycling
+        controls.
       </li>
-      <li>Reworked Recipe Settings with search, category groups, unavailable filters, and recycling controls.</li>
     </ul>
   </body>
 </html>

@@ -10,6 +10,8 @@ import {
   Module,
   ModuleSpec,
   Planet,
+  Quality,
+  normalQuality,
   type RecipeProductivityResearch,
 } from "./models.js"
 import { PriorityList, type PrioritizedRecipe } from "./priorities.js"
@@ -96,12 +98,19 @@ export interface RecipeConfigurationSnapshot {
   readonly buildingOverride: Building | null
   readonly buildingOverrideSource: ConfigurationSource
   readonly revision: number
+  readonly machineQualityOverride: Quality | null
   readonly moduleSpec: {
     readonly object: ModuleSpec
     readonly building: Building | null
     readonly modules: readonly (Module | null)[]
+    readonly moduleQualities: readonly Quality[]
+    readonly moduleQualityOverrides: readonly number[]
     readonly moduleSource: ConfigurationSource
     readonly beaconModules: readonly (Module | null)[]
+    readonly beaconModuleQualities: readonly Quality[]
+    readonly beaconModuleQualityOverrides: readonly number[]
+    readonly beaconQuality: Quality
+    readonly beaconQualityOverride: boolean
     readonly beaconCount: Rational
   } | null
 }
@@ -364,11 +373,14 @@ export class FactorySpecification {
   readonly items = new Map<string, Item>()
   readonly recipes = new Map<string, Recipe>()
   readonly modules = new Map<string, Module>()
+  readonly qualities = new Map<string, Quality>()
+  readonly qualityTiers: Quality[] = []
   planets: Map<string, Planet> | null = null
   readonly buildings = new Map<string, BuildingGroup>()
   readonly buildingKeys = new Map<string, Building>()
   readonly buildingOverrides = new Map<Recipe, Building>()
   readonly buildingOverrideSources = new Map<Recipe, ConfigurationSource>()
+  readonly machineQualityOverrides = new Map<Recipe, Quality>()
   readonly recipeConfigurationRevisions = new Map<Recipe, number>()
   readonly belts = new Map<string, Belt>()
   fuels: FuelCollection | null = null
@@ -377,6 +389,9 @@ export class FactorySpecification {
   readonly spec = new Map<Recipe, ModuleSpec>()
   defaultModule: Module | null = null
   secondaryDefaultModule: Module | null = null
+  defaultMachineQuality: Quality = normalQuality
+  defaultModuleQuality: Quality = normalQuality
+  defaultBeaconQuality: Quality = normalQuality
   readonly defaultBeacon: (Module | null)[] = [null, null]
   defaultBeaconCount = zero
   belt: Belt | null = null
@@ -438,11 +453,23 @@ export class FactorySpecification {
     itemGroups: ItemGroups,
     recipeProductivityResearch: Map<string, RecipeProductivityResearch> = new Map(),
     beaconPower: Rational = zero,
+    qualities: ReadonlyMap<string, Quality> = new Map([[normalQuality.key, normalQuality]]),
   ): void {
     replaceMap(this.items, items)
     replaceMap(this.recipes, recipes)
     this.planets = planets
     replaceMap(this.modules, modules)
+    replaceMap(this.qualities, qualities)
+    this.qualityTiers.splice(
+      0,
+      this.qualityTiers.length,
+      ...[...qualities.values()].sort((a, b) => a.order.localeCompare(b.order)),
+    )
+    const normal = this.qualities.get("normal") ?? this.qualityTiers[0] ?? normalQuality
+    this.defaultMachineQuality = normal
+    this.defaultModuleQuality = normal
+    this.defaultBeaconQuality = normal
+    this.machineQualityOverrides.clear()
     replaceMap(this.buildings, getBuildingGroups(buildings, recipes.values()))
     this.buildingKeys.clear()
     for (const building of buildings) this.buildingKeys.set(building.key, building)
@@ -566,6 +593,82 @@ export class FactorySpecification {
   getBuilding(recipe: Recipe): Building | null {
     return this.getBuildingOverride(recipe) ?? this.getAutomaticBuilding(recipe)
   }
+  getNormalQuality(): Quality {
+    return this.qualities.get("normal") ?? this.qualityTiers[0] ?? normalQuality
+  }
+  getQualityIndex(quality: Quality): number {
+    return Math.max(0, this.qualityTiers.indexOf(quality))
+  }
+  getAvailableQualities(): readonly Quality[] {
+    return this.qualityTiers.slice(0, this.maxQualityLevel + 1)
+  }
+  setMaxQualityLevel(level: number): void {
+    const maximum = Math.max(0, this.qualityTiers.length - 1)
+    this.maxQualityLevel = Number.isFinite(level) ? Math.min(maximum, Math.max(0, Math.floor(level))) : maximum
+    const normal = this.getNormalQuality()
+    const available = new Set(this.getAvailableQualities())
+    if (!available.has(this.defaultMachineQuality)) this.defaultMachineQuality = normal
+    if (!available.has(this.defaultModuleQuality)) this.defaultModuleQuality = normal
+    if (!available.has(this.defaultBeaconQuality)) this.defaultBeaconQuality = normal
+    for (const [recipe, quality] of this.machineQualityOverrides) {
+      if (!available.has(quality)) this.machineQualityOverrides.delete(recipe)
+    }
+    for (const moduleSpec of this.spec.values()) {
+      for (let index = 0; index < moduleSpec.moduleQualities.length; index++) {
+        if (!available.has(moduleSpec.moduleQualities[index] ?? normal)) {
+          moduleSpec.moduleQualities[index] = normal
+          moduleSpec.moduleQualityOverrides.delete(index)
+        }
+      }
+      for (let index = 0; index < moduleSpec.beaconModuleQualities.length; index++) {
+        if (!available.has(moduleSpec.beaconModuleQualities[index] ?? normal)) {
+          moduleSpec.beaconModuleQualities[index] = normal
+          moduleSpec.beaconModuleQualityOverrides.delete(index)
+        }
+      }
+      if (!available.has(moduleSpec.beaconQuality)) {
+        moduleSpec.beaconQuality = normal
+        moduleSpec.beaconQualityOverride = false
+      }
+    }
+  }
+  private getMachineQualityRecipe(recipe: Recipe): Recipe {
+    return recipe.key === "rocket-launch" ? (this.recipes.get("rocket-part") ?? recipe) : recipe
+  }
+  getMachineQuality(recipe: Recipe): Quality {
+    return this.machineQualityOverrides.get(this.getMachineQualityRecipe(recipe)) ?? this.defaultMachineQuality
+  }
+  setMachineQuality(recipe: Recipe, quality: Quality, source: ConfigurationSource = "user"): void {
+    const qualityRecipe = this.getMachineQualityRecipe(recipe)
+    if (quality === this.defaultMachineQuality) this.machineQualityOverrides.delete(qualityRecipe)
+    else this.machineQualityOverrides.set(qualityRecipe, quality)
+    if (source === "user") this.notifyRecipeConfigurationChanged(recipe)
+    else this.recordRecipeConfigurationChange(recipe)
+    if (qualityRecipe !== recipe) this.recordRecipeConfigurationChange(qualityRecipe)
+  }
+  setDefaultMachineQuality(quality: Quality): void {
+    this.defaultMachineQuality = quality
+    this.notifyStateChanged()
+  }
+  setDefaultModuleQuality(quality: Quality): void {
+    for (const moduleSpec of this.spec.values()) {
+      for (let index = 0; index < moduleSpec.moduleQualities.length; index++) {
+        if (!moduleSpec.moduleQualityOverrides.has(index)) moduleSpec.moduleQualities[index] = quality
+      }
+      for (let index = 0; index < moduleSpec.beaconModuleQualities.length; index++) {
+        if (!moduleSpec.beaconModuleQualityOverrides.has(index)) moduleSpec.beaconModuleQualities[index] = quality
+      }
+    }
+    this.defaultModuleQuality = quality
+    this.notifyStateChanged()
+  }
+  setDefaultBeaconQuality(quality: Quality): void {
+    for (const moduleSpec of this.spec.values()) {
+      if (!moduleSpec.beaconQualityOverride) moduleSpec.beaconQuality = quality
+    }
+    this.defaultBeaconQuality = quality
+    this.notifyStateChanged()
+  }
   setBuildingOverride(recipe: Recipe, building: Building | null, source: ConfigurationSource = "user"): boolean {
     if (building !== null && (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))) {
       return false
@@ -605,6 +708,7 @@ export class FactorySpecification {
       hasBuildingOverride: this.buildingOverrides.has(recipe),
       buildingOverride: this.buildingOverrides.get(recipe) ?? null,
       buildingOverrideSource: this.getBuildingOverrideSource(recipe),
+      machineQualityOverride: this.machineQualityOverrides.get(this.getMachineQualityRecipe(recipe)) ?? null,
       revision: this.getRecipeConfigurationRevision(recipe),
       moduleSpec:
         moduleSpec === undefined
@@ -613,13 +717,22 @@ export class FactorySpecification {
               object: moduleSpec,
               building: moduleSpec.building,
               modules: [...moduleSpec.modules],
+              moduleQualities: [...moduleSpec.moduleQualities],
+              moduleQualityOverrides: [...moduleSpec.moduleQualityOverrides],
               moduleSource: moduleSpec.moduleSource,
               beaconModules: [...moduleSpec.beaconModules],
+              beaconModuleQualities: [...moduleSpec.beaconModuleQualities],
+              beaconModuleQualityOverrides: [...moduleSpec.beaconModuleQualityOverrides],
+              beaconQuality: moduleSpec.beaconQuality,
+              beaconQualityOverride: moduleSpec.beaconQualityOverride,
               beaconCount: moduleSpec.beaconCount,
             },
     }
   }
   restoreRecipeConfiguration(recipe: Recipe, snapshot: RecipeConfigurationSnapshot): void {
+    const qualityRecipe = this.getMachineQualityRecipe(recipe)
+    if (snapshot.machineQualityOverride === null) this.machineQualityOverrides.delete(qualityRecipe)
+    else this.machineQualityOverrides.set(qualityRecipe, snapshot.machineQualityOverride)
     if (snapshot.hasBuildingOverride) {
       if (snapshot.buildingOverride === null) throw new Error("Invalid building override snapshot")
       this.buildingOverrides.set(recipe, snapshot.buildingOverride)
@@ -637,8 +750,22 @@ export class FactorySpecification {
     const moduleSpec = snapshot.moduleSpec.object
     moduleSpec.building = snapshot.moduleSpec.building
     moduleSpec.modules.splice(0, moduleSpec.modules.length, ...snapshot.moduleSpec.modules)
+    moduleSpec.moduleQualities.splice(0, moduleSpec.moduleQualities.length, ...snapshot.moduleSpec.moduleQualities)
+    moduleSpec.moduleQualityOverrides.clear()
+    for (const index of snapshot.moduleSpec.moduleQualityOverrides) moduleSpec.moduleQualityOverrides.add(index)
     moduleSpec.moduleSource = snapshot.moduleSpec.moduleSource
     moduleSpec.beaconModules.splice(0, moduleSpec.beaconModules.length, ...snapshot.moduleSpec.beaconModules)
+    moduleSpec.beaconModuleQualities.splice(
+      0,
+      moduleSpec.beaconModuleQualities.length,
+      ...snapshot.moduleSpec.beaconModuleQualities,
+    )
+    moduleSpec.beaconModuleQualityOverrides.clear()
+    for (const index of snapshot.moduleSpec.beaconModuleQualityOverrides) {
+      moduleSpec.beaconModuleQualityOverrides.add(index)
+    }
+    moduleSpec.beaconQuality = snapshot.moduleSpec.beaconQuality
+    moduleSpec.beaconQualityOverride = snapshot.moduleSpec.beaconQualityOverride
     moduleSpec.beaconCount = snapshot.moduleSpec.beaconCount
     this.spec.set(recipe, moduleSpec)
   }
@@ -649,10 +776,19 @@ export class FactorySpecification {
     return JSON.stringify({
       buildingOverride: this.buildingOverrides.has(recipe) ? (this.buildingOverrides.get(recipe)?.key ?? null) : null,
       buildingOverrideSource: this.getBuildingOverrideSource(recipe),
+      machineQuality: this.getMachineQuality(recipe).key,
       moduleBuilding: moduleKey(moduleSpec?.building),
       modules: moduleSpec?.modules?.map(moduleKey) ?? null,
+      moduleQualities: moduleSpec?.moduleQualities.map((quality) => quality.key) ?? null,
+      moduleQualityOverrides:
+        moduleSpec === undefined ? null : [...moduleSpec.moduleQualityOverrides].sort((a, b) => a - b),
       moduleSource: moduleSpec?.moduleSource ?? "default",
       beaconModules: moduleSpec?.beaconModules?.map(moduleKey) ?? null,
+      beaconModuleQualities: moduleSpec?.beaconModuleQualities.map((quality) => quality.key) ?? null,
+      beaconModuleQualityOverrides:
+        moduleSpec === undefined ? null : [...moduleSpec.beaconModuleQualityOverrides].sort((a, b) => a - b),
+      beaconQuality: moduleSpec?.beaconQuality.key ?? null,
+      beaconQualityOverride: moduleSpec?.beaconQualityOverride ?? false,
       beaconCount: moduleSpec?.beaconCount?.toString() ?? null,
     })
   }
@@ -975,11 +1111,12 @@ export class FactorySpecification {
     } else {
       powerEffect = one
     }
-    let power = building.power.mul(count).mul(powerEffect)
+    const quality = this.getMachineQuality(recipe)
+    let power = building.powerForQuality(quality).mul(count).mul(powerEffect)
     if (building.fuel !== null) {
       return { fuel: building.fuel, power }
     }
-    power = power.add(building.drain().mul(count.ceil()))
+    power = power.add(building.drainForQuality(quality).mul(count.ceil()))
     return { fuel: "electric", power: power }
   }
   addTarget(itemKey = DEFAULT_ITEM_KEY): FactoryBuildTarget {

@@ -1,6 +1,6 @@
 import { create } from "d3"
 import { normalizeSearchText, sorted, type CalculatorData, type RecipeAmountData, type RecipeData } from "./data.js"
-import { one, Rational, zero } from "./math.js"
+import { formatCanadianNumber, one, Rational, zero } from "./math.js"
 import { currentSpecification } from "./models.js"
 import { Icon, sprites } from "./presentation.js"
 import { addItemToMaximumPriority, DISABLED_RECIPE_PREFIX, type PriorityMutationList } from "./priorities.js"
@@ -262,7 +262,7 @@ export class Recipe implements SolverRecipe {
     header.append(() => self.icon.make(32, true, undefined))
     let name = this.name
     if (this.products.length === 1 && this.products[0]!.item.name === this.name && one.less(this.products[0]!.amount)) {
-      name = this.products[0]!.amount.toDecimal() + " \u00d7 " + name
+      name = formatCanadianNumber(this.products[0]!.amount.toDecimal()) + " \u00d7 " + name
     }
     header.append("span").text("\u00A0" + name)
     if (extra) {
@@ -281,14 +281,14 @@ export class Recipe implements SolverRecipe {
       prodIcon
         .append("span")
         .classed("count", true)
-        .text((d: Ingredient<Item, Rational>) => d.amount.toDecimal())
+        .text((d: Ingredient<Item, Rational>) => formatCanadianNumber(d.amount.toDecimal()))
     }
     let time = t.append("div")
     time
       .append("div")
       .classed("product", true)
       .append(() => requireSprite("clock").icon.make(32, true, undefined))
-    time.append("span").text("\u00A0" + this.time.toDecimal())
+    time.append("span").text("\u00A0" + formatCanadianNumber(this.time.toDecimal()))
     let ingredient = t.append("div").selectAll("div").data(this.ingredients).join("div")
     ingredient
       .append("div")
@@ -296,7 +296,9 @@ export class Recipe implements SolverRecipe {
       .append((d: Ingredient<Item, Rational>) => d.item.icon.make(32, true, undefined))
     ingredient
       .append("span")
-      .text((d: Ingredient<Item, Rational>) => `\u00A0${d.amount.toDecimal()} \u00d7 ${d.item.name}`)
+      .text(
+        (d: Ingredient<Item, Rational>) => `\u00A0${formatCanadianNumber(d.amount.toDecimal())} \u00d7 ${d.item.name}`,
+      )
     return requireElement(t.node(), "recipe tooltip")
   }
 }

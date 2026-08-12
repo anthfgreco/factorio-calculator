@@ -12,7 +12,9 @@ Tower electricity remains a conservative active-load figure because the official
 
 ## Quality targets
 
-A production target can select an exact quality tier. The calculator applies Factorio's direct quality probability chain to the configured machine quality modules and scales the production chain to the expected throughput required for that tier. It reports the exact-tier yield and output at every other quality tier as one combined byproduct value.
+A production target can select an exact quality tier. The calculator applies Factorio's direct quality probability chain to the configured quality modules and scales the production chain to the expected throughput required for that tier. It reports the exact-tier yield and output at every other quality tier as one combined byproduct value.
+
+Machines, modules, and beacons also have their own quality. Factory-row equipment pickers expose the unlocked tiers without adding another table column. Machine quality changes crafting speed, module quality scales beneficial effects while preserving penalties, mining-drill quality reduces resource drain without increasing yield, and beacon quality changes distribution effectivity and beacon power. Settings supplies Normal-quality defaults for new rows unless a shared link specifies otherwise.
 
 This is an expected-value direct-production model. It does not yet optimize arbitrary recycler/upcycling loops or represent every intermediate item as a separately balanced `(item, quality)` solver node.
 
@@ -24,9 +26,9 @@ Transport is currently an accounting layer rather than a routing optimizer. Rock
 
 ## Rocket launches
 
-Space Age rocket silos require 50 rocket parts and can build a buffered second rocket while the current rocket prepares and launches. The calculator therefore uses the slower of rocket-part crafting and the normal-quality 1,614-tick launch cycle instead of adding those durations serially.
+Space Age rocket silos require 50 rocket parts and can build a buffered second rocket while the current rocket prepares and launches. The calculator therefore uses the slower of rocket-part crafting and the selected silo quality's launch cycle instead of adding those durations serially.
 
-Factory summaries report launches per selected time interval. Rocket-part rows are marked when the launch animation is the bottleneck, and explain that more speed no longer improves steady-state throughput while productivity can still reduce the crafts required per launch. Quality-specific silo animation speeds are not yet modeled.
+Factory summaries report launches per selected time interval. Rocket-part rows are marked when the launch animation is the bottleneck, and explain that more speed no longer improves steady-state throughput while productivity can still reduce the crafts required per launch.
 
 ## Resource capacity
 

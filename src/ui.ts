@@ -1,6 +1,6 @@
 import { create, select, selectAll, type BaseType, type Selection } from "d3"
 import { spec, type FactoryBuildTarget, type TargetBasis } from "./factory.js"
-import { one, Rational, zero } from "./math.js"
+import { formatCanadianNumber, one, Rational, zero } from "./math.js"
 import type { ItemGroups, Planet } from "./models.js"
 import { Item, Recipe } from "./recipes.js"
 import { addInputs, makeDropdown, reapTooltips } from "./presentation.js"
@@ -709,7 +709,7 @@ export class BuildTarget implements FactoryBuildTarget {
       return
     }
     const recipe = this.recipe ?? this.defaultRecipe
-    const height = spec.getEffectiveBeltStackSize(this.item, recipe).toDecimal()
+    const height = formatCanadianNumber(spec.getEffectiveBeltStackSize(this.item, recipe).toDecimal())
     const policy = spec.getBeltStackPolicy(this.item)
     const source = spec.getBeltStackPolicySource(this.item)
     this.beltStackHeight.textContent = `×${height}`

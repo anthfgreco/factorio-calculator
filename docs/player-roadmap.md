@@ -37,10 +37,6 @@ The current exact-quality target mode correctly scales direct production by the 
 
 Location assignment and transport accounting are explicit, but transport capacity is not yet part of the simplex. A future extension can constrain rocket payload, platform cargo throughput, route time, and transit spoilage while allowing the solver to choose among alternative production locations.
 
-### Quality-specific rocket animation timing
-
-Normal-quality buffered rocket launches are modeled exactly. Uncommon through legendary silo animation timings need a quality-aware building model before they can be exposed without conflating item quality with machine quality.
-
 ### Agricultural duty-cycle fidelity
 
 Tower area sizing, growth, and spores are modeled. Exact average tower electricity still requires planting/harvesting operation timing rather than the current conservative active-load assumption.

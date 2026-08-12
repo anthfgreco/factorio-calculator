@@ -92,6 +92,7 @@ export interface MachineData extends SpriteReference {
 
 export interface MiningDrillData extends MachineData {
   mining_speed: number
+  resource_drain_rate_percent?: number
   resource_categories: string[]
   takes_fluid: boolean
 }
@@ -119,7 +120,20 @@ export interface ModuleEffectData {
 export interface ModuleData {
   category?: string
   effect: ModuleEffectData
+  quality_effects?: Record<string, ModuleEffectData>
   item_key: string
+}
+
+export interface QualityData extends SpriteReference {
+  key: string
+  localized_name: LocalizedName
+  level: number
+  order: string
+  color: string
+  crafting_speed_multiplier: number
+  module_effect_multiplier: number
+  beacon_power_usage_multiplier: number
+  mining_drill_resource_drain_multiplier: number
 }
 
 export interface PlantData extends SpriteReference {
@@ -146,6 +160,7 @@ export interface AgriculturalTowerData extends MachineData {
 export interface BeaconData {
   energy_usage?: number
   distribution_effectivity: number
+  distribution_effectivity_bonus_per_quality_level?: number
   profile?: number[]
   allowed_effects?: string[]
 }
@@ -203,6 +218,7 @@ export interface SurfacePropertyData {
 export interface RocketLaunchData {
   parts_per_launch: number
   launch_cycle_ticks: number
+  launch_cycle_ticks_by_quality?: Record<string, number>
   buffered: boolean
 }
 
@@ -238,6 +254,7 @@ export interface CalculatorData {
   belts: BeltData[]
   fuel: FuelData[]
   modules: ModuleData[]
+  qualities?: QualityData[]
   recipe_productivity_research?: RecipeProductivityResearchData[]
   resources: ResourceData[]
   boilers: BoilerData[]
@@ -398,6 +415,9 @@ function validateMachines(value: unknown, path: string): void {
     if (machine.drops_full_belt_stacks !== undefined && typeof machine.drops_full_belt_stacks !== "boolean") {
       throw new DatasetValidationError(`${machinePath}.drops_full_belt_stacks`, "expected a boolean")
     }
+    if (machine.resource_drain_rate_percent !== undefined) {
+      requirePositiveNumber(machine.resource_drain_rate_percent, `${machinePath}.resource_drain_rate_percent`)
+    }
   }
 }
 
@@ -422,6 +442,13 @@ function validateRocketLaunch(value: unknown): void {
   let launch = requireRecord(value, "rocket_launch")
   requirePositiveNumber(launch.parts_per_launch, "rocket_launch.parts_per_launch")
   requirePositiveNumber(launch.launch_cycle_ticks, "rocket_launch.launch_cycle_ticks")
+  if (launch.launch_cycle_ticks_by_quality !== undefined) {
+    for (const [quality, ticks] of Object.entries(
+      requireRecord(launch.launch_cycle_ticks_by_quality, "rocket_launch.launch_cycle_ticks_by_quality"),
+    )) {
+      requirePositiveNumber(ticks, `rocket_launch.launch_cycle_ticks_by_quality.${quality}`)
+    }
+  }
   if (typeof launch.buffered !== "boolean") {
     throw new DatasetValidationError("rocket_launch.buffered", "expected a boolean")
   }
@@ -452,6 +479,7 @@ function validateBeacon(value: unknown): void {
   let beacon = requireRecord(value, "beacon")
   requireNonnegativeNumber(beacon.distribution_effectivity, "beacon.distribution_effectivity")
   validateOptionalNonnegativeNumber(beacon, "energy_usage", "beacon")
+  validateOptionalNonnegativeNumber(beacon, "distribution_effectivity_bonus_per_quality_level", "beacon")
   if (beacon.profile !== undefined) {
     for (let [index, effectivity] of requireArray(beacon.profile, "beacon.profile").entries()) {
       requireNonnegativeNumber(effectivity, `beacon.profile[${index}]`)
@@ -464,7 +492,41 @@ function validateModules(value: unknown): void {
     let path = `modules[${index}]`
     let module = requireRecord(entry, path)
     requireString(module.item_key, `${path}.item_key`)
-    requireRecord(module.effect, `${path}.effect`)
+    const validateEffect = (value: unknown, effectPath: string): void => {
+      for (const [effect, amount] of Object.entries(requireRecord(value, effectPath))) {
+        requireFiniteNumber(amount, `${effectPath}.${effect}`)
+      }
+    }
+    validateEffect(module.effect, `${path}.effect`)
+    if (module.quality_effects !== undefined) {
+      for (const [quality, effect] of Object.entries(
+        requireRecord(module.quality_effects, `${path}.quality_effects`),
+      )) {
+        validateEffect(effect, `${path}.quality_effects.${quality}`)
+      }
+    }
+  }
+}
+
+function validateQualities(value: unknown): void {
+  for (let [index, entry] of requireArray(value, "qualities").entries()) {
+    let path = `qualities[${index}]`
+    let quality = requireRecord(entry, path)
+    requireString(quality.key, `${path}.key`)
+    requireNonnegativeNumber(quality.level, `${path}.level`)
+    requireString(quality.order, `${path}.order`)
+    requireString(quality.color, `${path}.color`)
+    const localizedName = requireRecord(quality.localized_name, `${path}.localized_name`)
+    requireString(localizedName.en, `${path}.localized_name.en`)
+    requireNonnegativeNumber(quality.icon_col, `${path}.icon_col`)
+    requireNonnegativeNumber(quality.icon_row, `${path}.icon_row`)
+    requirePositiveNumber(quality.crafting_speed_multiplier, `${path}.crafting_speed_multiplier`)
+    requirePositiveNumber(quality.module_effect_multiplier, `${path}.module_effect_multiplier`)
+    requirePositiveNumber(quality.beacon_power_usage_multiplier, `${path}.beacon_power_usage_multiplier`)
+    requirePositiveNumber(
+      quality.mining_drill_resource_drain_multiplier,
+      `${path}.mining_drill_resource_drain_multiplier`,
+    )
   }
 }
 
@@ -481,6 +543,7 @@ export function parseCalculatorData(value: unknown): CalculatorData {
   validateKeyedEntries(data.belts, "belts")
   requireArray(data.fuel, "fuel")
   validateModules(data.modules)
+  if (data.qualities !== undefined) validateQualities(data.qualities)
   validateBeacon(data.beacon)
   if (data.recipe_productivity_research !== undefined) {
     validateRecipeProductivityResearch(data.recipe_productivity_research)

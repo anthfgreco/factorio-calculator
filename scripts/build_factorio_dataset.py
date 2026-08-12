@@ -286,6 +286,8 @@ class SpriteBuilder:
             ]
         elif ref.context == "technology":
             candidates = [self.dump_dir / "technology" / f"{ref.key}.png"]
+        elif ref.context == "quality":
+            candidates = [self.dump_dir / "quality" / f"{ref.key}.png"]
         else:
             raise ExportError(f"Unknown icon context: {ref.context}")
 
@@ -496,23 +498,65 @@ class DatasetBuilder:
             }))
         return fluids
 
-    def build_modules(self) -> list[dict[str, Any]]:
+    def build_modules(self, qualities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        def scaled_effect(name: str, value: float, multiplier: float) -> float:
+            beneficial = value > 0 if name in {"productivity", "quality", "speed"} else value < 0
+            if not beneficial or multiplier == 1:
+                return value
+            precision = 1000 if name == "quality" else 100
+            magnitude = math.floor(abs(value) * multiplier * precision + 1e-9) / precision
+            return math.copysign(magnitude, value)
+
         modules = []
         for key, raw in sorted(self.raw["module"].items()):
             effect = raw.get("effect", {})
+            base_effect = clean_none({
+                "consumption": effect.get("consumption"),
+                "pollution": effect.get("pollution"),
+                "productivity": effect.get("productivity"),
+                "quality": effect.get("quality"),
+                "speed": effect.get("speed"),
+            })
             modules.append({
                 "item_key": key,
                 "category": raw.get("category"),
                 # The calculator models only production-rate effects.
-                "effect": clean_none({
-                    "consumption": effect.get("consumption"),
-                    "pollution": effect.get("pollution"),
-                    "productivity": effect.get("productivity"),
-                    "quality": effect.get("quality"),
-                    "speed": effect.get("speed"),
-                }),
+                "effect": base_effect,
+                "quality_effects": {
+                    quality["key"]: {
+                        name: scaled_effect(name, value, quality["module_effect_multiplier"])
+                        for name, value in base_effect.items()
+                    }
+                    for quality in qualities
+                },
             })
         return modules
+
+    def build_qualities(self) -> list[dict[str, Any]]:
+        qualities = []
+        for key, raw in sorted(self.raw.get("quality", {}).items(), key=lambda entry: entry[1].get("order", "")):
+            if raw.get("hidden"):
+                continue
+            level = raw.get("level", 0)
+            color = raw.get("color", [178, 178, 178])
+            if isinstance(color, dict):
+                color = [color.get(channel, 178) for channel in ("r", "g", "b")]
+            entry = {
+                "key": key,
+                "localized_name": {"en": self.locale.get(key, "quality")},
+                "level": level,
+                "order": raw.get("order", key),
+                "color": "#" + "".join(f"{round(channel):02x}" for channel in color[:3]),
+                "crafting_speed_multiplier": 1 + 0.3 * level,
+                "module_effect_multiplier": 1 + 0.3 * level,
+                "beacon_power_usage_multiplier": raw.get("beacon_power_usage_multiplier", 1),
+                "mining_drill_resource_drain_multiplier": raw.get(
+                    "mining_drill_resource_drain_multiplier", 1
+                ),
+            }
+            self.sprite.register(entry, "quality", key)
+            qualities.append(entry)
+        return qualities
 
     def build_recipe_productivity_research(self) -> list[dict[str, Any]]:
         research = []
@@ -581,6 +625,7 @@ class DatasetBuilder:
                 "energy_source": make_energy_source(raw),
                 "energy_usage": convert_power(raw.get("energy_usage")),
                 "mining_speed": raw.get("mining_speed"),
+                "resource_drain_rate_percent": raw.get("resource_drain_rate_percent", 100),
                 "module_slots": raw.get("module_slots", 0),
                 "resource_categories": raw.get("resource_categories", []),
                 "takes_fluid": raw.get("input_fluid_box") is not None,
@@ -820,7 +865,8 @@ class DatasetBuilder:
         groups = self.build_groups()
         items, fuel, spoilage = self.build_items()
         fluids = self.build_fluids()
-        modules = self.build_modules()
+        qualities = self.build_qualities()
+        modules = self.build_modules(qualities)
         recipe_productivity_research = self.build_recipe_productivity_research()
         belts = self.build_belts()
         crafters = self.build_crafting_machines()
@@ -849,6 +895,7 @@ class DatasetBuilder:
             "spoilage": spoilage,
             "belts": belts,
             "modules": modules,
+            "qualities": qualities,
             "recipe_productivity_research": recipe_productivity_research,
             "resources": resources,
             "plants": plants,
@@ -864,6 +911,13 @@ class DatasetBuilder:
             "rocket_launch": {
                 "parts_per_launch": 50,
                 "launch_cycle_ticks": 1614,
+                "launch_cycle_ticks_by_quality": {
+                    "normal": 1614,
+                    "uncommon": 1423,
+                    "rare": 1301,
+                    "epic": 1218,
+                    "legendary": 1097,
+                },
                 "buffered": True,
             },
             "surface_properties": properties,
@@ -872,6 +926,9 @@ class DatasetBuilder:
             "beacon": {
                 "allowed_effects": normalize_allowed_effects(beacon.get("allowed_effects")),
                 "distribution_effectivity": beacon.get("distribution_effectivity"),
+                "distribution_effectivity_bonus_per_quality_level": beacon.get(
+                    "distribution_effectivity_bonus_per_quality_level", 0
+                ),
                 "energy_usage": convert_power(beacon.get("energy_usage")),
                 "profile": beacon.get("profile"),
             },
@@ -922,7 +979,18 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
     }
     require(
         dataset.get("rocket_launch")
-        == {"parts_per_launch": 50, "launch_cycle_ticks": 1614, "buffered": True},
+        == {
+            "parts_per_launch": 50,
+            "launch_cycle_ticks": 1614,
+            "launch_cycle_ticks_by_quality": {
+                "normal": 1614,
+                "uncommon": 1423,
+                "rare": 1301,
+                "epic": 1218,
+                "legendary": 1097,
+            },
+            "buffered": True,
+        },
         "Space Age rocket launch metadata mismatch",
     )
     pollutant_types = {planet["key"]: planet.get("pollutant_type") for planet in dataset["planets"]}
@@ -987,6 +1055,7 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
 
     icon_sections = (
         "items",
+        "qualities",
         "belts",
         "recipe_productivity_research",
         "crafting_machines",
@@ -1028,12 +1097,111 @@ def validate_dataset(dataset: dict[str, Any], raw: dict[str, Any]) -> dict[str, 
     }
 
 
+def enrich_existing_with_quality(existing: dict[str, Any], generated: dict[str, Any]) -> dict[str, Any]:
+    """Add quality-owned fields without replacing newer recipe or prototype values."""
+    enriched = json.loads(json.dumps(existing))
+    icon_sections = (
+        "items",
+        "belts",
+        "recipe_productivity_research",
+        "crafting_machines",
+        "mining_drills",
+        "resources",
+        "rocket_silo",
+        "boilers",
+        "offshore_pumps",
+        "agricultural_tower",
+        "plants",
+        "planets",
+        "recipes",
+    )
+    for section in icon_sections:
+        generated_coordinates = {
+            entry["key"]: (entry["icon_col"], entry["icon_row"])
+            for entry in generated.get(section, [])
+            if "key" in entry
+        }
+        for entry in enriched.get(section, []):
+            coordinates = generated_coordinates.get(entry.get("key"))
+            if coordinates is None:
+                raise ExportError(f"Quality enrichment is missing sprite coordinates for {section}/{entry.get('key')}")
+            entry["icon_col"], entry["icon_row"] = coordinates
+
+    enriched["qualities"] = generated["qualities"]
+    enriched["sprites"] = generated["sprites"]
+    generated_modules = {module["item_key"]: module for module in generated["modules"]}
+    for module in enriched["modules"]:
+        generated_module = generated_modules.get(module["item_key"])
+        if generated_module is None:
+            raise ExportError(f"Quality enrichment is missing module {module['item_key']}")
+        module["quality_effects"] = generated_module["quality_effects"]
+    generated_drills = {drill["key"]: drill for drill in generated["mining_drills"]}
+    for drill in enriched["mining_drills"]:
+        generated_drill = generated_drills.get(drill["key"])
+        if generated_drill is None:
+            raise ExportError(f"Quality enrichment is missing mining drill {drill['key']}")
+        drill["resource_drain_rate_percent"] = generated_drill["resource_drain_rate_percent"]
+    enriched["beacon"]["distribution_effectivity_bonus_per_quality_level"] = generated["beacon"][
+        "distribution_effectivity_bonus_per_quality_level"
+    ]
+    enriched["rocket_launch"]["launch_cycle_ticks_by_quality"] = generated["rocket_launch"][
+        "launch_cycle_ticks_by_quality"
+    ]
+    return enriched
+
+
+def validate_quality_enrichment(dataset: dict[str, Any]) -> dict[str, Any]:
+    errors: list[str] = []
+
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            errors.append(message)
+
+    quality_map = {quality["key"]: quality for quality in dataset.get("qualities", [])}
+    require(list(quality_map) == ["normal", "uncommon", "rare", "epic", "legendary"], "Quality tiers mismatch")
+    legendary = quality_map.get("legendary", {})
+    require(legendary.get("level") == 5, "Legendary quality level mismatch")
+    require(legendary.get("crafting_speed_multiplier") == 2.5, "Legendary crafting multiplier mismatch")
+    require(legendary.get("beacon_power_usage_multiplier") == 1 / 6, "Legendary beacon power mismatch")
+    modules = {module["item_key"]: module for module in dataset["modules"]}
+    require(
+        modules.get("quality-module-3", {}).get("quality_effects", {}).get("legendary", {}).get("quality") == 0.062,
+        "Legendary quality module 3 effect mismatch",
+    )
+    require(
+        modules.get("speed-module-3", {}).get("quality_effects", {}).get("legendary", {}).get("speed") == 1.25,
+        "Legendary speed module 3 effect mismatch",
+    )
+    drills = {drill["key"]: drill for drill in dataset["mining_drills"]}
+    require(drills.get("big-mining-drill", {}).get("resource_drain_rate_percent") == 50, "Big drill drain mismatch")
+    require(dataset["beacon"].get("distribution_effectivity_bonus_per_quality_level") == 0.2, "Beacon bonus mismatch")
+    require(
+        dataset["rocket_launch"].get("launch_cycle_ticks_by_quality", {}).get("legendary") == 1097,
+        "Legendary rocket launch cycle mismatch",
+    )
+    if errors:
+        raise ExportError("Quality enrichment validation failed:\n- " + "\n- ".join(errors))
+    return {
+        "qualities": list(quality_map),
+        "legendary_crafting_speed_multiplier": legendary["crafting_speed_multiplier"],
+        "legendary_quality_module_3": modules["quality-module-3"]["quality_effects"]["legendary"],
+        "big_mining_drill_resource_drain_percent": drills["big-mining-drill"]["resource_drain_rate_percent"],
+        "legendary_rocket_launch_cycle_ticks": dataset["rocket_launch"]["launch_cycle_ticks_by_quality"]["legendary"],
+        "sprite_hash": dataset["sprites"]["hash"],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("dump_dir", type=Path, help="Extracted Factorio export directory")
     parser.add_argument("--calculator-dir", type=Path, default=Path(__file__).resolve().parent.parent)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--report", type=Path)
+    parser.add_argument(
+        "--quality-enrich-existing",
+        action="store_true",
+        help="Preserve the existing dataset and add only generated quality fields and sprite coordinates",
+    )
     args = parser.parse_args()
 
     dump_dir = args.dump_dir.resolve()
@@ -1078,7 +1246,14 @@ def main() -> None:
     builder = DatasetBuilder(dump_dir, old_data, images_dir)
     dataset = builder.build(version, build_number, images_dir)
     dataset["mods"] = EXPECTED_MODS
-    validation = validate_dataset(dataset, builder.raw)
+    if args.quality_enrich_existing:
+        if not output.exists():
+            raise ExportError(f"Cannot enrich missing dataset: {output}")
+        dataset = enrich_existing_with_quality(load_json(output), dataset)
+        previous_validation = load_json(report) if report.exists() else {}
+        validation = {**previous_validation, **validate_quality_enrichment(dataset)}
+    else:
+        validation = validate_dataset(dataset, builder.raw)
     output.parent.mkdir(parents=True, exist_ok=True)
     write_json(output, dataset)
     write_json(report, {

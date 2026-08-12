@@ -8,9 +8,11 @@ import {
   setRecipeEnabled,
   spec,
 } from "./factory.js"
-import { one, powerRepresentation, Rational, zero } from "./math.js"
+import { formatCanadianNumber, one, powerRepresentation, Rational, zero } from "./math.js"
 import {
   Building,
+  getBeaconEffect,
+  Miner,
   Module,
   type ModuleDropdownCell,
   type ModuleDropdownOption,
@@ -20,8 +22,9 @@ import {
   Planet,
   RocketSilo,
   type RocketLaunchStats,
+  type Quality,
 } from "./models.js"
-import { addInputs, Icon, makeDropdown, makePopover, type IconObject } from "./presentation.js"
+import { addInputs, closeDropdowns, Icon, makeDropdown, makePopover, type IconObject } from "./presentation.js"
 import { DisabledRecipe, getRecipeSelectorGroups, Item, Recipe, type RecipeSelectorGroup } from "./recipes.js"
 import { refreshRecipeSettings } from "./settings.js"
 import { toggleIgnoreHandler, usesLegacyCalculation } from "./state.js"
@@ -134,7 +137,7 @@ export function makeRecipeSelector(row: RecipeSelectorRow): HTMLElement | null {
     options.append((recipe: Recipe) => recipe.icon.make(32))
     options.append("span").text((recipe: Recipe) => {
       const recipeDetails: string[] = []
-      if (!recipe.time.isZero()) recipeDetails.push(`${recipe.time.toDecimal()} s`)
+      if (!recipe.time.isZero()) recipeDetails.push(`${formatCanadianNumber(recipe.time.toDecimal())} s`)
       if (spec.selectedPlanets.size > 0) {
         const count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
         recipeDetails.push(`${count} selected location${count === 1 ? "" : "s"}`)
@@ -188,21 +191,54 @@ function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: reado
   const override = spec.getBuildingOverride(row.recipe)
   const label = (building: Building): string => {
     const details: string[] = []
-    if (!building.speed.isZero()) details.push(`speed ${building.speed.toDecimal()}`)
+    if (!building.speed.isZero()) details.push(`speed ${formatCanadianNumber(building.speed.toDecimal())}`)
     details.push(`${building.moduleSlots} module slot${building.moduleSlots === 1 ? "" : "s"}`)
     return `${building.name} — ${details.join(", ")}`
   }
   const options: MachineOption[] = [
     { building: null, displayBuilding: automaticBuilding, label: `Automatic (${label(automaticBuilding)})` },
-    ...compatibleBuildings.map((building) => ({ building, displayBuilding: building, label: label(building) })),
+    ...(compatibleBuildings.length > 1 || override !== null
+      ? compatibleBuildings.map((building) => ({ building, displayBuilding: building, label: label(building) }))
+      : []),
   ]
 
   const root = create("span")
     .classed("machine-selector", true)
     .attr("aria-label", `Choose a machine for ${row.recipe.name}`)
-  const choices = makeDropdown(root)
-    .classed("machine-dropdown", true)
-    .selectAll<HTMLDivElement, MachineOption>("div")
+  const dropdown = makeDropdown(root).classed("machine-dropdown", true)
+  const quality = spec.getMachineQuality(row.recipe)
+  if (row.building.supportsEquipmentQuality() && spec.getAvailableQualities().length > 1) {
+    dropdown
+      .append("div")
+      .classed("equipment-quality-strip", true)
+      .attr("aria-label", "Machine quality")
+      .selectAll<HTMLButtonElement, Quality>("button")
+      .data(spec.getAvailableQualities())
+      .join("button")
+      .attr("type", "button")
+      .style("--quality-color", (option) => option.color)
+      .classed("selected", (option) => option === quality)
+      .attr("aria-label", (option) => `${option.name} quality`)
+      .attr("title", (option) => `${option.name} quality`)
+      .each(function (option) {
+        this.replaceChildren(option.icon.make(20, true))
+      })
+      .on("click", (event: MouseEvent, option) => {
+        event.stopPropagation()
+        closeDropdowns()
+        globalThis.setTimeout(() => {
+          spec.setMachineQuality(row.recipe, option)
+          spec.updateSolution()
+        }, 0)
+      })
+    root
+      .append(() => quality.icon.make(16, true))
+      .classed("equipment-quality-badge", true)
+      .attr("data-quality", quality.key)
+      .attr("title", `${quality.name} machine quality`)
+  }
+  const choices = dropdown
+    .selectAll<HTMLDivElement, MachineOption>("div.machine-option")
     .data(options)
     .join("div")
     .classed("machine-option", true)
@@ -307,11 +343,35 @@ function getBreakdown(item: Item, totals: Totals): BreakdownRow[] {
     let count: Rational | null = null
     if (singleRecipe !== null && amount !== null) count = spec.getCount(singleRecipe, rate.div(amount))
     const percent = rate.div(itemTotal).mul(hundred)
-    const percentText = percent.less(one) ? "<1%" : `${percent.toDecimal(0)}%`
+    const percentText = percent.less(one) ? "<1%" : `${formatCanadianNumber(percent.toDecimal(0))}%`
     rows.push(new BreakdownRow(item, consumer, rate, building, count, percentText, found))
     found = false
   }
   return rows
+}
+
+function formatModuleEffect(label: string, value: Rational): string | null {
+  if (value.isZero()) return null
+  const sign = value.less(zero) ? "" : "+"
+  return `${label} ${sign}${formatCanadianNumber(value.mul(Rational.from_integer(100)).toDecimal())}%`
+}
+
+function formatEquipmentName(name: string): string {
+  return name.replace(
+    /(^|[ -])([a-z])/g,
+    (_match, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`,
+  )
+}
+
+function formatQualifiedModule(module: Module, quality: Quality): string {
+  const effects = [
+    formatModuleEffect("Speed", module.speedFor(quality)),
+    formatModuleEffect("Productivity", module.productivityFor(quality)),
+    formatModuleEffect("Quality", module.qualityFor(quality)),
+    formatModuleEffect("Energy", module.powerFor(quality)),
+    formatModuleEffect("Pollution", module.pollutionFor(quality)),
+  ].filter((effect): effect is string => effect !== null)
+  return `${quality.name} ${formatEquipmentName(module.name)}${effects.length === 0 ? "" : `\n${effects.join("\n")}`}`
 }
 
 class ModuleInput implements ModuleDropdownOption {
@@ -326,6 +386,10 @@ class ModuleInput implements ModuleDropdownOption {
   checked(): boolean {
     const cell = this.cell
     return cell.moduleSpec.getModule(cell.index) === this.module
+  }
+
+  tooltip(): string | null {
+    return this.module === null ? "Empty Module Slot" : formatQualifiedModule(this.module, this.cell.selectedQuality())
   }
 
   choose(): void {
@@ -359,6 +423,38 @@ class ModuleSlot implements ModuleDropdownCell {
   moduleSpec: ModuleSpec
   index = 0
   readonly inputRows: ModuleInput[][] = []
+
+  get qualityOptions(): readonly Quality[] {
+    const qualities = spec.getAvailableQualities()
+    return qualities.length > 1 ? qualities : []
+  }
+
+  selectedQuality(): Quality {
+    return this.moduleSpec.moduleQualities[this.index] ?? spec.getNormalQuality()
+  }
+
+  keepOpenAfterQualitySelection(): boolean {
+    return this.moduleSpec.modules[this.index] === null
+  }
+
+  chooseQuality(quality: Quality): void {
+    const toUpdate = [this.index]
+    if (this.index === 0) {
+      const oldModule = this.moduleSpec.modules[0]
+      const oldQuality = this.selectedQuality()
+      for (let index = 1; index < this.moduleSpec.modules.length; index++) {
+        const slotQuality = this.moduleSpec.moduleQualities[index] ?? spec.getNormalQuality()
+        if (this.moduleSpec.modules[index] === oldModule && slotQuality === oldQuality) toUpdate.push(index)
+      }
+    }
+    let needsRecalculation = false
+    for (const index of toUpdate) {
+      needsRecalculation = this.moduleSpec.setModuleQuality(index, quality) || needsRecalculation
+    }
+    if (toUpdate.every((index) => this.moduleSpec.modules[index] === null)) return
+    if (needsRecalculation || spec.isFactoryTarget(this.moduleSpec.recipe)) spec.updateSolution()
+    else spec.display()
+  }
 
   constructor(
     readonly group: DisplayGroup,
@@ -399,6 +495,12 @@ class BeaconInput implements ModuleDropdownOption {
     return this.module === this.cell.row.moduleSpec?.beaconModules[this.cell.index]
   }
 
+  tooltip(): string | null {
+    return this.module === null
+      ? "Empty Beacon Module Slot"
+      : formatQualifiedModule(this.module, this.cell.selectedQuality())
+  }
+
   choose(): void {
     const moduleSpec = this.cell.row.moduleSpec
     if (moduleSpec === null) return
@@ -415,6 +517,36 @@ let beaconCount = 0
 class BeaconCell implements ModuleDropdownCell {
   readonly name = `beaconslot-${beaconCount++}`
   readonly inputRows: BeaconInput[][] = []
+
+  get qualityOptions(): readonly Quality[] {
+    const qualities = spec.getAvailableQualities()
+    return qualities.length > 1 ? qualities : []
+  }
+
+  selectedQuality(): Quality {
+    return this.row.moduleSpec?.beaconModuleQualities[this.index] ?? spec.getNormalQuality()
+  }
+
+  keepOpenAfterQualitySelection(): boolean {
+    const moduleSpec = this.row.moduleSpec
+    return moduleSpec !== null && moduleSpec.beaconModules[this.index] === null
+  }
+
+  chooseQuality(quality: Quality): void {
+    const moduleSpec = this.row.moduleSpec
+    if (moduleSpec === null) return
+    const toUpdate = [this.index]
+    if (this.index === 0) {
+      const oldModule = moduleSpec.beaconModules[0]
+      const oldQuality = this.selectedQuality()
+      const secondQuality = moduleSpec.beaconModuleQualities[1] ?? spec.getNormalQuality()
+      if (moduleSpec.beaconModules[1] === oldModule && secondQuality === oldQuality) toUpdate.push(1)
+    }
+    for (const index of toUpdate) moduleSpec.setBeaconModuleQuality(quality, index)
+    if (toUpdate.every((index) => moduleSpec.beaconModules[index] === null)) return
+    if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
+    else spec.display()
+  }
 
   constructor(
     readonly row: DisplayRow,
@@ -620,9 +752,9 @@ function pipeText(rate: Rational): string {
   let { pipes, length } = pipeValues(rate)
   let pipeString = ""
   if (one.less(pipes)) {
-    pipeString += " \u00d7 " + pipes.toDecimal(0)
+    pipeString += " \u00d7 " + formatCanadianNumber(pipes.toDecimal(0))
   }
-  pipeString += " \u2264 " + length.toDecimal(0)
+  pipeString += " \u2264 " + formatCanadianNumber(length.toDecimal(0))
   return pipeString
 }
 
@@ -735,6 +867,28 @@ function getRocketStatsForRow(row: DisplayRow): RocketLaunchStats | null {
   return row.building instanceof RocketSilo ? row.building.getLaunchStats(spec) : null
 }
 
+function getBuildingCountTooltip(row: DisplayRow): string | null {
+  const recipe = requireRowRecipe(row)
+  const building = requireRowBuilding(row)
+  const quality = spec.getMachineQuality(recipe)
+  const rocket = getRocketStatsForRow(row)
+  if (rocket !== null) {
+    const limit = `${spec.format.rate(rocket.animationLaunchRate)} launches/${spec.format.rateName} per silo`
+    return rocket.launchLimited
+      ? `${quality.name}-quality launch animation limit: ${limit}. More speed does not increase steady-state throughput; productivity still reduces required crafts.`
+      : `Maximum ${quality.name.toLowerCase()}-quality buffered launch rate: ${limit}. Current rocket-part crafting is slower than the launch animation.`
+  }
+  if (building instanceof Miner) {
+    const drain = building.getResourceDrainRate(spec, recipe)
+    const patchYield = spec.getProdEffect(recipe).div(drain)
+    return `${quality.name} ${formatEquipmentName(building.name)}\nResource drain ${formatCanadianNumber(drain.mul(Rational.from_integer(100)).toDecimal())}% per mined unit\nExpected patch yield ×${formatCanadianNumber(patchYield.toDecimal())} at current mining productivity.`
+  }
+  if (!building.supportsEquipmentQuality()) return null
+  const craftingSpeed = building.getRecipeRate(spec, recipe).mul(recipe.time)
+  const productivity = spec.getProdEffect(recipe).sub(one)
+  return `${quality.name} ${formatEquipmentName(building.name)}\nEffective crafting speed ${formatCanadianNumber(craftingSpeed.toDecimal())}\nProductivity ${formatModuleEffect("", productivity)?.trim() ?? "0%"}`
+}
+
 function isLaunchLimitedRow(row: DisplayRow): boolean {
   return getRocketStatsForRow(row)?.launchLimited ?? false
 }
@@ -750,8 +904,8 @@ function renderFactorySummary(specification: FactorySpecification, totals: Total
   const totalPower = summary.electricalPower.add(summary.planning.beaconPower)
   const { power, suffix } = powerRepresentation(totalPower)
   const cards: SummaryCard[] = [
-    { label: "Active recipes", value: String(summary.recipeCount) },
-    { label: "Machines to place", value: summary.placedMachines.toDecimal(0) },
+    { label: "Active recipes", value: formatCanadianNumber(String(summary.recipeCount)) },
+    { label: "Machines to place", value: formatCanadianNumber(summary.placedMachines.toDecimal(0)) },
     { label: "Electric + beacon power", value: `${specification.format.count(power)} ${suffix}` },
   ]
   if (!summary.planning.pollution.isZero())
@@ -769,14 +923,17 @@ function renderFactorySummary(specification: FactorySpecification, totals: Total
     cards.push({ label: "Aquilo heat", value: `${specification.format.count(heat.power)} ${heat.suffix}` })
   }
   if (summary.planning.transport.length > 0)
-    cards.push({ label: "Cross-location flows", value: String(summary.planning.transport.length) })
+    cards.push({
+      label: "Cross-location flows",
+      value: formatCanadianNumber(String(summary.planning.transport.length)),
+    })
   if (summary.importedItems.length > 0)
-    cards.push({ label: "Imported items", value: String(summary.importedItems.length) })
+    cards.push({ label: "Imported items", value: formatCanadianNumber(String(summary.importedItems.length)) })
   const lowest = summary.planning.freshness[0]
   if (lowest !== undefined) {
     cards.push({
       label: "Lowest freshness",
-      value: `${(lowest.remaining.toFloat() * 100).toFixed(1)}% · ${lowest.item.name}`,
+      value: `${formatCanadianNumber((lowest.remaining.toFloat() * 100).toFixed(1))}% · ${lowest.item.name}`,
     })
   }
   for (const [fuel, rate] of [...summary.fuelRates].sort(([fuelA], [fuelB]) => fuelA.name.localeCompare(fuelB.name))) {
@@ -812,7 +969,7 @@ function renderFactorySummary(specification: FactorySpecification, totals: Total
   }
   for (const target of summary.planning.qualityTargets) {
     warnings.push(
-      `${target.tier} ${target.item.name}: ${(target.probability.toFloat() * 100).toFixed(3)}% yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total production required.`,
+      `${target.tier} ${target.item.name}: ${formatCanadianNumber((target.probability.toFloat() * 100).toFixed(3))}% yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total production required.`,
     )
   }
   if (summary.qualityRecipeCount > 0 && summary.planning.qualityTargets.length === 0) {
@@ -824,7 +981,7 @@ function renderFactorySummary(specification: FactorySpecification, totals: Total
   const agriculturalScience = summary.planning.freshness.find((row) => row.item.key === "agricultural-science-pack")
   if (agriculturalScience !== undefined && !specification.freshnessDelayMinutes.isZero()) {
     warnings.push(
-      `Agricultural science after ${specification.freshnessDelayMinutes.toDecimal()} min: ${(agriculturalScience.remaining.toFloat() * 100).toFixed(1)}% effective.`,
+      `Agricultural science after ${formatCanadianNumber(specification.freshnessDelayMinutes.toDecimal())} min: ${formatCanadianNumber((agriculturalScience.remaining.toFloat() * 100).toFixed(1))}% effective.`,
     )
   }
   for (const row of summary.planning.asteroidConstraints.filter((entry) => entry.exceeded)) {
@@ -993,6 +1150,15 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
       const beaconCell = rows.append("td").classed("pad building module beacon", true)
       const beaconControls = beaconCell.append("span").classed("beacon-controls", true)
       beaconControls.append("span").classed("beacon-container", true)
+      const beaconQuality = beaconControls.append("span").classed("beacon-quality-selector", true)
+      beaconQuality.each(function () {
+        const selector = select(this)
+        makeDropdown(selector)
+          .classed("beacon-quality-dropdown", true)
+          .append("div")
+          .classed("equipment-quality-strip", true)
+        selector.select(".dropdownWrapper").append("span").classed("beacon-quality-trigger", true)
+      })
       const beaconCountSpan = beaconControls.append("span").classed("beacon-count", true)
       beaconCountSpan.append("span").text(" \u00d7 ")
       beaconCountSpan
@@ -1100,7 +1266,7 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
       const rate = requireItemRate(totals.items, item, "item")
       const logistics = getLogistics(item, rate, spec)
       if (logistics === null) throw new Error(`Missing solid logistics report for ${item.key}`)
-      const stackHeight = spec.getEffectiveBeltStackSize(item).toDecimal()
+      const stackHeight = formatCanadianNumber(spec.getEffectiveBeltStackSize(item).toDecimal())
       const policy = spec.getBeltStackPolicy(item)
       const source = spec.getBeltStackPolicySource(item)
       const policyText =
@@ -1118,7 +1284,7 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
       const stackLabel = logistics.stackRate.equal(one) ? "stack" : "stacks"
       const slotLabel = logistics.bufferSlots.equal(one) ? "slot" : "slots"
       const wagonLabel = logistics.wagonLoads.equal(one) ? "load" : "loads"
-      return `${belt.name} equivalent at ×${stackHeight} (${policyText}). ${spec.format.rate(logistics.stackRate)} inventory ${stackLabel}/${spec.format.rateName} · ${logistics.bufferSlots.toDecimal(0)} buffer ${slotLabel} (${spec.bufferMinutes.toDecimal()}m) · ${spec.format.count(logistics.wagonLoads)} wagon ${wagonLabel}/${spec.format.rateName}.`
+      return `${belt.name} equivalent at ×${stackHeight} (${policyText})\n${spec.format.rate(logistics.stackRate)} inventory ${stackLabel}/${spec.format.rateName}\n${formatCanadianNumber(logistics.bufferSlots.toDecimal(0))} buffer ${slotLabel} (${formatCanadianNumber(spec.bufferMinutes.toDecimal())}m)\n${spec.format.count(logistics.wagonLoads)} wagon ${wagonLabel}/${spec.format.rateName}.`
     })
     .selectAll<HTMLElement, DisplayRow>("tt.belt-count")
     .text((row: DisplayRow) => {
@@ -1136,7 +1302,9 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
   beltRows
     .selectAll<HTMLElement, DisplayRow>("span.belt-stack-height")
     .property("hidden", false)
-    .text((row: DisplayRow) => `×${spec.getEffectiveBeltStackSize(requireRowItem(row)).toDecimal()}`)
+    .text(
+      (row: DisplayRow) => `×${formatCanadianNumber(spec.getEffectiveBeltStackSize(requireRowItem(row)).toDecimal())}`,
+    )
 
   const pipeRows = itemRows.filter((row: DisplayRow) => requireRowItem(row).phase === "fluid")
   pipeRows.selectAll<HTMLSelectElement, DisplayRow>("select.belt-stack-policy").property("hidden", true)
@@ -1165,20 +1333,13 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
     const recipe = requireRowRecipe(row)
     const building = requireRowBuilding(row)
     const compatibleBuildings = spec.getCompatibleBuildings(recipe)
-    if (compatibleBuildings.length <= 1) return building.icon.make(32)
+    if (!building.supportsEquipmentQuality() && compatibleBuildings.length <= 1) return building.icon.make(32)
     return makeMachineSelector({ recipe, building }, compatibleBuildings)
   })
   buildingCell.append("span").text(" \u00d7")
   buildingRows
     .selectAll<HTMLElement, DisplayRow>("tt.building-count")
-    .attr("data-tooltip", (row: DisplayRow) => {
-      const rocket = getRocketStatsForRow(row)
-      if (rocket === null) return null
-      const limit = `${spec.format.rate(rocket.animationLaunchRate)} launches/${spec.format.rateName} per silo`
-      return rocket.launchLimited
-        ? `Normal-quality launch animation limit: ${limit}. More speed does not increase steady-state throughput; productivity still reduces required crafts.`
-        : `Maximum normal-quality buffered launch rate: ${limit}. Current rocket-part crafting is slower than the launch animation.`
-    })
+    .attr("data-tooltip", getBuildingCountTooltip)
     .text((row: DisplayRow) => {
       const recipe = requireRowRecipe(row)
       return spec.format.alignCount(spec.getCount(recipe, requireRecipeRate(totals.rates, recipe, "recipe")))
@@ -1193,6 +1354,51 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
     moduleRowsSelection.selectAll<HTMLSpanElement, DisplayRow>("span.beacon-container"),
     (row: DisplayRow) => row.beaconModules,
   )
+  moduleRowsSelection.selectAll<HTMLSpanElement, DisplayRow>("span.beacon-quality-selector").each(function (row) {
+    const selector = select(this)
+    const moduleSpec = requireRowModuleSpec(row)
+    const quality = moduleSpec.beaconQuality
+    selector.property(
+      "hidden",
+      spec.getAvailableQualities().length <= 1 || moduleSpec.beaconModules.every((module) => module === null),
+    )
+    selector
+      .select(".dropdownWrapper")
+      .attr("aria-label", `${quality.name} beacon quality`)
+      .attr(
+        "data-tooltip",
+        `${quality.name} Beacon\n${formatCanadianNumber(getBeaconEffect(quality).mul(Rational.from_integer(100)).toDecimal())}% distribution effectivity\n${formatCanadianNumber(quality.beaconPowerUsageMultiplier.mul(Rational.from_integer(100)).toDecimal())}% base power`,
+      )
+    selector
+      .select<HTMLSpanElement>("span.beacon-quality-trigger")
+      .selectAll<HTMLImageElement, Quality>("img")
+      .data([quality])
+      .join((enter) => enter.append((option) => option.icon.make(20, true)))
+      .each(function (option) {
+        const icon = option.icon.make(20, true)
+        this.style.cssText = icon.style.cssText
+      })
+    selector
+      .select(".equipment-quality-strip")
+      .selectAll<HTMLButtonElement, Quality>("button")
+      .data(spec.getAvailableQualities())
+      .join("button")
+      .attr("type", "button")
+      .classed("selected", (option) => option === quality)
+      .attr("title", (option) => `${option.name} quality`)
+      .each(function (option) {
+        this.replaceChildren(option.icon.make(20, true))
+      })
+      .on("click", (event: MouseEvent, option) => {
+        event.stopPropagation()
+        closeDropdowns()
+        globalThis.setTimeout(() => {
+          moduleSpec.setBeaconQuality(option)
+          if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
+          else spec.display()
+        }, 0)
+      })
+  })
   moduleRowsSelection
     .selectAll<HTMLInputElement, DisplayRow>("span.beacon-count input")
     .attr("value", (row: DisplayRow) => spec.format.count(requireRowModuleSpec(row).beaconCount))

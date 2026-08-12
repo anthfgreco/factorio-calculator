@@ -14,7 +14,7 @@ import {
   renderNode,
   renderSankey,
 } from "./graph.js"
-import { one, zero, Rational } from "./math.js"
+import { formatCanadianNumber, one, zero, Rational } from "./math.js"
 import type { Building } from "./models.js"
 import { Item, Recipe } from "./recipes.js"
 import type { SolverRecipe, Totals } from "./solver.js"
@@ -511,7 +511,7 @@ export function renderTotals(totals: Totals, ignore: ReadonlySet<Item>): void {
   let processCount = data.nodes.filter((node) => node.recipe?.isReal?.()).length
   let summary = document.getElementById("visualization_summary")
   if (summary !== null) {
-    summary.textContent = `${processCount} processes · ${data.links.length} flows`
+    summary.textContent = `${formatCanadianNumber(String(processCount))} processes · ${formatCanadianNumber(String(data.links.length))} flows`
   }
 
   const callback = (): void => {

@@ -15,6 +15,8 @@ const {
   serializeAutomaticBuildings,
   serializeBeltStackOverrides,
   serializeBuildingOverrides,
+  serializeMachineQualities,
+  serializeModuleQualitySettings,
   serializeModuleSettings,
   serializeRecipeProductivityLevels,
 } = await import(pathToFileURL(resolve(build, "url-state.js")).href)
@@ -104,6 +106,50 @@ test("URL building overrides are stable and recipe-specific", () => {
     "a-recipe:assembling-machine-2",
     "b-recipe:electromagnetic-plant",
   ])
+})
+
+test("URL equipment quality is sparse, positional, and stable", () => {
+  const normal = { key: "normal" }
+  const rare = { key: "rare" }
+  const legendary = { key: "legendary" }
+  const recipeA = { key: "a-recipe" }
+  const recipeB = { key: "b-recipe" }
+  const factorySpec = {
+    defaultMachineQuality: legendary,
+    defaultModuleQuality: legendary,
+    defaultBeaconQuality: legendary,
+    machineQualityOverrides: new Map([
+      [recipeB, legendary],
+      [recipeA, rare],
+    ]),
+    spec: new Map([
+      [
+        recipeB,
+        {
+          moduleQualities: [normal, legendary, normal],
+          moduleQualityOverrides: new Set([1]),
+          beaconModuleQualities: [rare, normal],
+          beaconModuleQualityOverrides: new Set([0]),
+          beaconQuality: legendary,
+          beaconQualityOverride: true,
+        },
+      ],
+      [
+        recipeA,
+        {
+          moduleQualities: [normal, normal],
+          moduleQualityOverrides: new Set(),
+          beaconModuleQualities: [normal, normal],
+          beaconModuleQualityOverrides: new Set(),
+          beaconQuality: normal,
+          beaconQualityOverride: false,
+        },
+      ],
+    ]),
+  }
+
+  assert.deepEqual(serializeMachineQualities(factorySpec), ["a-recipe:rare", "b-recipe:legendary"])
+  assert.deepEqual(serializeModuleQualitySettings(factorySpec), ["b-recipe::legendary;rare;legendary"])
 })
 
 test("URL automatic-machine settings preserve multiple selections", () => {

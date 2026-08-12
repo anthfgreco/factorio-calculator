@@ -1,7 +1,7 @@
 import { create, select, type BaseType, type Selection } from "d3"
 import { sorted, type CalculatorData, type SurfaceCondition as SurfaceConditionData } from "./data.js"
-import { Formatter, half, one, powerRepresentation, Rational, zero } from "./math.js"
-import { addInputs, Icon, makeDropdown, sprites } from "./presentation.js"
+import { formatCanadianNumber, Formatter, half, one, powerRepresentation, Rational, zero } from "./math.js"
+import { addInputs, closeDropdowns, Icon, makeDropdown, sprites } from "./presentation.js"
 import type { Item, Recipe } from "./recipes.js"
 
 // -----------------------------------------------------------------------------
@@ -15,6 +15,9 @@ export interface ModelFactorySpecification {
   readonly miningProd: Rational
   readonly defaultBeacon: readonly (Module | null)[]
   readonly defaultBeaconCount: Rational
+  readonly defaultModuleQuality?: Quality
+  readonly defaultBeaconQuality?: Quality
+  getMachineQuality?(recipe: Recipe): Quality
   getBuilding(recipe: Recipe): Building | null
   getModuleSpec(recipe: Recipe): ModuleSpec | null
   getDefaultModule(recipe: Recipe, building: Building): Module | null
@@ -33,6 +36,73 @@ export interface ModelRuntimeContext {
 }
 
 export type ConfigurationSource = "default" | "automatic-quality" | "user"
+
+export class Quality {
+  readonly icon: Icon
+
+  constructor(
+    readonly key: string,
+    readonly name: string,
+    readonly icon_col: number,
+    readonly icon_row: number,
+    readonly level: number,
+    readonly order: string,
+    readonly color: string,
+    readonly craftingSpeedMultiplier: Rational,
+    readonly moduleEffectMultiplier: Rational,
+    readonly beaconPowerUsageMultiplier: Rational,
+    readonly miningDrillResourceDrainMultiplier: Rational,
+  ) {
+    this.icon = new Icon(this)
+  }
+}
+
+export const normalQuality = new Quality("normal", "Normal", 0, 0, 0, "a", "#b3b3b3", one, one, one, one)
+
+function qualitySixth(value: number): Rational {
+  const numerator = Math.round(value * 6)
+  return Math.abs(value - numerator / 6) < 1e-9
+    ? Rational.from_floats(numerator, 6)
+    : Rational.from_float_approximate(value)
+}
+
+export function getQualities(data: CalculatorData): Map<string, Quality> {
+  const qualities = new Map<string, Quality>()
+  for (const entry of data.qualities ?? []) {
+    qualities.set(
+      entry.key,
+      new Quality(
+        entry.key,
+        entry.localized_name.en,
+        entry.icon_col,
+        entry.icon_row,
+        entry.level,
+        entry.order,
+        entry.color,
+        Rational.from_float_approximate(entry.crafting_speed_multiplier),
+        Rational.from_float_approximate(entry.module_effect_multiplier),
+        qualitySixth(entry.beacon_power_usage_multiplier),
+        qualitySixth(entry.mining_drill_resource_drain_multiplier),
+      ),
+    )
+  }
+  if (qualities.size === 0 && data.mods?.includes("quality")) {
+    const fallback = [
+      ["normal", "Normal", 0, "a", "#b3b3b3"],
+      ["uncommon", "Uncommon", 1, "b", "#2ba53d"],
+      ["rare", "Rare", 2, "c", "#1968b2"],
+      ["epic", "Epic", 3, "d", "#8900b2"],
+      ["legendary", "Legendary", 5, "e", "#b26800"],
+    ] as const
+    for (const [key, name, level, order, color] of fallback) {
+      const multiplier = Rational.from_floats(10 + 3 * level, 10)
+      const sixth = Rational.from_floats(Math.max(1, 6 - level), 6)
+      qualities.set(key, new Quality(key, name, 0, 0, level, order, color, multiplier, multiplier, sixth, sixth))
+    }
+  }
+  if (qualities.size === 0) qualities.set(normalQuality.key, normalQuality)
+  return qualities
+}
 
 let context: ModelRuntimeContext | null = null
 
@@ -232,6 +302,8 @@ export class Building {
     allowedEffects: readonly string[] | Readonly<Record<string, boolean>> | null = null,
     emissions: Readonly<Record<string, number>> | null = null,
     readonly dropsFullBeltStacks = false,
+    readonly qualityCraftingSpeed = true,
+    readonly qualityPowerThroughput = false,
   ) {
     this.categories = new Set(categories)
     this.conditions = conditions
@@ -289,7 +361,12 @@ export class Building {
     } else {
       speedEffect = one
     }
-    return recipe.time.reciprocate().mul(this.speed).mul(speedEffect)
+    const quality = spec.getMachineQuality?.(recipe) ?? normalQuality
+    const qualitySpeed = this.qualityCraftingSpeed ? quality.craftingSpeedMultiplier : one
+    return recipe.time.reciprocate().mul(this.speed).mul(qualitySpeed).mul(speedEffect)
+  }
+  supportsEquipmentQuality(): boolean {
+    return this.qualityCraftingSpeed
   }
   canBeacon(): boolean {
     return this.moduleSlots > 0
@@ -300,6 +377,13 @@ export class Building {
   drain(): Rational {
     return this.power.div(thirty)
   }
+  powerForQuality(quality: Quality): Rational {
+    return this.qualityPowerThroughput ? this.power.mul(quality.craftingSpeedMultiplier) : this.power
+  }
+  drainForQuality(quality: Quality): Rational {
+    const drain = this.drain()
+    return this.qualityPowerThroughput ? drain.mul(quality.craftingSpeedMultiplier) : drain
+  }
   renderTooltip(): HTMLElement {
     let self = this
     let t = create("div").classed("frame", true)
@@ -309,10 +393,10 @@ export class Building {
     let line = t.append("div")
     line.append("b").text("Energy consumption: ")
     let { power, suffix } = powerRepresentation(this.power)
-    line.append("span").text(`${power.toDecimal(0)} ${suffix}`)
+    line.append("span").text(`${formatCanadianNumber(power.toDecimal(0))} ${suffix}`)
     line = t.append("div")
     line.append("b").text("Crafting speed: ")
-    line.append("span").text(this.speed.toDecimal())
+    line.append("span").text(formatCanadianNumber(this.speed.toDecimal()))
     line = t.append("div")
     line.append("b").text("Module slots: ")
     line.append("span").text(String(this.moduleSlots))
@@ -331,6 +415,7 @@ export class Miner extends Building {
     moduleSlots: number,
     power: Rational,
     fuel: string | null,
+    readonly resourceDrainRate: Rational = one,
     conditions: readonly SurfaceConditionData[] = [],
     allowedEffects: readonly string[] | null = null,
     emissions: Readonly<Record<string, number>> | null = null,
@@ -380,6 +465,13 @@ export class Miner extends Building {
   override prodEffect(spec: ModelFactorySpecification): Rational {
     return spec.miningProd
   }
+  override supportsEquipmentQuality(): boolean {
+    return true
+  }
+  getResourceDrainRate(spec: ModelFactorySpecification, recipe: Recipe): Rational {
+    const quality = spec.getMachineQuality?.(recipe) ?? normalQuality
+    return this.resourceDrainRate.mul(quality.miningDrillResourceDrainMultiplier)
+  }
   override renderTooltip(): HTMLElement {
     let self = this
     let t = create("div").classed("frame", true)
@@ -389,10 +481,10 @@ export class Miner extends Building {
     let line = t.append("div")
     line.append("b").text("Energy consumption: ")
     let { power, suffix } = powerRepresentation(this.power)
-    line.append("span").text(`${power.toDecimal(0)} ${suffix}`)
+    line.append("span").text(`${formatCanadianNumber(power.toDecimal(0))} ${suffix}`)
     line = t.append("div")
     line.append("b").text("Mining speed: ")
-    line.append("span").text(this.miningSpeed.toDecimal())
+    line.append("span").text(formatCanadianNumber(this.miningSpeed.toDecimal()))
     line = t.append("div")
     line.append("b").text("Module slots: ")
     line.append("span").text(String(this.moduleSlots))
@@ -413,6 +505,9 @@ export class OffshorePump extends Building {
   }
   override less(other: Building): boolean {
     return other instanceof OffshorePump ? this.pumpingSpeed.less(other.pumpingSpeed) : super.less(other)
+  }
+  override supportsEquipmentQuality(): boolean {
+    return false
   }
   override getRecipeRate(_spec: ModelFactorySpecification, _recipe: Recipe): Rational {
     return this.pumpingSpeed
@@ -435,6 +530,7 @@ let rocketLaunchDuration = Rational.from_floats(2434, 60)
 export interface RocketLaunchConfiguration {
   readonly partsPerLaunch: Rational
   readonly launchCycle: Rational
+  readonly launchCyclesByQuality: ReadonlyMap<string, Rational>
   readonly buffered: boolean
 }
 
@@ -469,7 +565,9 @@ function getRocketLaunchStats(
 
   if (launchConfig?.buffered) {
     let craftingLaunchRate = craftingRate.div(craftsPerLaunch)
-    let animationLaunchRate = launchConfig.launchCycle.reciprocate()
+    const quality = spec.getMachineQuality?.(partRecipe) ?? normalQuality
+    const launchCycle = launchConfig.launchCyclesByQuality.get(quality.key) ?? launchConfig.launchCycle
+    let animationLaunchRate = launchCycle.reciprocate()
     let launchRate = Rational.min(craftingLaunchRate, animationLaunchRate)
     return {
       part: launchRate.mul(craftsPerLaunch),
@@ -579,6 +677,12 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
     ? {
         partsPerLaunch: Rational.from_float_approximate(data.rocket_launch.parts_per_launch),
         launchCycle: Rational.from_floats(data.rocket_launch.launch_cycle_ticks, 60),
+        launchCyclesByQuality: new Map(
+          Object.entries(data.rocket_launch.launch_cycle_ticks_by_quality ?? {}).map(([key, ticks]) => [
+            key,
+            Rational.from_floats(ticks, 60),
+          ]),
+        ),
         buffered: data.rocket_launch.buffered,
       }
     : null
@@ -594,6 +698,12 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
     0,
     zero,
     null,
+    [],
+    null,
+    null,
+    false,
+    true,
+    true,
   )
   reactor.renderTooltip = renderTooltipBase
   buildings.push(reactor)
@@ -612,6 +722,12 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
     0,
     boiler_energy,
     "chemical",
+    [],
+    null,
+    null,
+    false,
+    true,
+    true,
     //boilerDef.target_temperature,
   )
   boiler.renderTooltip = renderTooltipBase
@@ -697,6 +813,7 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
         d.module_slots ?? 0,
         Rational.from_float_approximate(d.energy_usage ?? 0),
         fuel,
+        Rational.from_floats(d.resource_drain_rate_percent ?? 100, 100),
         d.surface_conditions ?? [],
         d.allowed_effects ?? null,
         d.energy_source?.emissions_per_minute ?? null,
@@ -720,6 +837,8 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
         d.surface_conditions ?? [],
         d.allowed_effects ?? [],
         d.energy_source?.emissions_per_minute ?? null,
+        false,
+        false,
       ),
     )
   }
@@ -736,7 +855,7 @@ function percent(x: Rational): string {
   if (!x.less(zero)) {
     sign = "+"
   }
-  return `${sign}${x.mul(hundred).toDecimal()}%`
+  return `${sign}${formatCanadianNumber(x.mul(hundred).toDecimal())}%`
 }
 
 export class Module {
@@ -755,6 +874,16 @@ export class Module {
     readonly speed: Rational,
     readonly power: Rational,
     readonly pollution: Rational,
+    readonly qualityEffects: ReadonlyMap<
+      string,
+      {
+        readonly productivity: Rational
+        readonly quality: Rational
+        readonly speed: Rational
+        readonly power: Rational
+        readonly pollution: Rational
+      }
+    > = new Map(),
   ) {
     // Pollution is retained in the dataset but does not affect production rates.
     if (!power.isZero()) {
@@ -774,6 +903,49 @@ export class Module {
     }
 
     this.icon = new Icon(this)
+  }
+  private effectFor(quality: Quality): {
+    readonly productivity: Rational
+    readonly quality: Rational
+    readonly speed: Rational
+    readonly power: Rational
+    readonly pollution: Rational
+  } {
+    const generated = this.qualityEffects.get(quality.key)
+    if (generated !== undefined) return generated
+    const scale = (value: Rational, beneficial: boolean, precision: number): Rational => {
+      if (!beneficial || quality.level === 0) return value
+      const negative = value.less(zero)
+      const magnitude = negative ? zero.sub(value) : value
+      const rounded = magnitude
+        .mul(quality.moduleEffectMultiplier)
+        .mul(Rational.from_integer(precision))
+        .floor()
+        .div(Rational.from_integer(precision))
+      return negative ? zero.sub(rounded) : rounded
+    }
+    return {
+      productivity: scale(this.productivity, zero.less(this.productivity), 100),
+      quality: scale(this.quality, zero.less(this.quality), 1000),
+      speed: scale(this.speed, zero.less(this.speed), 100),
+      power: scale(this.power, this.power.less(zero), 100),
+      pollution: scale(this.pollution, this.pollution.less(zero), 100),
+    }
+  }
+  productivityFor(quality: Quality): Rational {
+    return this.effectFor(quality).productivity
+  }
+  qualityFor(quality: Quality): Rational {
+    return this.effectFor(quality).quality
+  }
+  speedFor(quality: Quality): Rational {
+    return this.effectFor(quality).speed
+  }
+  powerFor(quality: Quality): Rational {
+    return this.effectFor(quality).power
+  }
+  pollutionFor(quality: Quality): Rational {
+    return this.effectFor(quality).pollution
   }
   // This naming scheme is some older cruft, which works in the vanilla
   // dataset, but it's possible other datasets would render it unworkable.
@@ -856,10 +1028,15 @@ export interface ModuleDropdownOption {
   readonly module: Module | null
   checked(): boolean
   choose(): void
+  tooltip?(): string | null
 }
 
 export interface ModuleDropdownCell {
   readonly inputRows: readonly (readonly ModuleDropdownOption[])[]
+  readonly qualityOptions?: readonly Quality[]
+  selectedQuality?(): Quality
+  chooseQuality?(quality: Quality): void
+  keepOpenAfterQualitySelection?(): boolean
 }
 
 export function moduleDropdown<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
@@ -887,6 +1064,62 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
       return wrappers
     })
   let moduleDropdown = moduleDropdownSpan.selectAll<HTMLDivElement, ModuleDropdownCell>("div.dropdown")
+  moduleDropdownSpan
+    .selectAll<HTMLImageElement, ModuleDropdownCell>("img.equipment-quality-badge")
+    .data((cell) => (cell.qualityOptions && cell.qualityOptions.length > 1 && cell.selectedQuality ? [cell] : []))
+    .join((enter) => enter.append((cell) => (cell.selectedQuality?.() ?? normalQuality).icon.make(16, true)))
+    .classed("equipment-quality-badge", true)
+    .attr("data-quality", (cell) => cell.selectedQuality?.().key ?? normalQuality.key)
+    .attr("title", (cell) => `${cell.selectedQuality?.().name ?? normalQuality.name} quality`)
+    .each(function (cell) {
+      const icon = (cell.selectedQuality?.() ?? normalQuality).icon.make(16, true)
+      this.style.cssText = icon.style.cssText
+    })
+  moduleDropdown
+    .selectAll<HTMLDivElement, ModuleDropdownCell>("div.equipment-quality-strip")
+    .data((cell) =>
+      cell.qualityOptions && cell.qualityOptions.length > 1 && cell.selectedQuality && cell.chooseQuality ? [cell] : [],
+    )
+    .join("div")
+    .classed("equipment-quality-strip", true)
+    .attr("aria-label", "Equipment quality")
+    .selectAll<HTMLButtonElement, Quality>("button")
+    .data((cell) => cell.qualityOptions ?? [])
+    .join("button")
+    .attr("type", "button")
+    .style("--quality-color", (quality) => quality.color)
+    .classed("selected", function (quality) {
+      const parent = this.parentElement
+      if (parent === null) return false
+      const cell = select<HTMLElement, ModuleDropdownCell>(parent).datum()
+      return cell.selectedQuality?.() === quality
+    })
+    .attr("aria-label", (quality) => `${quality.name} quality`)
+    .attr("title", (quality) => `${quality.name} quality`)
+    .each(function (quality) {
+      this.replaceChildren(quality.icon.make(20, true))
+    })
+    .on("click", function (event: MouseEvent, quality) {
+      event.stopPropagation()
+      const parent = this.parentElement
+      if (parent === null) return
+      const cell = select<HTMLElement, ModuleDropdownCell>(parent).datum()
+      if (cell.keepOpenAfterQualitySelection?.()) {
+        cell.chooseQuality?.(quality)
+      } else {
+        closeDropdowns()
+        globalThis.setTimeout(() => cell.chooseQuality?.(quality), 0)
+      }
+      select(parent)
+        .selectAll<HTMLButtonElement, Quality>("button")
+        .classed("selected", (option) => option === quality)
+      const dropdown = parent.parentElement
+      if (dropdown !== null) {
+        select(dropdown)
+          .selectAll<HTMLElement, ModuleDropdownOption>("span.input")
+          .attr("data-tooltip", (option) => option.tooltip?.() ?? null)
+      }
+    })
   moduleDropdown
     .selectAll<HTMLDivElement, readonly ModuleDropdownOption[]>("div.moduleRow")
     .data<readonly ModuleDropdownOption[]>((cell) => cell.inputRows)
@@ -896,7 +1129,10 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
     .data<ModuleDropdownOption>((options) => options)
     .join(
       (enter) => {
-        const inputs = enter.append("span").classed("input", true)
+        const inputs = enter
+          .append("span")
+          .classed("input", true)
+          .attr("data-tooltip", (option) => option.tooltip?.() ?? null)
         const label = addInputs(
           inputs,
           (option) => option.cell.name,
@@ -909,14 +1145,14 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
             if (sprite === undefined) {
               throw new Error("Missing slot_icon_module sprite")
             }
-            return sprite.icon.make(32)
+            return sprite.icon.make(32, true)
           }
-          const tooltipTarget = this.parentElement?.parentElement?.parentElement ?? undefined
-          return option.module.icon.make(32, false, tooltipTarget)
+          return option.module.icon.make(32, true)
         })
         return inputs
       },
       (update) => {
+        update.attr("data-tooltip", (option) => option.tooltip?.() ?? null)
         update
           .selectAll<HTMLInputElement, ModuleDropdownOption>("input")
           .property("checked", (option: ModuleDropdownOption) => option.checked())
@@ -934,8 +1170,14 @@ const MIN_POLLUTION_EFFECT = Rational.from_floats(1, 5) // 20%
 export class ModuleSpec {
   building: Building | null = null
   readonly modules: (Module | null)[] = []
+  readonly moduleQualities: Quality[] = []
+  readonly moduleQualityOverrides = new Set<number>()
   moduleSource: ConfigurationSource = "default"
   readonly beaconModules: (Module | null)[]
+  readonly beaconModuleQualities: Quality[]
+  readonly beaconModuleQualityOverrides = new Set<number>()
+  beaconQuality: Quality
+  beaconQualityOverride = false
   beaconCount: Rational
 
   constructor(
@@ -943,12 +1185,18 @@ export class ModuleSpec {
     readonly owner: ModelFactorySpecification,
   ) {
     this.beaconModules = owner.defaultBeacon.map((module) => (module === null || module.canBeacon() ? module : null))
+    this.beaconModuleQualities = owner.defaultBeacon.map(() => owner.defaultModuleQuality ?? normalQuality)
+    this.beaconQuality = owner.defaultBeaconQuality ?? normalQuality
     this.beaconCount = owner.defaultBeaconCount
   }
   setBuilding(building: Building, spec: ModelFactorySpecification): void {
     this.building = building
     if (this.modules.length > building.moduleSlots) {
       this.modules.length = building.moduleSlots
+      this.moduleQualities.length = building.moduleSlots
+      for (const index of this.moduleQualityOverrides) {
+        if (index >= building.moduleSlots) this.moduleQualityOverrides.delete(index)
+      }
     }
     let toAdd = spec.getDefaultModule(this.recipe, building)
     for (let i = 0; i < this.modules.length; i++) {
@@ -959,6 +1207,7 @@ export class ModuleSpec {
     }
     while (this.modules.length < building.moduleSlots) {
       this.modules.push(toAdd)
+      this.moduleQualities.push(spec.defaultModuleQuality ?? normalQuality)
     }
     for (let i = 0; i < this.beaconModules.length; i++) {
       const module = this.beaconModules[i]
@@ -994,9 +1243,48 @@ export class ModuleSpec {
     }
     return needRecalc
   }
+  setModuleQuality(index: number, quality: Quality, source: ConfigurationSource = "user"): boolean {
+    if (index >= this.modules.length) return false
+    this.moduleQualities[index] = quality
+    if (source === "default" || quality === this.owner.defaultModuleQuality) this.moduleQualityOverrides.delete(index)
+    else this.moduleQualityOverrides.add(index)
+    if (source !== "default") this.moduleSource = source
+    if (source === "user") this.owner.notifyRecipeConfigurationChanged(this.recipe)
+    else this.owner.recordRecipeConfigurationChange(this.recipe)
+    const module = this.modules[index]
+    return module !== null && module !== undefined && (module.hasProdEffect() || module.hasQualityEffect())
+  }
+  restoreModuleQualityOverride(index: number, quality: Quality): void {
+    if (index >= this.modules.length) return
+    this.moduleQualities[index] = quality
+    this.moduleQualityOverrides.add(index)
+    this.owner.recordRecipeConfigurationChange(this.recipe)
+  }
   setBeaconModule(module: Module | null, i: number): void {
     this.beaconModules[i] =
       module === null || (module.canBeacon() && module.canUse(this.recipe, this.building)) ? module : null
+  }
+  setBeaconModuleQuality(quality: Quality, index: number): void {
+    this.beaconModuleQualities[index] = quality
+    if (quality === this.owner.defaultModuleQuality) this.beaconModuleQualityOverrides.delete(index)
+    else this.beaconModuleQualityOverrides.add(index)
+    this.owner.notifyRecipeConfigurationChanged(this.recipe)
+  }
+  restoreBeaconModuleQualityOverride(quality: Quality, index: number): void {
+    if (index >= this.beaconModuleQualities.length) return
+    this.beaconModuleQualities[index] = quality
+    this.beaconModuleQualityOverrides.add(index)
+    this.owner.recordRecipeConfigurationChange(this.recipe)
+  }
+  setBeaconQuality(quality: Quality): void {
+    this.beaconQuality = quality
+    this.beaconQualityOverride = quality !== this.owner.defaultBeaconQuality
+    this.owner.notifyRecipeConfigurationChanged(this.recipe)
+  }
+  restoreBeaconQualityOverride(quality: Quality): void {
+    this.beaconQuality = quality
+    this.beaconQualityOverride = true
+    this.owner.recordRecipeConfigurationChange(this.recipe)
   }
   setBeaconCount(count: Rational): void {
     this.beaconCount = count
@@ -1004,18 +1292,21 @@ export class ModuleSpec {
 
   speedEffect(): Rational {
     let speed = one
-    for (let module of this.modules) {
+    for (const [index, module] of this.modules.entries()) {
       if (!module) {
         continue
       }
-      speed = speed.add(module.speed)
+      speed = speed.add(module.speedFor(this.moduleQualities[index] ?? normalQuality))
     }
     if (this.modules.length > 0) {
-      for (let module of this.beaconModules) {
+      for (const [index, module] of this.beaconModules.entries()) {
         if (module === null) {
           continue
         }
-        let beacon = module.speed.mul(this.beaconCount).mul(beaconEffect)
+        let beacon = module
+          .speedFor(this.beaconModuleQualities[index] ?? normalQuality)
+          .mul(this.beaconCount)
+          .mul(getBeaconEffect(this.beaconQuality))
         if (!usesLegacyCalculation()) {
           beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
         }
@@ -1026,11 +1317,11 @@ export class ModuleSpec {
   }
   prodEffect(spec: ModelFactorySpecification): Rational {
     let prod = one
-    for (let module of this.modules) {
+    for (const [index, module] of this.modules.entries()) {
       if (!module) {
         continue
       }
-      prod = prod.add(module.productivity)
+      prod = prod.add(module.productivityFor(this.moduleQualities[index] ?? normalQuality))
     }
     if (this.building === null) {
       throw new Error(`Module specification for ${this.recipe.key} has no building`)
@@ -1040,18 +1331,21 @@ export class ModuleSpec {
   }
   powerEffect(_spec: ModelFactorySpecification): Rational {
     let power = one
-    for (let module of this.modules) {
+    for (const [index, module] of this.modules.entries()) {
       if (!module) {
         continue
       }
-      power = power.add(module.power)
+      power = power.add(module.powerFor(this.moduleQualities[index] ?? normalQuality))
     }
     if (this.modules.length > 0) {
-      for (let module of this.beaconModules) {
+      for (const [index, module] of this.beaconModules.entries()) {
         if (module === null) {
           continue
         }
-        let beacon = module.power.mul(this.beaconCount).mul(beaconEffect)
+        let beacon = module
+          .powerFor(this.beaconModuleQualities[index] ?? normalQuality)
+          .mul(this.beaconCount)
+          .mul(getBeaconEffect(this.beaconQuality))
         if (!usesLegacyCalculation()) {
           beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
         }
@@ -1062,13 +1356,16 @@ export class ModuleSpec {
   }
   pollutionEffect(): Rational {
     let pollution = one
-    for (let module of this.modules) {
-      if (module) pollution = pollution.add(module.pollution)
+    for (const [index, module] of this.modules.entries()) {
+      if (module) pollution = pollution.add(module.pollutionFor(this.moduleQualities[index] ?? normalQuality))
     }
     if (this.modules.length > 0) {
-      for (let module of this.beaconModules) {
+      for (const [index, module] of this.beaconModules.entries()) {
         if (module === null) continue
-        let beacon = module.pollution.mul(this.beaconCount).mul(beaconEffect)
+        let beacon = module
+          .pollutionFor(this.beaconModuleQualities[index] ?? normalQuality)
+          .mul(this.beaconCount)
+          .mul(getBeaconEffect(this.beaconQuality))
         if (!usesLegacyCalculation()) {
           beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
         }
@@ -1084,6 +1381,7 @@ export let shortModules = new Map<string, Module>()
 
 let beaconProfile: Rational[] | null = null
 let beaconEffect = one
+let beaconEffectBonusPerQualityLevel = zero
 let beaconAllowedEffects = new Set(["consumption", "speed", "pollution"])
 
 function getBeaconProfileEffect(count: Rational): Rational {
@@ -1092,6 +1390,10 @@ function getBeaconProfileEffect(count: Rational): Rational {
   }
   const index = Math.min(Math.max(count.ceil().toFloat() - 1, 0), beaconProfile.length - 1)
   return beaconProfile[index] ?? one
+}
+
+export function getBeaconEffect(quality: Quality): Rational {
+  return beaconEffect.add(beaconEffectBonusPerQualityLevel.mul(Rational.from_integer(quality.level)))
 }
 
 export function getBeaconPower(data: CalculatorData): Rational {
@@ -1110,6 +1412,18 @@ export function getModules(data: CalculatorData, items: ReadonlyMap<string, Item
     let quality = Rational.from_float_approximate(effect.quality || 0)
     let power = Rational.from_float_approximate(effect.consumption || 0)
     let pollution = Rational.from_float_approximate(effect.pollution || 0)
+    const qualityEffects = new Map(
+      Object.entries(d.quality_effects ?? {}).map(([qualityKey, qualityEffect]) => [
+        qualityKey,
+        {
+          productivity: Rational.from_float_approximate(qualityEffect.productivity ?? 0),
+          quality: Rational.from_float_approximate(qualityEffect.quality ?? 0),
+          speed: Rational.from_float_approximate(qualityEffect.speed ?? 0),
+          power: Rational.from_float_approximate(qualityEffect.consumption ?? 0),
+          pollution: Rational.from_float_approximate(qualityEffect.pollution ?? 0),
+        },
+      ]),
+    )
     modules.set(
       d.item_key,
       new Module(
@@ -1124,6 +1438,7 @@ export function getModules(data: CalculatorData, items: ReadonlyMap<string, Item
         speed,
         power,
         pollution,
+        qualityEffects,
       ),
     )
   }
@@ -1151,6 +1466,9 @@ export function getModules(data: CalculatorData, items: ReadonlyMap<string, Item
   }
   beaconAllowedEffects = new Set(data.beacon.allowed_effects ?? ["consumption", "speed", "pollution"])
   beaconEffect = Rational.from_float_approximate(data.beacon.distribution_effectivity)
+  beaconEffectBonusPerQualityLevel = Rational.from_float_approximate(
+    data.beacon.distribution_effectivity_bonus_per_quality_level ?? (data.mods?.includes("quality") ? 0.2 : 0),
+  )
   if (usesLegacyCalculation() || !data.beacon.profile) {
     beaconProfile = null
   } else {

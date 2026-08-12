@@ -2,6 +2,104 @@
 
 Use an execution plan for changes that span multiple modules, alter architecture or persisted behavior, or require more than one validation loop. Keep it current while work is active.
 
+## Completed plan: Canadian number and tooltip polish
+
+### Goal
+
+Apply Canadian comma grouping to player-visible numbers and make every multi-entry tooltip scan vertically without duplicate nested tooltips.
+
+### Constraints
+
+- Preserve exact `Rational` values and URL serialization; grouping is presentation-only.
+- Keep grouped editable text values parseable and leave native numeric inputs valid.
+- Fix tooltip behavior in the shared presentation/dropdown primitives.
+
+### Steps
+
+1. [x] Add exact string-based Canadian grouping to the shared formatter with parsing coverage.
+2. [x] Route remaining player-visible decimal values through the shared grouping helper.
+3. [x] Normalize multi-entry tooltips to line breaks and suppress nested empty-slot tooltips.
+4. [x] Add focused UI/browser regression coverage and run the release gate.
+
+## Completed plan: equipment quality review cleanup
+
+### Goal
+
+Finish the equipment-quality feature for min-max players by preserving explicit overrides, removing dead controls, keeping empty-slot workflows uninterrupted, and exposing the effective values that quality changes.
+
+### Constraints
+
+- Preserve existing quality URLs and Normal-quality behavior for legacy datasets.
+- Keep Factory rows compact; effective statistics belong in existing tooltips rather than new columns.
+- Keep React-owned Settings visibility snapshot-driven and dynamic equipment controls imperatively owned.
+- Preserve first-slot propagation without overwriting independently configured later slots.
+
+### Steps
+
+1. [x] Track inherited versus explicit module and beacon quality state and round-trip it through URLs.
+2. [x] Keep empty module/beacon pickers open and hide quality controls when the dataset has no quality tiers.
+3. [x] Add effective machine, module, beacon, and mining-drain statistics to existing tooltips.
+4. [x] Correct stale player documentation and generator report cleanup.
+5. [x] Add focused state/browser coverage and run formatting, E2E, and the release gate.
+
+## Completed plan: native quality sprites and module-row quality
+
+### Goal
+
+Use Factorio's exported quality sprites throughout the compact equipment controls and restore the first-slot convenience for setting a complete module row's quality.
+
+### Constraints
+
+- Keep the generated sprite sheet as the sole source of quality artwork.
+- Preserve independently customized module slots and existing quality URLs.
+- Match the established first-slot module-fill behavior instead of adding another permanent Factory-table control.
+
+### Steps
+
+1. [x] Trace the quality sprite export and existing first-slot module propagation.
+2. [x] Replace letter/text quality markers with native sprite-sheet icons.
+3. [x] Propagate first-slot quality across matching, untouched row slots.
+4. [x] Add browser coverage and run focused plus release validation.
+
+## Completed plan: equipment quality
+
+### Goal
+
+Support Factorio 2.1 quality for crafting machines, mining drills, modules, and beacons, while keeping the Factory table compact and making every quality choice shareable.
+
+### Context and constraints
+
+- Generated Factorio data remains authoritative for quality tiers and prototype-specific behavior; generated values are never patched by hand.
+- Equipment quality is recipe configuration, not a second item-quality dimension in the scalar production solver.
+- Machine quality affects crafting speed, mining-drill quality affects resource drain rather than yield, module quality scales only beneficial effects, and beacon quality affects distribution efficiency and power use.
+- Existing URLs and datasets without equipment-quality fields must continue to load as Normal quality.
+- React retains the shell, while Factory rows and their compact quality controls remain imperatively owned.
+
+### Done when
+
+- Machine, module, and beacon quality can be selected per recipe without adding a wide Factory-table column or duplicating every module option five times.
+- Default equipment qualities are available in Settings, and recipe-specific choices override those defaults.
+- Exact rate, module-effect, beacon-effect, power, pollution, mining-drain, and rocket-launch calculations use the selected qualities.
+- Quality state round-trips through URLs, and legacy URLs produce the same Normal-quality calculations as before.
+- Generated data, exact scenarios, state/UI behavior, runtime datasets, browser coverage, build budgets, and the release gate pass.
+
+### Steps
+
+1. [x] Extend the generated data contract with quality tiers and prototype quality modifiers.
+2. [x] Add qualified machine, module, and beacon configuration at the factory boundary with exact calculations.
+3. [x] Add compact Factory-row controls, Settings defaults, and backward-compatible URL persistence.
+4. [x] Add exact mechanic, state, URL, UI, and browser regression coverage.
+5. [x] Regenerate outputs, format, run focused validation and the release gate, then review the final diff.
+
+### Decision log
+
+- Keep product-quality targets unchanged; equipment quality feeds their existing module-quality probability calculation.
+- Use one quality strip inside each existing equipment picker and a small tier badge on its trigger, avoiding a new Factory-table column and five copies of each module icon.
+- Persist only non-Normal defaults and sparse recipe overrides; missing quality state always decodes as Normal.
+- Quality levels use the prototype level values, including Legendary level 5, rather than assuming sequential arithmetic levels.
+- Use a bounded quality-enrichment generator mode because the available official export predates the repository's corrected 2.1.13 recycling times; it preserves every existing recipe value while regenerating quality fields and the sprite sheet.
+- Hide Normal badges and inactive beacon-quality controls. Higher tiers appear as compact colored badges, while open equipment pickers show the full tier strip.
+
 ## Completed plan: item-aware belt stacking
 
 ### Goal

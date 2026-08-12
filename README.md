@@ -22,7 +22,7 @@ This fork supports experimental **Factorio Space Age 2.1.14** using the unchange
 
 The exact simplex solver still balances scalar item rates. Quality targets use Factorio's direct expected-value probability chain, but automatic recycler-loop optimization and a fully generalized `(item, quality, location)` simplex are not included. Location assignments and transport are explicit accounting after solving rather than route-capacity constraints inside the LP.
 
-Agricultural tower electricity remains a conservative active-load value because planting/harvesting duty timing is absent from the export. Spore totals are exact for the planned harvest rate and placed tower count. Rocket launch timing currently assumes normal-quality silos; quality-specific animation timing is labeled as future work. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
+Agricultural tower electricity remains a conservative active-load value because planting/harvesting duty timing is absent from the export. Spore totals are exact for the planned harvest rate and placed tower count. Rocket launch timing uses the selected silo quality from Normal through Legendary. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
 
 See [Advanced Space Age planning](docs/advanced-planning.md) for calculation details and limitations.
 

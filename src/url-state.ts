@@ -117,6 +117,29 @@ export function serializeBuildingOverrides(factorySpec: FactorySpecification): s
   return [...factorySpec.buildingOverrides].map(([recipe, building]) => `${recipe.key}:${building.key}`).sort()
 }
 
+export function serializeMachineQualities(factorySpec: FactorySpecification): string[] {
+  return [...factorySpec.machineQualityOverrides].map(([recipe, quality]) => `${recipe.key}:${quality.key}`).sort()
+}
+
+export function serializeModuleQualitySettings(factorySpec: FactorySpecification): string[] {
+  const settings: string[] = []
+  for (const [recipe, moduleSpec] of factorySpec.spec) {
+    const moduleQualities = moduleSpec.moduleQualities.map((quality, index) =>
+      moduleSpec.moduleQualityOverrides.has(index) ? quality.key : "",
+    )
+    while (moduleQualities.at(-1) === "") moduleQualities.pop()
+    const beaconModuleQualities = moduleSpec.beaconModuleQualities.map((quality, index) =>
+      moduleSpec.beaconModuleQualityOverrides.has(index) ? quality.key : "",
+    )
+    while (beaconModuleQualities.at(-1) === "") beaconModuleQualities.pop()
+    const beaconQuality = moduleSpec.beaconQualityOverride ? moduleSpec.beaconQuality.key : ""
+    if (moduleQualities.length || beaconModuleQualities.length || beaconQuality) {
+      settings.push(`${recipe.key}:${moduleQualities.join(":")};${beaconModuleQualities.join(":")};${beaconQuality}`)
+    }
+  }
+  return settings.sort()
+}
+
 export function serializeAutomaticBuildings(factorySpec: FactorySpecification): string[] {
   const buildings: string[] = []
   const groupSet = new Set(factorySpec.buildings.values())
@@ -202,6 +225,8 @@ export function formatSettings(
   if (machineSettings.length > 0) {
     settings += "machines=" + machineSettings.join(",") + "&"
   }
+  const machineQualities = serializeMachineQualities(spec)
+  if (machineQualities.length > 0) settings += "machineq=" + machineQualities.join(",") + "&"
   if (spec.belt !== null && spec.belt.key !== DEFAULT_BELT) {
     settings += "belt=" + spec.belt.key + "&"
   }
@@ -247,6 +272,9 @@ export function formatSettings(
   if (spec.defaultModule !== null) {
     settings += "dm=" + spec.defaultModule.shortName() + "&"
   }
+  if (spec.defaultMachineQuality.key !== "normal") settings += "dmachq=" + spec.defaultMachineQuality.key + "&"
+  if (spec.defaultModuleQuality.key !== "normal") settings += "dmq=" + spec.defaultModuleQuality.key + "&"
+  if (spec.defaultBeaconQuality.key !== "normal") settings += "dbq=" + spec.defaultBeaconQuality.key + "&"
   if (spec.secondaryDefaultModule !== null) {
     settings += "dm2=" + spec.secondaryDefaultModule.shortName() + "&"
   }
@@ -343,6 +371,8 @@ export function formatSettings(
   if (moduleSettings.length > 0) {
     settings += "&modules=" + moduleSettings.join(",")
   }
+  const moduleQualitySettings = serializeModuleQualitySettings(spec)
+  if (moduleQualitySettings.length > 0) settings += "&moduleq=" + moduleQualitySettings.join(",")
 
   if (!spec.isDefaultPriority()) {
     let priority = []

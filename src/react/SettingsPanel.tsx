@@ -295,6 +295,26 @@ export function SettingsPanel({ commands, snapshot }: SettingsPanelProps) {
             </td>
           </tr>
 
+          <tr className="setting-row" hidden={!snapshot.settings.equipmentQualityAvailable}>
+            <td className="setting-label">Equipment quality defaults</td>
+            <td>
+              <span className="equipment-quality-defaults">
+                <label>
+                  <span>Machine</span>
+                  <span id="default_machine_quality" />
+                </label>
+                <label>
+                  <span>Module</span>
+                  <span id="default_module_quality" />
+                </label>
+                <label>
+                  <span>Beacon</span>
+                  <span id="default_beacon_quality" />
+                </label>
+              </span>
+            </td>
+          </tr>
+
           <tr className="setting-row">
             <td className="setting-label">Default module (all eligible slots)</td>
             <td>

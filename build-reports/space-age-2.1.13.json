@@ -1,4 +1,5 @@
 {
+    "big_mining_drill_resource_drain_percent": 50,
     "build": 87164,
     "crafting_machines": 16,
     "excluded_raw_recipes": [
@@ -15,6 +16,12 @@
         }
     },
     "items": 348,
+    "legendary_crafting_speed_multiplier": 2.5,
+    "legendary_quality_module_3": {
+        "quality": 0.062,
+        "speed": -0.05
+    },
+    "legendary_rocket_launch_cycle_ticks": 1097,
     "mods": [
         "base",
         "elevated-rails",
@@ -32,16 +39,30 @@
         "space-platform": null,
         "vulcanus": null
     },
+    "qualities": [
+        "normal",
+        "uncommon",
+        "rare",
+        "epic",
+        "legendary"
+    ],
     "recipe_productivity_research": 8,
     "recipes": 623,
     "resources": 12,
     "rocket_launch": {
         "buffered": true,
         "launch_cycle_ticks": 1614,
+        "launch_cycle_ticks_by_quality": {
+            "epic": 1218,
+            "legendary": 1097,
+            "normal": 1614,
+            "rare": 1301,
+            "uncommon": 1423
+        },
         "parts_per_launch": 50
     },
     "source": "Factorio built-in exports plus bundled Factorio wiki mechanics",
-    "sprite_hash": "672da8878eae6b9ea7589de8b5ba9bf5",
+    "sprite_hash": "e74d200b08abad25e345a3552ba61888",
     "sprite_height": 896,
     "sprite_width": 832,
     "version": "2.1.13"

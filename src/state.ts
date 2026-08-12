@@ -175,6 +175,20 @@ function syncProgressionControls(): void {
   if (beltStackPolicy !== null) beltStackPolicy.value = spec.beltStackDefaultPolicy
   let maxQuality = document.getElementById("max_quality") as HTMLSelectElement | null
   if (maxQuality !== null) maxQuality.value = String(spec.maxQualityLevel)
+  const qualityDefaults = [
+    ["default_machine_quality", spec.defaultMachineQuality],
+    ["default_module_quality", spec.defaultModuleQuality],
+    ["default_beacon_quality", spec.defaultBeaconQuality],
+  ] as const
+  for (const [containerId, selected] of qualityDefaults) {
+    const input = document.querySelector<HTMLSelectElement>(`#${containerId} select`)
+    if (input === null) continue
+    input.replaceChildren(
+      ...spec
+        .getAvailableQualities()
+        .map((quality) => new Option(quality.name, quality.key, false, quality === selected)),
+    )
+  }
 
   document.querySelectorAll<HTMLInputElement>('#building_selector input[type="checkbox"]').forEach((input) => {
     const building = getBoundDatum(input)
@@ -201,7 +215,7 @@ export function applyProgressionPresetValue(value: ProgressionPreset): void {
   spec.beltStackSize = Rational.from_float(preset.beltStackSize)
   spec.beltStackDefaultPolicy = "auto"
   spec.beltStackOverrides.clear()
-  spec.maxQualityLevel = preset.maxQualityLevel
+  spec.setMaxQualityLevel(preset.maxQualityLevel)
   for (let target of spec.buildTargets) {
     target.setQuality(target.qualityLevel)
   }
@@ -247,7 +261,7 @@ export function setPlanningSetting(input: PlanningSettingValue): void {
       spec.freshnessDelayMinutes = Rational.max(Rational.from_float(0), Rational.from_string(input.value || "0"))
       break
     case "max_quality":
-      spec.maxQualityLevel = Number(input.value)
+      spec.setMaxQualityLevel(Number(input.value))
       for (let target of spec.buildTargets) {
         target.setQuality(target.qualityLevel)
       }

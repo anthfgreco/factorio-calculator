@@ -36,6 +36,7 @@ const snapshot = {
     bufferMinutes: "1",
     freshnessDelayMinutes: "0",
     maxQualityLevel: 2,
+    equipmentQualityAvailable: true,
     visualizationType: "sankey",
     visualizationRender: "zoom",
     visualizationDirection: "right",
@@ -47,19 +48,27 @@ const html = renderToStaticMarkup(createElement(CalculatorShell, { commands, sna
 const loadingHtml = renderToStaticMarkup(
   createElement(CalculatorShell, { commands, snapshot: { ...snapshot, status: "loading" } }),
 )
+const normalOnlyHtml = renderToStaticMarkup(
+  createElement(CalculatorShell, {
+    commands,
+    snapshot: { ...snapshot, settings: { ...snapshot.settings, equipmentQualityAvailable: false } },
+  }),
+)
 
 test("React shell renders the complete accessible calculator workflow", () => {
   for (const text of [
     "Production targets",
     "Choose an output, then set its quality, machine count, production rate, or belt throughput.",
-    "Added Auto stacking, direct big-drill detection, and per-item controls in Factory.",
+    "Machine, Module &amp; Beacon Quality Support",
+    "Added quality controls for machines, modules, and beacons.",
+    "Choose automatic or per-item belt stacking, including Big mining drill output.",
     "Factory",
     "Visualize",
     "Resources",
     "Settings",
     "Help",
     "Factorio 2.1.14",
-    "Confirmed compatibility with Factorio 2.1.14; recipes and production values are unchanged.",
+    "Updated to Factorio 2.1.14, production values unchanged.",
     "Early Space Age",
     "Established megabase",
     "Default module (all eligible slots)",
@@ -94,6 +103,11 @@ test("React shell preserves imperative mount points and snapshot-owned controls"
 test("React shell disables target addition until the dataset is ready", () => {
   assert.match(loadingHtml, /class="add-target-button ui"[^>]*disabled=""/)
   assert.doesNotMatch(html, /class="add-target-button ui"[^>]*disabled=""/)
+})
+
+test("React shell hides equipment quality defaults when the dataset has no quality tiers", () => {
+  assert.match(html, /Equipment quality defaults/)
+  assert.match(normalOnlyHtml, /<tr class="setting-row" hidden="">.*Equipment quality defaults/)
 })
 
 test("React shell labels production target rates with the selected display rate", () => {

@@ -1,5 +1,5 @@
 import { one, Rational, zero } from "./math.js"
-import { type Building, type Module, type ModuleSpec, type Planet, RocketSilo } from "./models.js"
+import { type Building, type Module, type ModuleSpec, normalQuality, type Planet, RocketSilo } from "./models.js"
 import { DisabledRecipe, Item, Recipe } from "./recipes.js"
 import type { Totals } from "./solver.js"
 import { QUALITY_TIERS } from "./planning/contracts.js"
@@ -52,10 +52,13 @@ function getModuleSpecWithoutMutation(specification: PlanningSpecification, reci
   return specification.spec?.get(recipe) ?? null
 }
 
-function getQualityChanceFromModules(modules: readonly (Module | null)[] | null): Rational {
+function getQualityChanceFromModules(
+  modules: readonly (Module | null)[] | null,
+  qualities: readonly import("./models.js").Quality[] | null,
+): Rational {
   let quality = zero
-  for (const module of modules ?? []) {
-    if (module) quality = quality.add(module.quality)
+  for (const [index, module] of (modules ?? []).entries()) {
+    if (module) quality = quality.add(module.qualityFor(qualities?.[index] ?? normalQuality))
   }
   return Rational.max(zero, Rational.min(one, quality))
 }
@@ -76,11 +79,13 @@ export function getRecipeQualityChance(specification: PlanningSpecification, rec
   const building = specification.getBuilding(recipe)
   const moduleSpec = getModuleSpecWithoutMutation(specification, recipe)
   let modules = moduleSpec?.building === building ? moduleSpec.modules : null
+  let qualities = moduleSpec?.building === building ? moduleSpec.moduleQualities : null
   if (modules === null && building !== null && building !== undefined && building.moduleSlots > 0) {
     const defaultModule = specification.getDefaultModule(recipe, building)
     modules = Array.from({ length: building.moduleSlots }, () => defaultModule)
+    qualities = Array.from({ length: building.moduleSlots }, () => specification.defaultModuleQuality ?? normalQuality)
   }
-  return getQualityChanceFromModules(modules)
+  return getQualityChanceFromModules(modules, qualities)
 }
 
 function chooseQualityModule(
@@ -353,7 +358,10 @@ export function getBeaconPower(specification: PlanningSpecification, recipe: Rec
   if (!moduleSpec || moduleSpec.beaconCount.isZero() || specification.beaconPower.isZero()) return zero
   if (!moduleSpec.beaconModules.some((module) => module !== null)) return zero
   const placedMachines = specification.getCount(recipe, rate).ceil()
-  return specification.beaconPower.mul(placedMachines).mul(moduleSpec.beaconCount)
+  return specification.beaconPower
+    .mul(moduleSpec.beaconQuality.beaconPowerUsageMultiplier)
+    .mul(placedMachines)
+    .mul(moduleSpec.beaconCount)
 }
 
 export function getAquiloHeat(specification: PlanningSpecification, recipe: Recipe, rate: Rational): Rational {

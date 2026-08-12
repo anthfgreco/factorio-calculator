@@ -18,6 +18,7 @@ import {
   DEFAULT_FORMAT,
   DEFAULT_RATE,
   DEFAULT_RATE_PRECISION,
+  formatCanadianNumber,
   longRateNames,
   one,
   Rational,
@@ -33,6 +34,7 @@ import {
   moduleDropdown,
   moduleRows,
   type Planet,
+  type Quality,
   type RecipeProductivityResearch,
   shortModules,
 } from "./models.js"
@@ -558,6 +560,86 @@ function getModule(moduleKey: string): Module | null {
     return null
   }
   return module
+}
+
+function getAvailableQuality(qualityKey: string | undefined): Quality | null {
+  if (qualityKey === undefined) return null
+  const quality = spec.qualities.get(qualityKey)
+  if (quality === undefined || spec.getQualityIndex(quality) > spec.maxQualityLevel) return null
+  return quality
+}
+
+function getQuality(qualityKey: string | undefined): Quality {
+  return getAvailableQuality(qualityKey) ?? spec.getNormalQuality()
+}
+
+function renderQualitySelect(
+  containerId: string,
+  label: string,
+  selected: Quality,
+  choose: (quality: Quality) => void,
+): void {
+  const container = select<HTMLElement, unknown>(`#${containerId}`)
+  container.selectAll("*").remove()
+  const input = container.append("select").attr("aria-label", label).classed("equipment-quality-select", true)
+  input
+    .selectAll("option")
+    .data(spec.getAvailableQualities())
+    .join("option")
+    .attr("value", (quality) => quality.key)
+    .text((quality) => quality.name)
+  input.property("value", selected.key).on("change", (event: Event) => {
+    const target = event.target
+    if (!(target instanceof HTMLSelectElement)) return
+    choose(getQuality(target.value))
+    spec.updateSolution()
+  })
+}
+
+function renderEquipmentQualityDefaults(settings: SettingsMap): void {
+  spec.setDefaultMachineQuality(getQuality(settings.get("dmachq")))
+  spec.setDefaultModuleQuality(getQuality(settings.get("dmq")))
+  spec.setDefaultBeaconQuality(getQuality(settings.get("dbq")))
+  renderQualitySelect("default_machine_quality", "Default machine quality", spec.defaultMachineQuality, (quality) =>
+    spec.setDefaultMachineQuality(quality),
+  )
+  renderQualitySelect("default_module_quality", "Default module quality", spec.defaultModuleQuality, (quality) =>
+    spec.setDefaultModuleQuality(quality),
+  )
+  renderQualitySelect("default_beacon_quality", "Default beacon quality", spec.defaultBeaconQuality, (quality) =>
+    spec.setDefaultBeaconQuality(quality),
+  )
+}
+
+function renderEquipmentQualityOverrides(settings: SettingsMap): void {
+  for (const entry of (settings.get("machineq") ?? "").split(",")) {
+    if (!entry) continue
+    const separator = entry.lastIndexOf(":")
+    if (separator < 0) continue
+    const recipe = spec.recipes.get(entry.slice(0, separator))
+    if (recipe) spec.setMachineQuality(recipe, getQuality(entry.slice(separator + 1)), "default")
+  }
+  for (const entry of (settings.get("moduleq") ?? "").split(",")) {
+    if (!entry) continue
+    const [machinePart, beaconModulePart = "", beaconQualityKey = ""] = entry.split(";")
+    if (machinePart === undefined) continue
+    const [recipeKey, ...moduleQualityKeys] = machinePart.split(":")
+    if (recipeKey === undefined) continue
+    const recipe = spec.recipes.get(recipeKey)
+    if (!recipe) continue
+    const moduleSpec = spec.getModuleSpec(recipe)
+    if (!moduleSpec) continue
+    moduleQualityKeys.forEach((key, index) => {
+      const quality = getAvailableQuality(key)
+      if (quality) moduleSpec.restoreModuleQualityOverride(index, quality)
+    })
+    beaconModulePart.split(":").forEach((key, index) => {
+      const quality = getAvailableQuality(key)
+      if (quality) moduleSpec.restoreBeaconModuleQualityOverride(quality, index)
+    })
+    const beaconQuality = getAvailableQuality(beaconQualityKey)
+    if (beaconQuality) moduleSpec.restoreBeaconQualityOverride(beaconQuality)
+  }
 }
 
 // NOTE: Buildings must be configured before modules!
@@ -1166,7 +1248,7 @@ function renderDefaultBeacon(settings: SettingsMap): void {
   selector.selectAll("*").remove()
   moduleDropdown(selector, cells)
   select("#default_beacon_count")
-    .attr("value", defaultCount.toDecimal())
+    .attr("value", formatCanadianNumber(defaultCount.toDecimal()))
     .on("change", (event: Event) => {
       const target = event.target
       if (!(target instanceof HTMLInputElement)) return
@@ -1252,7 +1334,7 @@ function renderPlanningSettings(settings: SettingsMap) {
   }
   spec.bufferMinutes = Rational.from_string(settings.get("buffer") ?? "1")
   spec.freshnessDelayMinutes = Rational.from_string(settings.get("fresh") ?? "0")
-  spec.maxQualityLevel = Number(settings.get("maxq") ?? "4")
+  spec.setMaxQualityLevel(Number(settings.get("maxq") ?? "4"))
 
   spec.resourceYields.clear()
   let resourceYields = settings.get("ryield")
@@ -1319,6 +1401,7 @@ export function renderSettings(settings: SettingsMap) {
   renderPlanningSettings(settings)
   renderFuel(settings)
   renderVisualizer(settings)
+  renderEquipmentQualityDefaults(settings)
   renderDefaultModule(settings)
   renderDefaultBeacon(settings)
   renderResourcePriorities(settings)
@@ -1326,6 +1409,7 @@ export function renderSettings(settings: SettingsMap) {
   renderBuildingOverrides(settings)
   renderTargets(settings)
   renderModules(settings)
+  renderEquipmentQualityOverrides(settings)
   renderDebugCheckbox(settings)
   renderTab(settings)
 }

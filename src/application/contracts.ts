@@ -46,6 +46,7 @@ export interface CalculatorSettingsSnapshot {
   readonly bufferMinutes: string
   readonly freshnessDelayMinutes: string
   readonly maxQualityLevel: number
+  readonly equipmentQualityAvailable: boolean
   readonly visualizationType: string
   readonly visualizationRender: string
   readonly visualizationDirection: string

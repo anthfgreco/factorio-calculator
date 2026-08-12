@@ -1,7 +1,7 @@
 import { select, type BaseType, type Selection } from "d3"
 import { bindCalculatorSpecification } from "./application/store.js"
 import { parseCalculatorData } from "./data.js"
-import { Matrix } from "./math.js"
+import { formatCanadianNumber, Matrix } from "./math.js"
 import type { FactorySpecification, FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"
 import {
@@ -12,6 +12,7 @@ import {
   getFuel,
   getItemGroups,
   getModules,
+  getQualities,
   getPlanets,
   getRecipeProductivityResearch,
 } from "./models.js"
@@ -111,7 +112,7 @@ function renderMatrix<GElement extends BaseType, TDatum, PElement extends BaseTy
     }
     for (let c = 0; c < A.cols; c++) {
       let x = A.index(r, c)
-      row.append("td").classed("right-align", true).append("tt").text(x.toString())
+      row.append("td").classed("right-align", true).append("tt").text(formatCanadianNumber(x.toString()))
     }
   }
 }
@@ -320,6 +321,7 @@ function loadData(modName: string, settings: Map<string, string>): void {
       const buildings = getBuildings(data, items)
       const planets = getPlanets(data, recipes, buildings)
       const modules = getModules(data, items)
+      const qualities = getQualities(data)
       const belts = getBelts(data)
       const fuel = getFuel(data, items)
       const recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
@@ -336,6 +338,7 @@ function loadData(modName: string, settings: Map<string, string>): void {
         itemGroups,
         recipeProductivityResearch,
         getBeaconPower(data),
+        qualities,
       )
 
       fixLegacySettings(settings)

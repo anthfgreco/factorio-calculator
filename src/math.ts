@@ -33,6 +33,20 @@ interface BigIntegerFactory {
 /** Typed access to exact integers used by the rational arithmetic boundary. */
 export const integer = bigInt as BigIntegerFactory
 
+function removeCanadianGrouping(value: string): string {
+  return value.replace(/,(?=\d{3}(?:,|\.\d|\/|\s|\+|$))/g, "")
+}
+
+export function formatCanadianNumber(value: string): string {
+  return value.replace(
+    /(^|[^\d.])(-?)(\d+)(?=\.|\/|\s|\+|$)/g,
+    (_match, prefix: string, sign: string, digits: string) => {
+      const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+      return `${prefix}${sign}${grouped}`
+    },
+  )
+}
+
 // -----------------------------------------------------------------------------
 // Exact rational arithmetic
 // -----------------------------------------------------------------------------
@@ -204,6 +218,7 @@ export class Rational {
   }
 
   static from_decimal(value: string): Rational {
+    value = removeCanadianGrouping(value)
     let decimalIndex = value.indexOf(".")
     if (decimalIndex === -1 || decimalIndex === value.length - 1) {
       return new Rational(integer(value), integer.one)
@@ -215,6 +230,7 @@ export class Rational {
   }
 
   static from_string(value: string): Rational {
+    value = removeCanadianGrouping(value)
     let slashIndex = value.indexOf("/")
     if (slashIndex === -1) {
       return Rational.from_decimal(value)
@@ -580,7 +596,8 @@ export class Formatter {
 
   rate(rate: Rational): string {
     let scaled = rate.mul(this.rateFactor)
-    return this.displayFormat === "rational" ? scaled.toMixed() : scaled.toDecimal(this.ratePrecision)
+    const value = this.displayFormat === "rational" ? scaled.toMixed() : scaled.toDecimal(this.ratePrecision)
+    return formatCanadianNumber(value)
   }
 
   alignRate(rate: Rational): string {
@@ -588,7 +605,8 @@ export class Formatter {
   }
 
   count(count: Rational): string {
-    return this.displayFormat === "rational" ? count.toMixed() : count.toUpDecimal(this.countPrecision)
+    const value = this.displayFormat === "rational" ? count.toMixed() : count.toUpDecimal(this.countPrecision)
+    return formatCanadianNumber(value)
   }
 
   alignCount(count: Rational): string {
