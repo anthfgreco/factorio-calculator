@@ -92,6 +92,8 @@ pnpm bench:check
 
 `bench` reports median exact-solver times for 500- and 1,000-step production chains. `bench:check` compares them with conservative ceilings in `config/performance-budgets.json` and fails on a substantial regression. Compare local numbers only on the same machine/runtime.
 
+`pnpm bench:quality` reports single-run timings for the real Nauvis Legendary advanced-circuit and Vulcanus Legendary Mech-armor planners. It is diagnostic rather than a pass/fail gate because exact quality-planner wall time varies substantially across machines.
+
 ## Build budgets
 
 ```bash

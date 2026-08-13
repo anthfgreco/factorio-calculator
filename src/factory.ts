@@ -44,6 +44,7 @@ import { getQualityTargetMultiplier, type QualityTargetFeasibility } from "./pla
 import { planPlanetQualityTarget } from "./quality/practical.js"
 import { planVulcanusQualityTarget } from "./quality/vulcanus.js"
 import type { QualityPlannerObjective, QualityStrategy, QualityTargetPlan } from "./quality/contracts.js"
+import type { QualityGraphOptimizer } from "./quality/graph.js"
 
 // -----------------------------------------------------------------------------
 // Calculator defaults
@@ -434,11 +435,51 @@ export class FactorySpecification {
   lastTotals: Totals | null = null
   lastError: unknown = null
   readonly qualityPlans: QualityTargetPlan[] = []
+  private qualityGraphOptimizer: QualityGraphOptimizer | null = null
+  private qualityGraphOptimizerLoader: (() => Promise<QualityGraphOptimizer>) | null = null
+  private qualityGraphOptimizerPromise: Promise<void> | null = null
+  private qualityGraphOptimizerLoadGeneration = 0
   private readonly stateListeners = new Set<() => void>()
   private stateRevision = 0
 
   constructor(view: FactoryViewPort | null = null) {
     this.view = view
+  }
+  setQualityGraphOptimizer(optimizer: QualityGraphOptimizer | null): void {
+    this.qualityGraphOptimizer = optimizer
+  }
+  setQualityGraphOptimizerLoader(loader: (() => Promise<QualityGraphOptimizer>) | null): void {
+    this.qualityGraphOptimizerLoader = loader
+    this.qualityGraphOptimizerLoadGeneration++
+  }
+  getQualityGraphOptimizer(): QualityGraphOptimizer | null {
+    return this.qualityGraphOptimizer
+  }
+  private deferForQualityGraphOptimizer(): boolean {
+    const needsOptimizer = this.buildTargets.some(
+      (target) => target.qualityLevel > 0 && target.qualityStrategy === "auto",
+    )
+    if (!needsOptimizer || this.qualityGraphOptimizer !== null || this.qualityGraphOptimizerLoader === null) {
+      return false
+    }
+    if (this.qualityGraphOptimizerPromise === null) {
+      const generation = this.qualityGraphOptimizerLoadGeneration
+      this.qualityGraphOptimizerPromise = this.qualityGraphOptimizerLoader()
+        .then((optimizer) => {
+          if (generation === this.qualityGraphOptimizerLoadGeneration) this.qualityGraphOptimizer = optimizer
+        })
+        .catch(() => {
+          // This loader is an optimization only. If the optional WASM asset
+          // is unavailable, preserve the exact simplex calculation path.
+          if (generation === this.qualityGraphOptimizerLoadGeneration) this.qualityGraphOptimizerLoader = null
+        })
+        .finally(() => {
+          if (generation !== this.qualityGraphOptimizerLoadGeneration) return
+          this.qualityGraphOptimizerPromise = null
+          this.updateSolution()
+        })
+    }
+    return true
   }
   get revision(): number {
     return this.stateRevision
@@ -1338,6 +1379,7 @@ export class FactorySpecification {
   // The top-level calculation function. Called whenever the solution
   // requires recalculation.
   updateSolution(): void {
+    if (this.deferForQualityGraphOptimizer()) return
     try {
       this.lastTotals = this.solve()
       this.lastError = null

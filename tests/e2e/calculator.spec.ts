@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test"
 
+declare global {
+  interface Window {
+    spec: { getQualityGraphOptimizer(): unknown }
+  }
+}
+
 const title = "Codex regression plan"
 
 function collectBrowserErrors(page: Page): string[] {
@@ -188,6 +194,7 @@ test("Nauvis Legendary quality plans replace the ordinary table until a Normal t
   await expect(page.locator("#calculation_error")).toBeHidden()
   const qualityPlan = page.locator("#factory_summary .quality-plan").first()
   await expect(qualityPlan.locator(".quality-plan-title-main")).toHaveText("Legendary Advanced circuit")
+  expect(await page.evaluate(() => window.spec.getQualityGraphOptimizer() !== null)).toBe(true)
   const feed = qualityPlan.locator(":scope > .quality-plan-material")
   await expect(feed).not.toContainText("Copper cable")
   await expect(feed).not.toContainText("Plastic bar")

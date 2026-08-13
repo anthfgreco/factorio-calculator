@@ -41,6 +41,15 @@ import {
   syncUrlHash,
 } from "./url-state.js"
 
+function configureQualityOptimizerLoader(specification: FactorySpecification): void {
+  specification.setQualityGraphOptimizerLoader(async () => {
+    const { loadBrowserHighsQualityOptimizer } = await import("./quality/highs-runtime.js")
+    return loadBrowserHighsQualityOptimizer()
+  })
+}
+
+configureQualityOptimizerLoader(spec)
+
 // -----------------------------------------------------------------------------
 // Deferred visualization runtime
 // -----------------------------------------------------------------------------
@@ -133,7 +142,9 @@ export const browserFactoryView: FactoryViewPort = {
 function reset(): void {
   clearUrlHash()
   resetDisplay()
+  spec.setQualityGraphOptimizerLoader(null)
   resetSpec()
+  configureQualityOptimizerLoader(spec)
   bindCalculatorSpecification(spec)
   window.spec = spec
 }

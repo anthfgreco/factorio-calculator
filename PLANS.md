@@ -1,5 +1,28 @@
 # Execution Plans
 
+## Completed plan: certified quality-solver acceleration
+
+### Goal
+
+Reduce the recursive quality planner's real calculation latency while preserving exact Rational results, the complete feasible quality graph, and ordinary scalar-solver startup performance.
+
+### Constraints
+
+- Keep exact coefficients and require exact primal, dual, and objective certification before accepting any floating-point candidate.
+- Preserve productivity, quality transitions, catalysts, probability, recycling, surplus balance, locations, imports, and exact objective values. Exact-cost-tied surplus bases may select a different equivalent operation split.
+- Keep the existing exact solver as a correctness fallback until a sparse candidate path is proven equivalent.
+- Do not eagerly load a WASM solver on the ordinary-plan startup path.
+- Preserve unrelated working-tree changes and validate against the recorded pre-change plan fingerprints and timings.
+
+### Steps
+
+1. [x] Verify the supported HiGHS browser/Node API, basis access, loading model, and licensing from primary sources and the package itself.
+2. [x] Migrate Rational arithmetic to native bigint and retain the existing exact simplex reductions with focused arithmetic coverage.
+3. [x] Build a sparse quality LP experiment with exact basis reconstruction and primal/dual certification; reject uncertified candidates.
+4. [x] Integrate behind a lazy browser boundary, preserve exact invariants, and document the cost-equivalent split possible on a degenerate optimal face.
+5. [x] Record Mech armor, advanced circuits, core-lane, and 501/1,001-recipe timings before and after.
+6. [x] Format, run focused tests, check:quick, test:core, test:ui, test:e2e, and verify; review the final diff.
+
 ## Completed plan: preset productivity and settings cleanup
 
 ### Goal

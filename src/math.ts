@@ -1,37 +1,15 @@
-import bigInt from "big-integer"
-
 // -----------------------------------------------------------------------------
-// BigInteger adapter
+// Exact integer helpers
 // -----------------------------------------------------------------------------
 
-export interface BigIntegerValue {
-  abs(): BigIntegerValue
-  divide(other: BigIntegerValue): BigIntegerValue
-  divmod(other: BigIntegerValue): { quotient: BigIntegerValue; remainder: BigIntegerValue }
-  equals(other: BigIntegerValue | number): boolean
-  greater(other: BigIntegerValue): boolean
-  isZero(): boolean
-  lesser(other: BigIntegerValue): boolean
-  minus(other: BigIntegerValue): BigIntegerValue
-  plus(other: BigIntegerValue): BigIntegerValue
-  subtract(other: BigIntegerValue): BigIntegerValue
-  times(other: BigIntegerValue): BigIntegerValue
-  pow(exponent: number): BigIntegerValue
-  shiftLeft(bits: number): BigIntegerValue
-  toJSNumber(): number
-  toString(): string
+function greatestCommonDivisor(left: bigint, right: bigint): bigint {
+  while (right !== 0n) {
+    const remainder = left % right
+    left = right
+    right = remainder
+  }
+  return left
 }
-
-interface BigIntegerFactory {
-  (value: string | number | BigIntegerValue): BigIntegerValue
-  readonly zero: BigIntegerValue
-  readonly one: BigIntegerValue
-  readonly minusOne: BigIntegerValue
-  gcd(left: BigIntegerValue, right: BigIntegerValue): BigIntegerValue
-}
-
-/** Typed access to exact integers used by the rational arithmetic boundary. */
-export const integer = bigInt as BigIntegerFactory
 
 function removeCanadianGrouping(value: string): string {
   return value.replace(/,(?=\d{3}(?:,|\.\d|\/|\s|\+|$))/g, "")
@@ -52,36 +30,46 @@ export function formatCanadianNumber(value: string): string {
 // -----------------------------------------------------------------------------
 
 export class Rational {
-  public readonly p: BigIntegerValue
-  public readonly q: BigIntegerValue
+  public readonly p: bigint
+  public readonly q: bigint
 
-  constructor(numerator: BigIntegerValue, denominator: BigIntegerValue) {
+  constructor(numerator: bigint, denominator: bigint) {
     let p = numerator
     let q = denominator
-    if (q.lesser(integer.zero)) {
-      p = integer.zero.minus(p)
-      q = integer.zero.minus(q)
+    if (q < 0n) {
+      p = -p
+      q = -q
     }
-    let gcd = integer.gcd(p.abs(), q)
-    if (gcd.greater(integer.one)) {
-      p = p.divide(gcd)
-      q = q.divide(gcd)
+    if (p === 0n && q !== 0n) {
+      this.p = 0n
+      this.q = 1n
+      return
+    }
+    if (q === 1n) {
+      this.p = p
+      this.q = q
+      return
+    }
+    const gcd = greatestCommonDivisor(p < 0n ? -p : p, q)
+    if (gcd > 1n) {
+      p /= gcd
+      q /= gcd
     }
     this.p = p
     this.q = q
   }
 
   toFloat(): number {
-    return this.p.toJSNumber() / this.q.toJSNumber()
+    return Number(this.p) / Number(this.q)
   }
 
   toString(): string {
-    return this.q.equals(integer.one) ? this.p.toString() : `${this.p}/${this.q}`
+    return this.q === 1n ? this.p.toString() : `${this.p}/${this.q}`
   }
 
   toDecimal(maxDigits = 3, roundingFactor: Rational | null = null): string {
     let digits = maxDigits ?? 3
-    const rounding = roundingFactor ?? new Rational(integer(5), integer(10).pow(digits + 1))
+    const rounding = roundingFactor ?? new Rational(5n, 10n ** BigInt(digits + 1))
     let sign = ""
     let value: Rational = this
     if (value.less(zero)) {
@@ -90,19 +78,19 @@ export class Rational {
     }
     value = value.add(rounding)
 
-    let { quotient, remainder } = value.p.divmod(value.q)
+    let quotient = value.p / value.q
+    let remainder = value.p % value.q
     const integerPart = quotient.toString()
     let decimalPart = ""
     let roundingNumerator = rounding.p
     const roundingDenominator = rounding.q
-    const ten = integer(10)
-    const equalsRounding = () => remainder.times(roundingDenominator).equals(roundingNumerator.times(value.q))
+    const equalsRounding = () => remainder * roundingDenominator === roundingNumerator * value.q
 
     while (digits > 0 && !equalsRounding()) {
-      const digit = remainder.times(ten).divmod(value.q)
-      decimalPart += digit.quotient.toString()
-      remainder = digit.remainder
-      roundingNumerator = roundingNumerator.times(ten)
+      const scaledRemainder = remainder * 10n
+      decimalPart += (scaledRemainder / value.q).toString()
+      remainder = scaledRemainder % value.q
+      roundingNumerator *= 10n
       digits--
     }
     if (equalsRounding()) {
@@ -112,50 +100,53 @@ export class Rational {
   }
 
   toUpDecimal(maxDigits = 3): string {
-    let fraction = new Rational(integer.one, integer(10).pow(maxDigits))
+    let fraction = new Rational(1n, 10n ** BigInt(maxDigits))
     let { remainder } = this.divmod(fraction)
     let value = remainder.isZero() ? this : this.add(fraction)
     return value.toDecimal(maxDigits, zero)
   }
 
   toMixed(): string {
-    let { quotient, remainder } = this.p.divmod(this.q)
-    if (quotient.isZero() || remainder.isZero()) {
+    const quotient = this.p / this.q
+    const remainder = this.p % this.q
+    if (quotient === 0n || remainder === 0n) {
       return this.toString()
     }
     return `${quotient} + ${remainder}/${this.q}`
   }
 
   isZero(): boolean {
-    return this.p.isZero()
+    return this.p === 0n
   }
 
   isOne(): boolean {
-    return this.p.equals(1) && this.q.equals(1)
+    return this.p === 1n && this.q === 1n
   }
 
   isInteger(): boolean {
-    return this.q.equals(integer.one)
+    return this.q === 1n
   }
 
   ceil(): Rational {
-    let { quotient, remainder } = this.p.divmod(this.q)
-    let result = new Rational(quotient, integer.one)
-    return remainder.isZero() ? result : result.add(one)
+    const quotient = this.p / this.q
+    const remainder = this.p % this.q
+    const result = new Rational(quotient, 1n)
+    return remainder === 0n ? result : result.add(one)
   }
 
   floor(): Rational {
-    let { quotient, remainder } = this.p.divmod(this.q)
-    let result = new Rational(quotient, integer.one)
-    return result.less(zero) && !remainder.isZero() ? result.sub(one) : result
+    const quotient = this.p / this.q
+    const remainder = this.p % this.q
+    const result = new Rational(quotient, 1n)
+    return result.less(zero) && remainder !== 0n ? result.sub(one) : result
   }
 
   equal(other: Rational): boolean {
-    return this.p.equals(other.p) && this.q.equals(other.q)
+    return this.p === other.p && this.q === other.q
   }
 
   less(other: Rational): boolean {
-    return this.p.times(other.q).lesser(this.q.times(other.p))
+    return this.p * other.q < this.q * other.p
   }
 
   abs(): Rational {
@@ -165,18 +156,25 @@ export class Rational {
   add(other: Rational): Rational {
     if (this.isZero()) return other
     if (other.isZero()) return this
-    if (this.q.equals(other.q)) {
-      return new Rational(this.p.plus(other.p), this.q)
+    if (this.q === other.q) {
+      return new Rational(this.p + other.p, this.q)
     }
-    return new Rational(this.p.times(other.q).plus(this.q.times(other.p)), this.q.times(other.q))
+    return new Rational(this.p * other.q + this.q * other.p, this.q * other.q)
   }
 
   sub(other: Rational): Rational {
     if (other.isZero()) return this
-    if (this.q.equals(other.q)) {
-      return new Rational(this.p.subtract(other.p), this.q)
+    if (this.q === other.q) {
+      return new Rational(this.p - other.p, this.q)
     }
-    return new Rational(this.p.times(other.q).subtract(this.q.times(other.p)), this.q.times(other.q))
+    return new Rational(this.p * other.q - this.q * other.p, this.q * other.q)
+  }
+
+  subProduct(left: Rational, right: Rational): Rational {
+    if (left.isZero() || right.isZero()) return this
+    const productNumerator = left.p * right.p
+    const productDenominator = left.q * right.q
+    return new Rational(this.p * productDenominator - this.q * productNumerator, this.q * productDenominator)
   }
 
   mul(other: Rational): Rational {
@@ -189,11 +187,11 @@ export class Rational {
     if (other.isOne()) {
       return this
     }
-    return new Rational(this.p.times(other.p), this.q.times(other.q))
+    return new Rational(this.p * other.p, this.q * other.q)
   }
 
   div(other: Rational): Rational {
-    return new Rational(this.p.times(other.q), this.q.times(other.p))
+    return new Rational(this.p * other.q, this.q * other.p)
   }
 
   divmod(other: Rational): { quotient: Rational; remainder: Rational } {
@@ -206,7 +204,7 @@ export class Rational {
   }
 
   pow(exponent: number): Rational {
-    return new Rational(this.p.pow(exponent), this.q.pow(exponent))
+    return new Rational(this.p ** BigInt(exponent), this.q ** BigInt(exponent))
   }
 
   static max(a: Rational, b: Rational): Rational {
@@ -221,11 +219,11 @@ export class Rational {
     value = removeCanadianGrouping(value)
     let decimalIndex = value.indexOf(".")
     if (decimalIndex === -1 || decimalIndex === value.length - 1) {
-      return new Rational(integer(value), integer.one)
+      return new Rational(BigInt(value), 1n)
     }
-    let integerPart = new Rational(integer(value.slice(0, decimalIndex)), integer.one)
-    let numerator = integer(value.slice(decimalIndex + 1))
-    let denominator = integer(10).pow(value.length - decimalIndex - 1)
+    let integerPart = new Rational(BigInt(value.slice(0, decimalIndex)), 1n)
+    let numerator = BigInt(value.slice(decimalIndex + 1))
+    let denominator = 10n ** BigInt(value.length - decimalIndex - 1)
     return integerPart.add(new Rational(numerator, denominator))
   }
 
@@ -236,11 +234,11 @@ export class Rational {
       return Rational.from_decimal(value)
     }
     let plusIndex = value.indexOf("+")
-    let denominator = integer(value.slice(slashIndex + 1))
+    let denominator = BigInt(value.slice(slashIndex + 1))
     let numerator =
       plusIndex === -1
-        ? integer(value.slice(0, slashIndex))
-        : integer(value.slice(plusIndex + 1, slashIndex)).plus(integer(value.slice(0, plusIndex)).times(denominator))
+        ? BigInt(value.slice(0, slashIndex))
+        : BigInt(value.slice(plusIndex + 1, slashIndex)) + BigInt(value.slice(0, plusIndex)) * denominator
     return new Rational(numerator, denominator)
   }
 
@@ -262,15 +260,15 @@ export class Rational {
       floatPart *= 2
       exponent--
     }
-    let numerator = integer(floatPart)
-    let denominator = integer.one
+    let numerator = BigInt(floatPart)
+    let denominator = 1n
     if (exponent > 0) {
-      numerator = numerator.shiftLeft(exponent)
+      numerator <<= BigInt(exponent)
     } else {
-      denominator = denominator.shiftLeft(-exponent)
+      denominator <<= BigInt(-exponent)
     }
     if (value < 0) {
-      numerator = integer.zero.minus(numerator)
+      numerator = -numerator
     }
     return new Rational(numerator, denominator)
   }
@@ -279,7 +277,7 @@ export class Rational {
     if (Number.isInteger(value)) {
       return Rational.from_floats(value, 1)
     }
-    let result = new Rational(integer(Math.round(value * 100000)), integer(100000))
+    let result = new Rational(BigInt(Math.round(value * 100000)), 100000n)
     let { quotient, remainder } = result.divmod(one)
     if (remainder.equal(_oneThirdApproximation)) {
       return quotient.add(oneThird)
@@ -291,19 +289,19 @@ export class Rational {
   }
 
   static from_floats(numerator: number, denominator: number): Rational {
-    return new Rational(integer(numerator), integer(denominator))
+    return new Rational(BigInt(numerator), BigInt(denominator))
   }
 }
 
-const _oneThirdApproximation = new Rational(integer(33333), integer(100000))
-const _twoThirdsApproximation = new Rational(integer(33333), integer(50000))
+const _oneThirdApproximation = new Rational(33333n, 100000n)
+const _twoThirdsApproximation = new Rational(33333n, 50000n)
 
-export const minusOne = new Rational(integer.minusOne, integer.one)
-export const zero = new Rational(integer.zero, integer.one)
-export const one = new Rational(integer.one, integer.one)
-export const half = new Rational(integer.one, integer(2))
-export const oneThird = new Rational(integer.one, integer(3))
-export const twoThirds = new Rational(integer(2), integer(3))
+export const minusOne = new Rational(-1n, 1n)
+export const zero = new Rational(0n, 1n)
+export const one = new Rational(1n, 1n)
+export const half = new Rational(1n, 2n)
+export const oneThird = new Rational(1n, 3n)
+export const twoThirds = new Rational(2n, 3n)
 
 // -----------------------------------------------------------------------------
 // Matrix arithmetic
@@ -487,7 +485,17 @@ export class Matrix {
 
 function pivot(tableau: Matrix, row: number, col: number): void {
   let pivotValue = tableau.index(row, col)
-  tableau.mulRow(row, pivotValue.reciprocate())
+  const pivotColumns: number[] = []
+  for (let currentCol = 0; currentCol < tableau.cols; currentCol++) {
+    if (currentCol === col) {
+      tableau.setIndex(row, currentCol, one)
+      continue
+    }
+    const value = tableau.index(row, currentCol)
+    if (value.isZero()) continue
+    tableau.setIndex(row, currentCol, value.div(pivotValue))
+    pivotColumns.push(currentCol)
+  }
   for (let otherRow = 0; otherRow < tableau.rows; otherRow++) {
     if (otherRow === row) {
       continue
@@ -496,8 +504,9 @@ function pivot(tableau: Matrix, row: number, col: number): void {
     if (ratio.isZero()) {
       continue
     }
-    for (let currentCol = 0; currentCol < tableau.cols; currentCol++) {
-      let next = tableau.index(otherRow, currentCol).sub(tableau.index(row, currentCol).mul(ratio))
+    tableau.setIndex(otherRow, col, zero)
+    for (const currentCol of pivotColumns) {
+      let next = tableau.index(otherRow, currentCol).subProduct(tableau.index(row, currentCol), ratio)
       tableau.setIndex(otherRow, currentCol, next)
     }
   }

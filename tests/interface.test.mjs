@@ -106,21 +106,27 @@ test("imperative renderer constraints remain explicit", async () => {
 })
 
 test("runtime libraries come from pnpm and generated sprite sheets prefer lossless WebP", async () => {
-  const [html, globals, math, urlCodec, visualization, packageJson] = await Promise.all([
+  const [html, globals, math, urlCodec, visualization, app, highsRuntime, packageJson] = await Promise.all([
     read("calc.html"),
     read("src/globals.d.ts"),
     read("src/math.ts"),
     read("src/url/codec.ts"),
     read("src/visualization.ts"),
+    read("src/app.ts"),
+    read("src/quality/highs-runtime.ts"),
     read("package.json"),
   ])
   const dependencies = JSON.parse(packageJson).dependencies
-  for (const dependency of ["d3", "@dagrejs/dagre", "pako", "big-integer", "tippy.js"]) {
+  for (const dependency of ["d3", "@dagrejs/dagre", "highs", "pako", "tippy.js"]) {
     assert.ok(dependencies[dependency], `missing ${dependency}`)
   }
-  assert.match(math, /from "big-integer"/)
+  assert.doesNotMatch(math, /from "big-integer"/)
+  assert.match(math, /public readonly p: bigint/)
   assert.match(urlCodec, /from "pako"/)
   assert.match(visualization, /from "@dagrejs\/dagre"/)
+  assert.match(app, /import\("\.\/quality\/highs-runtime\.js"\)/)
+  assert.match(app, /resetSpec\(\)\s+configureQualityOptimizerLoader\(spec\)/)
+  assert.match(highsRuntime, /from "highs\/runtime\?url"/)
   assert.doesNotMatch(html, /third_party\//)
   assert.doesNotMatch(globals, /const (?:BigInteger|bigInt|d3|dagre|pako):/)
 
@@ -215,6 +221,7 @@ test("repository agent guardrails and validation lanes are installed", async () 
   }
   assert.match(agents, /^# Code Review Rules$/m)
   assert.ok(JSON.parse(buildBudgets).requiredDeferredModuleFragments.includes("src/visualization.ts"))
+  assert.ok(JSON.parse(buildBudgets).requiredDeferredModuleFragments.includes("src/quality/highs-runtime.ts"))
   assert.ok(JSON.parse(performanceBudgets).solverScenarios["1001"])
   assert.equal(scripts["test:e2e"], "playwright test")
   assert.ok(playwrightConfig.includes('testDir: "./tests/e2e"'))

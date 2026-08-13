@@ -26,7 +26,7 @@ test("quality transitions are exact stochastic columns with Legendary absorbing"
 
 test("Nauvis Legendary advanced circuits recursively quality-plan every solid intermediate", async () => {
   const runtime = await setupSpaceAgeFactory()
-  const { specification, math, items, recipes, planets } = runtime
+  const { specification, math, items, recipes, planets, qualityHighs } = runtime
   const nauvis = requireValue(planets, "nauvis")
   const advancedCircuit = requireValue(items, "advanced-circuit")
   const advancedCircuitRecipe = requireValue(recipes, "advanced-circuit")
@@ -54,6 +54,8 @@ test("Nauvis Legendary advanced circuits recursively quality-plan every solid in
     getRate: () => math.one,
   })
 
+  const optimizer = await qualityHighs.loadHighsQualityOptimizer()
+  specification.setQualityGraphOptimizer(optimizer)
   const totals = specification.solve()
   const plan = specification.qualityPlans[0]
   assert.ok(plan)
@@ -61,6 +63,7 @@ test("Nauvis Legendary advanced circuits recursively quality-plan every solid in
   assert.equal(plan.planetKey, "nauvis")
   assert.equal(plan.requested.toString(), "1")
   assert.equal(totals.rates.size, 0)
+  assert.equal(optimizer.lastRun?.certified, false, JSON.stringify(optimizer.lastRun))
 
   for (const itemKey of ["copper-cable", "plastic-bar", "electronic-circuit"]) {
     assert.equal(
@@ -255,9 +258,11 @@ test("Vulcanus practical electronics honor the dedicated productivity module pro
 
 test("Vulcanus Mech armor makes its oil chain locally and imports only holmium ore", async () => {
   const runtime = await setupSpaceAgeFactory()
-  const { specification, math, vulcanusPlanner, items, recipes, planets } = runtime
+  const { specification, math, qualityHighs, vulcanusPlanner, items, recipes, planets } = runtime
   specification.selectOnePlanet(requireValue(planets, "vulcanus"))
 
+  const optimizer = await qualityHighs.loadHighsQualityOptimizer()
+  specification.setQualityGraphOptimizer(optimizer)
   const plan = vulcanusPlanner.planVulcanusQualityTarget({
     specification,
     item: requireValue(items, "mech-armor"),
@@ -265,6 +270,26 @@ test("Vulcanus Mech armor makes its oil chain locally and imports only holmium o
     requested: math.one,
     qualityLevel: 4,
   })
+  assert.equal(optimizer.lastRun?.certified, true, JSON.stringify(optimizer.lastRun))
+  assert.equal(
+    plan.totalCrafts.toString(),
+    "654695212069960015266641502753802861784751118/1559668913829556971062523577911481640625",
+  )
+  assert.equal(
+    plan.totalRecycles.toString(),
+    "1237937377184826460954378686853325258859601/4413756926211535373891223186470587500",
+  )
+
+  const scaledPlan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: requireValue(items, "mech-armor"),
+    recipe: requireValue(recipes, "mech-armor"),
+    requested: math.Rational.from_integer(2),
+    qualityLevel: 4,
+  })
+  assert.equal(optimizer.lastRun?.cacheHit, true)
+  assert.equal(scaledPlan.totalCrafts.toString(), plan.totalCrafts.mul(math.Rational.from_integer(2)).toString())
+  assert.equal(scaledPlan.totalRecycles.toString(), plan.totalRecycles.mul(math.Rational.from_integer(2)).toString())
 
   assert.deepEqual(
     plan.importedInputs.map((entry) => entry.item.key),

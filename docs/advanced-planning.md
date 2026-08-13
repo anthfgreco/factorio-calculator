@@ -66,4 +66,4 @@ Progression presets set mining productivity, belt and stacking research, the qua
 
 ## Performance
 
-No Web Worker, graph cache, or table virtualization was added in this release. Existing large-chain tests remain fast, and the user explicitly reported acceptable performance. These optimizations should be introduced only after a repeatable browser benchmark demonstrates a bottleneck.
+Quality graphs discard exact duplicate operation rows, including their equipment and reporting configuration in the equivalence key. Automatic quality plans lazily load a sparse WASM LP search; the candidate basis is reconstructed from the original exact coefficients and must pass exact feasibility and optimality checks before it is used. Rejected candidates fall back to the exact Rational simplex. Certified unit-rate solutions are cached in a bounded cache for repeated rate changes. `pnpm bench:quality` measures the two representative recursive quality plans without imposing a machine-sensitive unit-test threshold.

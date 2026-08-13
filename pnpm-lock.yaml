@@ -11,12 +11,12 @@ importers:
       '@dagrejs/dagre':
         specifier: ^3.1.0
         version: 3.1.0
-      big-integer:
-        specifier: ^1.6.52
-        version: 1.6.52
       d3:
         specifier: ^7.9.0
         version: 7.9.0
+      highs:
+        specifier: 1.15.2
+        version: 1.15.2
       pako:
         specifier: ^3.0.1
         version: 3.0.1
@@ -543,10 +543,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  big-integer@1.6.52:
-    resolution: {integrity: sha512-QxD8cf2eVqJOOz63z6JIN9BzvVs/dlySa5HGSBH5xtR8dPteIRQnBxxKqkNTiT6jbDTF6jAfrd4oMcND9RGbQg==}
-    engines: {node: '>=0.6'}
-
   commander@7.2.0:
     resolution: {integrity: sha512-QrWXB+ZQSVPmIWIhtEO9H+gwHaMGYiF5ChvoJ+K9ZGHG/sVsa6yiesAD1GC/x46sET00Xlwo1u49RVVVzvcSkw==}
     engines: {node: '>= 10'}
@@ -706,6 +702,9 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
+
+  highs@1.15.2:
+    resolution: {integrity: sha512-IugrQ7Z8nSMHgVneTFwzV8fIfaR85l/kGhN+jvEDbm5k5MlGXtq1Zp2hy1fkmHA71nCmIg9F7ayWfEPxLpfUyA==}
 
   iconv-lite@0.6.3:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
@@ -1274,8 +1273,6 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  big-integer@1.6.52: {}
-
   commander@7.2.0: {}
 
   csstype@3.2.3: {}
@@ -1447,6 +1444,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  highs@1.15.2: {}
 
   iconv-lite@0.6.3:
     dependencies:

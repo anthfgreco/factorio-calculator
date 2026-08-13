@@ -10,16 +10,18 @@ const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 let parsedDataPromise = null
 
 export async function loadCoreModules() {
-  const [data, math, models, recipes, factory, planning, qualityMath, vulcanusPlanner] = await Promise.all([
-    load("data"),
-    load("math"),
-    load("models"),
-    load("recipes"),
-    load("factory"),
-    load("planning"),
-    load("quality/math"),
-    load("quality/vulcanus"),
-  ])
+  const [data, math, models, recipes, factory, planning, qualityMath, qualityHighs, vulcanusPlanner] =
+    await Promise.all([
+      load("data"),
+      load("math"),
+      load("models"),
+      load("recipes"),
+      load("factory"),
+      load("planning"),
+      load("quality/math"),
+      load("quality/highs-solver"),
+      load("quality/vulcanus"),
+    ])
   return {
     data,
     math,
@@ -28,6 +30,7 @@ export async function loadCoreModules() {
     factory,
     planning,
     qualityMath,
+    qualityHighs,
     vulcanusPlanner,
   }
 }

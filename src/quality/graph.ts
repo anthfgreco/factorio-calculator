@@ -1,5 +1,5 @@
 import { one, Rational, zero } from "../math.js"
-import { Ingredient, solve, type SolverItem, type SolverRecipe, type SolverSpec, type Totals } from "../solver.js"
+import { Ingredient, solve, type SolverItem, type SolverRecipe, type SolverSpec, Totals } from "../solver.js"
 import type { Item, Recipe } from "../recipes.js"
 
 export type QualityGraphOperationKind = "craft" | "recycle" | "source"
@@ -55,6 +55,16 @@ export interface QualityGraphRecipeMetadata {
   readonly kind: QualityGraphOperationKind
   readonly recycleRatesByQuality?: readonly Rational[]
   readonly sourceItem?: Item
+  readonly configurationKey?: string
+}
+
+export interface QualityGraphSolution {
+  readonly rates: ReadonlyMap<QualityGraphRecipe, Rational>
+  readonly surplus: ReadonlyMap<QualityGraphItem, Rational>
+}
+
+export interface QualityGraphOptimizer {
+  solve(graph: QualityGraph, output: QualityGraphItem, rate: Rational): QualityGraphSolution | null
 }
 
 export class QualityGraphRecipe implements SolverRecipe {
@@ -166,15 +176,47 @@ export class QualityGraph {
     return viable
   }
 
-  solve(output: QualityGraphItem, rate: Rational): Totals {
+  private recipeSignature(recipe: QualityGraphRecipe): string {
+    const amounts = (values: readonly Ingredient<QualityGraphItem, Rational>[]): string[] =>
+      values.map(({ item, amount }) => `${item.key}:${amount.toString()}`).sort()
+    const priority = this.priorityLevels.map((level) => level.get(recipe)?.toString() ?? null)
+    return JSON.stringify([
+      amounts(recipe.ingredients),
+      amounts(recipe.products),
+      priority,
+      recipe.metadata.baseRecipe?.key ?? null,
+      recipe.metadata.qualityLevel,
+      recipe.metadata.kind,
+      recipe.metadata.recycleRatesByQuality?.map((rate) => rate.toString()) ?? null,
+      recipe.metadata.sourceItem?.key ?? null,
+      recipe.metadata.configurationKey ?? null,
+    ])
+  }
+
+  private deduplicateRecipes(recipes: ReadonlySet<QualityGraphRecipe>): Set<QualityGraphRecipe> {
+    const signatures = new Set<string>()
+    const unique = new Set<QualityGraphRecipe>()
+    for (const recipe of recipes) {
+      const signature = this.recipeSignature(recipe)
+      if (signatures.has(signature)) continue
+      signatures.add(signature)
+      unique.add(recipe)
+    }
+    return unique
+  }
+
+  solverRecipes(): ReadonlySet<QualityGraphRecipe> {
+    return this.deduplicateRecipes(this.viableRecipes())
+  }
+
+  private solverSpec(viableRecipes: ReadonlySet<QualityGraphRecipe>): SolverSpec {
     const graph = this
-    const viableRecipes = this.viableRecipes()
     const priority = this.priorityLevels
       .map((level) => [...level].map(([recipe, weight]) => ({ recipe, weight })))
       .filter((level) => level.length > 0)
-    const spec: SolverSpec = {
+    return {
       ignore: new Set(),
-      buildTargets: [{ item: output, recipe: null, changedBuilding: false }],
+      buildTargets: [],
       priority,
       getRecipes(item: SolverItem): SolverRecipe[] {
         if (!(item instanceof QualityGraphItem)) throw new Error("Unknown quality graph item")
@@ -193,8 +235,31 @@ export class QualityGraph {
         return null
       },
     }
+  }
+
+  private totalsFromSolution(
+    viableRecipes: ReadonlySet<QualityGraphRecipe>,
+    output: QualityGraphItem,
+    rate: Rational,
+    solution: QualityGraphSolution,
+  ): Totals {
+    const spec = this.solverSpec(viableRecipes)
+    const outputs = new Map<SolverItem, Rational>([[output, rate]])
+    const rates = new Map<SolverRecipe, Rational>(solution.rates)
+    rates.set(new QualityOutputRecipe(outputs), one)
+    const surplus = new Map<SolverItem, Rational>(solution.surplus)
+    if (surplus.size > 0) rates.set(new QualitySurplusRecipe(surplus), one)
+    return new Totals(spec, outputs, rates, surplus, new Map())
+  }
+
+  solve(output: QualityGraphItem, rate: Rational, optimizer: QualityGraphOptimizer | null = null): Totals {
+    const viableRecipes = this.solverRecipes()
+    const spec = this.solverSpec(viableRecipes)
+    spec.buildTargets.push({ item: output, recipe: null, changedBuilding: false })
 
     try {
+      const optimized = optimizer?.solve(this, output, rate) ?? null
+      if (optimized !== null) return this.totalsFromSolution(viableRecipes, output, rate, optimized)
       return solve(spec, [{ item: output, rate, recipe: null }])
     } catch (error) {
       if (error instanceof Error && /unbounded|infeasible|cycle/i.test(error.message)) {
@@ -203,6 +268,35 @@ export class QualityGraph {
       throw error
     }
   }
+}
+
+class QualityOutputRecipe implements SolverRecipe {
+  readonly name: string = "output"
+  readonly products: readonly Ingredient<QualityGraphItem, Rational>[] = []
+  readonly ingredients: readonly Ingredient<QualityGraphItem, Rational>[]
+
+  constructor(outputs: ReadonlyMap<SolverItem, Rational>) {
+    this.ingredients = [...outputs].map(([item, amount]) => {
+      if (!(item instanceof QualityGraphItem)) throw new Error("Unknown quality graph output")
+      return new Ingredient(item, amount)
+    })
+  }
+
+  getIngredients(): readonly Ingredient<QualityGraphItem, Rational>[] {
+    return this.ingredients
+  }
+
+  gives(_item: SolverItem): Rational {
+    return zero
+  }
+
+  isReal(): boolean {
+    return false
+  }
+}
+
+class QualitySurplusRecipe extends QualityOutputRecipe {
+  override readonly name = "surplus"
 }
 
 export function addIngredient(

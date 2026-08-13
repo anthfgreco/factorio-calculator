@@ -5,8 +5,10 @@ The calculator intentionally uses a small number of cohesive TypeScript modules.
 ## Deterministic foundation
 
 - `data.ts`: dataset interfaces, validation, normalized search, location-display queries, and sorting.
-- `math.ts`: BigInteger adapter, exact rational arithmetic, matrices, simplex primitive, and number formatting.
+- `math.ts`: native-BigInt exact rational arithmetic, matrices, simplex primitive, and number formatting.
 - `solver.ts`: solver contracts, cycle detection, fuel edges, per-product productivity, typed failures, totals, and solution construction.
+- `quality/highs-solver.ts`: sparse quality LP search plus exact fraction-free basis certification and bounded unit-rate caching.
+- `quality/highs-runtime.ts`: browser-only lazy loading for the optional HiGHS WASM asset.
 - `factory.ts`: calculator state facade, location/building policy, recipe enable/disable commands, and the rendering port.
 
 These modules are browser-independent. `data.ts`, `math.ts`, and `solver.ts` are checked with the stricter `tsconfig.core.json` configuration.

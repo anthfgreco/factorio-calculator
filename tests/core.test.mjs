@@ -14,6 +14,7 @@ const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 
 const { DatasetValidationError, parseCalculatorData } = await load("data")
 const { Formatter, Matrix, formatCanadianNumber, powerRepresentation, Rational, one, zero } = await load("math")
+const { solveExactLinearSystem, solveExactLinearSystemFractionFree } = await load("quality/math")
 const { itemMatchesSearch } = await load("data")
 const {
   ModuleSpec,
@@ -322,6 +323,20 @@ test("rational zero and equal-denominator operations keep exact fast paths", () 
   assert.equal(zero.add(oneThird), oneThird)
   assert.equal(oneThird.add(twoThirds).toString(), "1")
   assert.equal(twoThirds.sub(oneThird).toString(), "1/3")
+  assert.equal(twoThirds.subProduct(Rational.from_string("5/7"), Rational.from_string("7/10")).toString(), "1/6")
+})
+
+test("fraction-free exact systems match Rational elimination", () => {
+  const coefficients = [
+    [Rational.from_floats(2, 3), Rational.from_floats(-5, 7), Rational.from_floats(11, 13)],
+    [Rational.from_floats(17, 19), Rational.from_floats(23, 29), Rational.from_floats(-31, 37)],
+    [Rational.from_floats(-41, 43), Rational.from_floats(47, 53), Rational.from_floats(59, 61)],
+  ]
+  const rhs = [Rational.from_floats(67, 71), Rational.from_floats(-73, 79), Rational.from_floats(83, 89)]
+  assert.deepEqual(
+    solveExactLinearSystemFractionFree(coefficients, rhs).map((value) => value.toString()),
+    solveExactLinearSystem(coefficients, rhs).map((value) => value.toString()),
+  )
 })
 
 test("power representation zero returns clean W suffix", () => {

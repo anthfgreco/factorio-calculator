@@ -355,6 +355,21 @@ export function addCraftRecipe(
       qualityLevel: inputQuality,
       kind: "craft",
       recycleRatesByQuality: recycleRates,
+      configurationKey: JSON.stringify([
+        configuration.qualityLevel,
+        configuration.building?.key ?? null,
+        configuration.machineQuality.key,
+        configuration.modules.map((module) => module?.key ?? null),
+        configuration.moduleQualities.map((quality) => quality.key),
+        configuration.beaconModules.map((module) => module?.key ?? null),
+        configuration.beaconModuleQualities.map((quality) => quality.key),
+        configuration.beaconQuality.key,
+        configuration.beaconCount.toString(),
+        configuration.qualityChance.toString(),
+        configuration.productivity.toString(),
+        configuration.speedEffect.toString(),
+        configuration.powerEffect.toString(),
+      ]),
     },
   )
 }

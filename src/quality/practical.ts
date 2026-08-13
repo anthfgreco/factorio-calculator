@@ -414,7 +414,7 @@ export function planPracticalQualityTarget(options: {
     profile,
   )
   const output = builder.build()
-  const totals = builder.graph.solve(output, requested)
+  const totals = builder.graph.solve(output, requested, specification.getQualityGraphOptimizer())
   const sourceAmounts = new Map<string, QualifiedItemAmount>()
   const importedAmounts = new Map<string, QualifiedItemAmount>()
   const operations: QualityOperationRate[] = []

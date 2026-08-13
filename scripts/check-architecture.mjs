@@ -18,6 +18,8 @@ const allowedImports = new Map([
   ["quality/contracts.ts", new Set()],
   ["quality/math.ts", new Set(["math.ts"])],
   ["quality/graph.ts", new Set(["math.ts", "solver.ts"])],
+  ["quality/highs-solver.ts", new Set(["math.ts", "quality/graph.ts", "quality/math.ts"])],
+  ["quality/highs-runtime.ts", new Set(["quality/highs-solver.ts"])],
   [
     "quality/operations.ts",
     new Set([
@@ -77,6 +79,7 @@ const allowedImports = new Map([
       "planning.ts",
       "priorities.ts",
       "quality/contracts.ts",
+      "quality/graph.ts",
       "quality/practical.ts",
       "quality/vulcanus.ts",
       "recipes.ts",
@@ -157,6 +160,7 @@ const allowedImports = new Map([
       "models.ts",
       "planning.ts",
       "presentation.ts",
+      "quality/highs-runtime.ts",
       "results/grouping.ts",
       "results/summary.ts",
       "recipes.ts",
@@ -193,6 +197,7 @@ const browserIndependent = new Set([
   "quality/contracts.ts",
   "quality/math.ts",
   "quality/graph.ts",
+  "quality/highs-solver.ts",
   "quality/operations.ts",
   "quality/disposal.ts",
   "quality/practical.ts",
@@ -217,6 +222,7 @@ const moduleLayers = new Map([
       "quality/contracts.ts",
       "quality/math.ts",
       "quality/graph.ts",
+      "quality/highs-solver.ts",
       "quality/operations.ts",
       "quality/disposal.ts",
       "quality/practical.ts",
@@ -233,7 +239,7 @@ const moduleLayers = new Map([
     new Set(["application/contracts.ts", "application/store.ts", "state.ts", "url/codec.ts", "url/history.ts"]),
   ],
   ["rendering", new Set(["graph.ts", "visualization.ts", "settings.ts", "ui.ts", "results.ts"])],
-  ["runtime", new Set(["url-state.ts", "app.ts"])],
+  ["runtime", new Set(["quality/highs-runtime.ts", "url-state.ts", "app.ts"])],
   [
     "react",
     new Set([
