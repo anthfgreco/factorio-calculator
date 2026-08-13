@@ -9,7 +9,7 @@ This fork supports experimental **Factorio Space Age 2.1.14** using the unchange
 - Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
 - Factorio 2.1 recipe categories, combined result probabilities, recycling, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
 - Gleba growth-time and agricultural-tower sizing, seed flows, spoilage/freshness reporting, effective agricultural-science throughput, and exact harvest-plus-tower spores.
-- Planet-aware quality planning with recursive local intermediates on Nauvis and a curated Vulcanus workflow from lava and calcite through molten-metal casting, tiered crafting, real recycler loops, imports, machinery, power, and unavoidable outputs.
+- Planet-aware quality planning with recursive local intermediates, a Fulgora scrap-mining/recycling source chain, and a curated Vulcanus workflow from lava and calcite through molten-metal casting, tiered crafting, real recycler loops, imports, machinery, power, and unavoidable outputs.
 - Recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or Space platforms, with row-level locations and compact cross-location flow accounting.
 - Configurable pumpjack/resource yield and asteroid-chunk collection capacities.
 - Surface-aware pollution, configured beacon-equivalent electricity, and Aquilo production heat.

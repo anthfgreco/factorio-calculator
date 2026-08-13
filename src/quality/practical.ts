@@ -28,6 +28,11 @@ const IMPORT_WEIGHT = Rational.from_integer(1_000_000)
 const LOCAL_RESOURCE_WEIGHT = one
 const LOCAL_OPERATION_LEVEL = 0
 const SOURCE_LEVEL = 1
+const FULGORA_CURATED_PRODUCERS = new Map<string, string>([
+  ["water", "ice-melting"],
+  ["light-oil", "heavy-oil-cracking"],
+  ["petroleum-gas", "light-oil-cracking"],
+])
 
 interface EmbeddedRecycler {
   readonly recipe: Recipe
@@ -197,9 +202,76 @@ class PracticalQualityGraphBuilder {
   }
 
   build(): QualityGraphItem {
+    if (this.planet.key === "fulgora") this.addFulgoraScrapNetwork()
     const output = this.graph.item(this.target, this.targetQualityLevel)
     this.ensureItem(output)
     return output
+  }
+
+  private addFulgoraScrapNetwork(): void {
+    const scrap = this.specification.items.get("scrap")
+    const miningRecipe = this.specification.recipes.get("scrap")
+    if (scrap === undefined || miningRecipe === undefined || !this.isUsableProducer(miningRecipe, scrap)) return
+
+    const miningConfiguration = this.getCraftConfigurations(miningRecipe, 0)[0]
+    if (miningConfiguration === undefined) throw new Error("Missing Fulgora scrap mining configuration")
+    const miningOperation = addCraftRecipe(
+      this.graph,
+      scrap,
+      miningRecipe,
+      0,
+      0,
+      this.specification.maxQualityLevel,
+      miningConfiguration,
+      [],
+      `${this.planet.key}:scrap-source`,
+    )
+    this.operations.set(miningOperation, miningConfiguration)
+    this.graph.setPriority(miningOperation, LOCAL_RESOURCE_WEIGHT, SOURCE_LEVEL)
+
+    const queuedItems = new Set<string>([scrap.key])
+    const recycledRecipes = new Set<Recipe>()
+    const queue: Item[] = [scrap]
+    while (queue.length > 0) {
+      const recycledItem = queue.shift()
+      if (recycledItem === undefined) break
+      const recyclingRecipe = findRecyclerRecipe(this.specification, recycledItem)
+      if (
+        recyclingRecipe === null ||
+        recycledRecipes.has(recyclingRecipe) ||
+        !this.canRecycle(recyclingRecipe)
+      ) {
+        continue
+      }
+      recycledRecipes.add(recyclingRecipe)
+
+      const recyclingConfigurations = this.getRecyclerConfigurations(recyclingRecipe)
+      for (let inputQuality = 0; inputQuality <= this.specification.maxQualityLevel; inputQuality++) {
+        const configuration = recyclingConfigurations[inputQuality]
+        if (configuration === undefined) {
+          throw new Error(`Missing Fulgora recycling configuration for ${recycledItem.name}`)
+        }
+        const operation = addCraftRecipe(
+          this.graph,
+          recycledItem,
+          recyclingRecipe,
+          inputQuality,
+          0,
+          this.specification.maxQualityLevel,
+          configuration,
+          [],
+          `${this.planet.key}:source-recycling`,
+        )
+        this.operations.set(operation, configuration)
+        this.setOperationTiebreak(operation, configuration)
+      }
+
+      for (const product of recyclingRecipe.products) {
+        if (!isQualifiedSolid(product.item) || queuedItems.has(product.item.key)) continue
+        queuedItems.add(product.item.key)
+        queue.push(product.item)
+      }
+    }
   }
 
   getTargetConfigurations(): readonly QualityTierConfiguration[] {
@@ -452,7 +524,9 @@ export function planPracticalQualityTarget(options: {
     const configuration = builder.operations.get(solverRecipe)
     if (quality === null || configuration === undefined) continue
     const capacity = operationCapacity(specification, baseRecipe, rate, configuration)
-    const kind = baseRecipe.isResource() ? "source" : "craft"
+    let kind: QualityOperationRate["kind"] = "craft"
+    if (baseRecipe.isResource()) kind = "source"
+    else if (baseRecipe.categories.has("recycling")) kind = "recycle"
     operations.push({
       recipe: baseRecipe,
       qualityLevel: quality,
@@ -464,6 +538,8 @@ export function planPracticalQualityTarget(options: {
     })
     if (kind === "source") {
       for (const product of solverRecipe.products) addSource(product.item, rate.mul(product.amount))
+    } else if (kind === "recycle") {
+      totalRecycles = totalRecycles.add(rate)
     } else {
       totalCrafts = totalCrafts.add(rate)
     }
@@ -591,8 +667,12 @@ export function planPlanetQualityTarget(options: {
   return planPracticalQualityTarget({
     ...options,
     profile: "planet",
+    curatedProducers: options.planet.key === "fulgora" ? FULGORA_CURATED_PRODUCERS : undefined,
     profileWarnings: [
-      `${options.planet.name} practical mode recursively produces quality-qualified intermediates from local resources and qualityless fluids.`,
+      options.planet.key === "fulgora"
+        ? "Fulgora practical mode starts at quality-moduled scrap mining, recycles every scrap quality locally, " +
+          "and reuses generated recycler outputs before importing materials."
+        : `${options.planet.name} practical mode recursively produces quality-qualified intermediates from local resources and qualityless fluids.`,
     ],
   })
 }

@@ -1,5 +1,34 @@
 # Execution Plans
 
+## Completed plan: Fulgora scrap-root quality factories
+
+### Goal
+
+Make automatic Fulgora quality plans start from the planet's real local source: quality-moduled scrap mining followed by quality-moduled scrap recycling, so the build sheet reports the miners, recyclers, and downstream machines required instead of stopping at imported Normal intermediates.
+
+### Constraints
+
+- Preserve the existing Vulcanus lava/calcite workflow and generic Nauvis/other-planet quality behavior.
+- Keep exact `Rational` quality distributions, mining productivity, scrap-recycling productivity research, generated scrap probabilities, real recycler disposal, and explicit machine/module overrides.
+- Do not reintroduce the removed user-selectable Full Fulgora mode or new target controls; this is the automatic Fulgora planet profile.
+- Keep Normal targets and legacy direct quality links unchanged.
+
+### Done when
+
+- A Legendary Mech armor target on Fulgora uses local scrap mining and scrap recycling rather than importing the target's major Normal solid intermediates.
+- The plan contains a counted scrap mining operation with the configured quality modules and a counted scrap-recycling operation.
+- The primary Build sheet surfaces those operations under Local sources and Recycling, including miner/recycler machine counts.
+- Focused quality scenarios and available static validation pass without changing Vulcanus regressions.
+
+### Steps
+
+1. [x] Seed automatic Fulgora quality graphs with exact scrap mining, tiered scrap recycling, and reachable downstream recycler routes.
+2. [x] Classify explicit recycling graph operations as recycling for machine totals and the build sheet.
+3. [x] Add the Mech armor regression and update player/architecture documentation.
+4. [x] Run available focused/static validation, review the diff, and package the updated repository.
+
+Dependency-backed `pnpm` validation remains environment-blocked: Corepack cannot resolve `registry.npmjs.org`, and this sandbox has Node 22.16.0 while the repository pins Node 22.22.3.
+
 ## Completed plan: certified quality-solver acceleration
 
 ### Goal

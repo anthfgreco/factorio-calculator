@@ -97,6 +97,96 @@ test("Nauvis Legendary advanced circuits recursively quality-plan every solid in
   )
 })
 
+test("Fulgora Legendary Mech armor starts at quality scrap mining instead of imported intermediates", async () => {
+  const runtime = await setupSpaceAgeFactory()
+  const { specification, math, items, recipes, planets, qualityHighs } = runtime
+  const fulgora = requireValue(planets, "fulgora")
+
+  specification.selectOnePlanet(fulgora)
+  specification.setMaxQualityLevel(4)
+  specification.miningProd = math.one
+  for (const researchKey of [
+    "asteroid-productivity",
+    "low-density-structure-productivity",
+    "plastic-bar-productivity",
+    "processing-unit-productivity",
+    "rocket-fuel-productivity",
+    "rocket-part-productivity",
+    "scrap-recycling-productivity",
+    "steel-plate-productivity",
+  ]) {
+    if (specification.recipeProductivityResearch.has(researchKey)) {
+      specification.setRecipeProductivityLevel(researchKey, 10)
+    }
+  }
+  specification.setAutomaticBuildingPreferences(
+    [
+      "assembling-machine-3",
+      "chemical-plant",
+      "foundry",
+      "electromagnetic-plant",
+      "biochamber",
+      "cryogenic-plant",
+      "electric-furnace",
+      "big-mining-drill",
+    ].map((key) => requireValue(specification.buildingKeys, key)),
+  )
+  specification.buildTargets.push({
+    item: requireValue(items, "mech-armor"),
+    recipe: requireValue(recipes, "mech-armor"),
+    changedBuilding: false,
+    qualityLevel: 4,
+    qualityStrategy: "auto",
+    getRate: () => math.Rational.from_floats(1, 6000),
+  })
+
+  const optimizer = await qualityHighs.loadHighsQualityOptimizer()
+  specification.setQualityGraphOptimizer(optimizer)
+  specification.solve()
+  const plan = specification.qualityPlans[0]
+  assert.ok(plan)
+  assert.equal(plan.planetKey, "fulgora")
+  assert.deepEqual(
+    plan.importedInputs.map((entry) => entry.item.key),
+    [],
+    "Fulgora must expand Mech armor through its local scrap and fluid economy before importing intermediates",
+  )
+  assert.ok(plan.freshInputs.some((entry) => entry.item.key === "scrap" && math.zero.less(entry.amount)))
+  assert.ok(plan.fluidInputs.some((entry) => entry.item.key === "heavy-oil" && math.zero.less(entry.amount)))
+
+  const scrapMining = plan.operations.find(
+    (operation) => operation.kind === "source" && operation.recipe.key === "scrap",
+  )
+  assert.ok(scrapMining)
+  assert.equal(scrapMining.configuration.building?.key, "big-mining-drill")
+  assert.equal(scrapMining.configuration.qualityChance.toString(), "1/5")
+  assert.equal(
+    scrapMining.configuration.modules.every((module) => module?.key === "quality-module-2"),
+    true,
+  )
+  assert.equal(
+    scrapMining.configuration.moduleQualities.every((quality) => quality.key === "legendary"),
+    true,
+  )
+  assert.ok(math.zero.less(scrapMining.machineCount))
+
+  const scrapRecycling = plan.operations.filter(
+    (operation) => operation.kind === "recycle" && operation.recipe.key === "scrap-recycling",
+  )
+  assert.ok(scrapRecycling.length > 0)
+  assert.equal(
+    scrapRecycling.every((operation) => operation.configuration.qualityChance.toString() === "1/5"),
+    true,
+  )
+  assert.ok(scrapRecycling.some((operation) => math.zero.less(operation.machineCount)))
+  assert.ok(
+    plan.operations.some(
+      (operation) => operation.kind === "recycle" && operation.recipe.key !== "scrap-recycling",
+    ),
+    "Fulgora must reuse generated downstream recycler routes from scrap products",
+  )
+})
+
 test("automatic quality planning requires a planet instead of falling back to a target-only loop", async () => {
   const { specification, math, items, recipes } = await setupSpaceAgeFactory()
   specification.selectedPlanets.clear()
