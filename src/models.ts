@@ -1290,6 +1290,29 @@ export class ModuleSpec {
     this.beaconCount = count
   }
 
+  qualityEffect(): Rational {
+    let quality = zero
+    for (const [index, module] of this.modules.entries()) {
+      if (module !== null && module !== undefined) {
+        quality = quality.add(module.qualityFor(this.moduleQualities[index] ?? normalQuality))
+      }
+    }
+    if (this.modules.length > 0) {
+      for (const [index, module] of this.beaconModules.entries()) {
+        if (module === null) continue
+        let beacon = module
+          .qualityFor(this.beaconModuleQualities[index] ?? normalQuality)
+          .mul(this.beaconCount)
+          .mul(getBeaconEffect(this.beaconQuality))
+        if (!usesLegacyCalculation()) {
+          beacon = beacon.mul(getBeaconProfileEffect(this.beaconCount))
+        }
+        quality = quality.add(beacon)
+      }
+    }
+    return Rational.max(zero, Rational.min(one, quality))
+  }
+
   speedEffect(): Rational {
     let speed = one
     for (const [index, module] of this.modules.entries()) {

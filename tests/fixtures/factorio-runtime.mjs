@@ -10,15 +10,26 @@ const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
 let parsedDataPromise = null
 
 export async function loadCoreModules() {
-  const [data, math, models, recipes, factory, planning] = await Promise.all([
+  const [data, math, models, recipes, factory, planning, qualityMath, vulcanusPlanner] = await Promise.all([
     load("data"),
     load("math"),
     load("models"),
     load("recipes"),
     load("factory"),
     load("planning"),
+    load("quality/math"),
+    load("quality/vulcanus"),
   ])
-  return { data, math, models, recipes, factory, planning }
+  return {
+    data,
+    math,
+    models,
+    recipes,
+    factory,
+    planning,
+    qualityMath,
+    vulcanusPlanner,
+  }
 }
 
 export async function setupSpaceAgeFactory() {

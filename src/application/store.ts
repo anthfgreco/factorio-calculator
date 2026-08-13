@@ -7,12 +7,14 @@ import type {
   FactoryDensity,
   PlanningSettingValue,
   ProgressionPreset,
+  QualityPreset,
 } from "./contracts.js"
 import type { FactorySpecification } from "../factory.js"
 import { spec } from "../factory.js"
 import { Rational, type DisplayFormat } from "../math.js"
 import {
   applyProgressionPresetValue,
+  applyQualityPresetValue,
   clickTab,
   clickVisualize,
   copyShareLink,
@@ -55,6 +57,7 @@ const INITIAL_SNAPSHOT: CalculatorSnapshot = {
     freshnessDelayMinutes: "0",
     maxQualityLevel: 4,
     equipmentQualityAvailable: false,
+    qualityPlannerObjective: "practical",
     visualizationType: "sankey",
     visualizationRender: "zoom",
     visualizationDirection: "right",
@@ -106,6 +109,7 @@ function createSnapshot(
       buildings: target.buildings.toString(),
       rate: target.rate.toString(),
       qualityLevel: target.qualityLevel,
+      qualityStrategy: target.qualityStrategy,
     })),
     settings: {
       displayRate: specification.format.rateName,
@@ -118,7 +122,8 @@ function createSnapshot(
       bufferMinutes: specification.bufferMinutes.toString(),
       freshnessDelayMinutes: specification.freshnessDelayMinutes.toString(),
       maxQualityLevel: specification.maxQualityLevel,
-      equipmentQualityAvailable: specification.getAvailableQualities().length > 1,
+      equipmentQualityAvailable: specification.qualityTiers.length > 1,
+      qualityPlannerObjective: specification.qualityPlannerObjective,
       visualizationType: visualizerType,
       visualizationRender: visualizerRender,
       visualizationDirection: visualizerDirection,
@@ -167,6 +172,9 @@ export class BrowserCalculatorStore implements CalculatorStore {
     copyShareLink,
     applyProgressionPreset: (value: ProgressionPreset) => {
       applyProgressionPresetValue(value)
+    },
+    applyQualityPreset: (value: QualityPreset) => {
+      applyQualityPresetValue(value)
     },
     setFactoryDensity: (value: FactoryDensity) => {
       setFactoryDensity(value)

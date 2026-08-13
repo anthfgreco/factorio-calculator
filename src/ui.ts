@@ -1,18 +1,13 @@
 import { create, select, selectAll, type BaseType, type Selection } from "d3"
 import { spec, type FactoryBuildTarget, type TargetBasis } from "./factory.js"
+import type { QualityStrategy } from "./quality/contracts.js"
 import { formatCanadianNumber, one, Rational, zero } from "./math.js"
 import type { ItemGroups, Planet } from "./models.js"
 import { Item, Recipe } from "./recipes.js"
 import { addInputs, makeDropdown, reapTooltips } from "./presentation.js"
 import { formatLocationList, getUnavailableLocationInfo, itemMatchesSearch } from "./data.js"
 import { refreshRecipeSettings } from "./settings.js"
-import {
-  getQualityTargetFeasibility,
-  getRecipeQualityChance,
-  qualityProbability,
-  QUALITY_TIERS,
-  type QualityTargetFeasibility,
-} from "./planning.js"
+import { getRecipeQualityChance, qualityProbability, QUALITY_TIERS } from "./planning.js"
 
 // -----------------------------------------------------------------------------
 // Build targets
@@ -69,80 +64,11 @@ function activateOnEnter(activate: () => void): (event: KeyboardEvent) => void {
   }
 }
 
-function getTargetQualityRecipe(target: BuildTarget): Recipe | null {
-  return target.recipe ?? spec.getRecipes(target.item).find((candidate) => candidate instanceof Recipe) ?? null
-}
-
-function applyAutomaticQualityConfiguration(
-  target: BuildTarget,
-  recipe: Recipe,
-  qualityLevel: number,
-  previousQuality: number,
-  recommendation: Extract<QualityTargetFeasibility, { status: "auto-configurable" }>,
-): boolean {
-  if (!spec.applyQualityTargetConfiguration(recipe, recommendation)) {
-    target.setQuality(previousQuality)
-    target.showQualityUnavailable(qualityLevel)
-    return false
-  }
-
-  target.clearQualityWarning()
-  spec.updateSolution()
-  return true
-}
-
 export function handleTargetQualityChange(target: BuildTarget, requestedQuality: number): void {
-  const previousQuality = target.qualityLevel
+  const currentRate = target.getRate()
   target.setQuality(requestedQuality)
-  const qualityLevel = target.qualityLevel
-
-  if (qualityLevel <= 0) {
-    target.clearQualityWarning()
-    spec.updateSolution()
-    return
-  }
-
-  const recipe = getTargetQualityRecipe(target)
-  if (recipe === null) {
-    target.setQuality(previousQuality)
-    target.showQualityUnavailable(qualityLevel)
-    return
-  }
-
-  const feasibility = getQualityTargetFeasibility(spec, recipe, qualityLevel)
-  if (feasibility.status === "feasible") {
-    target.clearQualityWarning()
-    spec.updateSolution()
-    return
-  }
-
-  if (feasibility.status === "auto-configurable") {
-    applyAutomaticQualityConfiguration(target, recipe, qualityLevel, previousQuality, feasibility)
-    return
-  }
-
-  if (feasibility.status === "conflict") {
-    target.qualityConflictPreviousQuality = previousQuality
-    target.showQualityConflict(qualityLevel)
-    return
-  }
-
-  target.setQuality(previousQuality)
-  target.showQualityUnavailable(qualityLevel)
-}
-
-function configureQualityFromNotice(target: BuildTarget): void {
-  const recipe = getTargetQualityRecipe(target)
-  if (recipe === null || target.qualityLevel <= 0) return
-
-  const recommendation = getQualityTargetFeasibility(spec, recipe, target.qualityLevel, { ignoreExplicit: true })
-  if (recommendation.status === "auto-configurable") {
-    const previousQuality = target.qualityConflictPreviousQuality ?? target.qualityLevel
-    applyAutomaticQualityConfiguration(target, recipe, target.qualityLevel, previousQuality, recommendation)
-  } else if (recommendation.status === "unavailable") {
-    target.setQuality(target.qualityLevel)
-    target.showQualityUnavailable(target.qualityLevel)
-  }
+  target.setQualityStrategy(target.qualityLevel > 0 ? "auto" : "direct", currentRate)
+  spec.updateSolution()
 }
 
 function resetSearch(dropdown: Element): void {
@@ -229,8 +155,7 @@ export class BuildTarget implements FactoryBuildTarget {
   rate = zero
   belts = zero
   qualityLevel = 0
-  qualityNoticeKind: "warning" | null = null
-  qualityConflictPreviousQuality: number | null = null
+  qualityStrategy: QualityStrategy = "direct"
   readonly element: HTMLElement
   readonly recipeSelector: Selection<HTMLSpanElement, undefined, null, undefined>
   readonly qualitySelector: HTMLSelectElement
@@ -240,9 +165,6 @@ export class BuildTarget implements FactoryBuildTarget {
   readonly beltStackHeight: HTMLSpanElement
   readonly rateFieldLabel: HTMLLabelElement
   readonly locationWarning: Selection<HTMLDivElement, undefined, null, undefined>
-  readonly qualityNotice: Selection<HTMLDivElement, undefined, null, undefined>
-  readonly qualityNoticeMessage: Selection<HTMLSpanElement, undefined, null, undefined>
-  readonly qualityNoticeAction: Selection<HTMLButtonElement, undefined, null, undefined>
   compatibleLocations: Planet[] = []
 
   constructor(index: number, itemKey: string, item: Item, itemGroups: ItemGroups) {
@@ -326,8 +248,9 @@ export class BuildTarget implements FactoryBuildTarget {
     this.recipeSelector = itemColumn.append("span").classed("production-target-recipe", true)
     const settings = element.append("span").classed("production-target-settings", true)
 
+    const qualityPlanning = settings.append("span").classed("target-quality-planning", true)
     const qualityInputId = `target-quality-${targetCount}`
-    const qualityField = settings.append("span").classed("target-setting-field target-quality-field", true)
+    const qualityField = qualityPlanning.append("span").classed("target-setting-field target-quality-field", true)
     qualityField.append("label").classed("target-field-label", true).attr("for", qualityInputId).text("Quality")
     this.qualitySelector = qualityField
       .append("select")
@@ -346,7 +269,6 @@ export class BuildTarget implements FactoryBuildTarget {
       .join("option")
       .attr("value", (d: { readonly name: string; readonly level: number }) => d.level)
       .text((d: { readonly name: string; readonly level: number }) => d.name)
-    this.setQuality(0)
 
     const buildingInputId = `target-machines-${targetCount}`
     const buildingField = settings.append("span").classed("target-setting-field target-machines-field", true)
@@ -403,6 +325,7 @@ export class BuildTarget implements FactoryBuildTarget {
       .classed("target-belt-stack-height", true)
       .attr("aria-hidden", "true")
       .node() as HTMLSpanElement
+    this.setQuality(0)
     this.setRateLabel()
     this.syncBeltInputAvailability()
     this.syncBeltStackHeight()
@@ -420,18 +343,6 @@ export class BuildTarget implements FactoryBuildTarget {
       .attr("type", "button")
       .text("Enable compatible locations")
       .on("click", () => this.enableCompatibleLocations())
-
-    this.qualityNotice = element
-      .append("div")
-      .classed("quality-notice", true)
-      .attr("aria-live", "polite")
-      .style("display", "none")
-    this.qualityNoticeMessage = this.qualityNotice.append("span").classed("quality-notice-message", true)
-    this.qualityNoticeAction = this.qualityNotice
-      .append("button")
-      .classed("ui", true)
-      .attr("type", "button")
-      .style("display", "none")
 
     this.displayRecipes()
   }
@@ -464,61 +375,15 @@ export class BuildTarget implements FactoryBuildTarget {
     this.displayRecipes()
   }
   syncBeltInputAvailability(): void {
-    const available = this.item.phase === "solid"
-    this.beltInput.disabled = !available
-    if (!available) this.beltInput.value = "N/A"
+    const solid = this.item.phase === "solid"
+    const rateOnly = this.qualityLevel > 0 && this.qualityStrategy !== "direct"
+    this.beltInput.disabled = !solid || rateOnly
+    if (!solid) this.beltInput.value = "N/A"
   }
   syncSelectedInput(): void {
     this.buildingInput.classList.toggle(SELECTED_INPUT, this.basis === "machines")
     this.rateInput.classList.toggle(SELECTED_INPUT, this.basis === "rate")
     this.beltInput.classList.toggle(SELECTED_INPUT, this.basis === "belts")
-  }
-  hideQualityNotice(): void {
-    this.qualityNoticeKind = null
-    this.qualityNoticeMessage.text("")
-    this.qualityNoticeAction.text("").style("display", "none").on("click", null)
-    this.qualityNotice.style("display", "none")
-  }
-  clearQualityNotice(): void {
-    this.qualityConflictPreviousQuality = null
-    this.hideQualityNotice()
-  }
-  clearQualityWarning(): void {
-    this.qualityConflictPreviousQuality = null
-    if (this.qualityNoticeKind === "warning") {
-      this.hideQualityNotice()
-    }
-  }
-  showQualityNotice(
-    kind: "warning",
-    message: string,
-    actionText: string | null = null,
-    action: (() => void) | null = null,
-  ): void {
-    this.qualityNoticeKind = kind
-    this.qualityNoticeMessage.text(message)
-    if (actionText === null || action === null) {
-      this.qualityNoticeAction.text("").style("display", "none").on("click", null)
-    } else {
-      this.qualityNoticeAction.text(actionText).style("display", null).on("click", action)
-    }
-    this.qualityNotice.style("display", null)
-  }
-  showQualityConflict(qualityLevel: number): void {
-    const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
-    this.showQualityNotice(
-      "warning",
-      `${tier} output requires a machine with module slots and at least one quality module.`,
-      "Configure automatically",
-      () => configureQualityFromNotice(this),
-    )
-  }
-  showQualityUnavailable(qualityLevel: number): void {
-    const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
-    this.showQualityNotice(
-      "warning",
-      `${tier} ${this.item.name} is unavailable with the currently enabled machines and modules.`,
-    )
   }
   displayLocationWarning(): void {
     let info = getUnavailableLocationInfo(spec, this.item)
@@ -549,7 +414,6 @@ export class BuildTarget implements FactoryBuildTarget {
     spec.updateSolution()
   }
   displayRecipes(): void {
-    const previousRecipe = this.recipe
     this.recipeSelector.selectAll("*").remove()
     const recipes: Recipe[] = []
     let found = false
@@ -573,11 +437,9 @@ export class BuildTarget implements FactoryBuildTarget {
     }
     if (recipes.length === 0) {
       this.defaultRecipe = null
-      if (previousRecipe !== this.recipe) this.clearQualityNotice()
       return
     } else if (recipes.length === 1) {
       this.recipe = recipes[0] ?? null
-      if (previousRecipe !== this.recipe) this.clearQualityNotice()
       return
     }
     // If there are multiple valid recipes, render the recipe dropdown.
@@ -593,7 +455,6 @@ export class BuildTarget implements FactoryBuildTarget {
       (d: Recipe) => self.recipe === d,
       (d: Recipe) => {
         self.recipe = d
-        self.clearQualityNotice()
         spec.updateSolution()
       },
     )
@@ -602,7 +463,6 @@ export class BuildTarget implements FactoryBuildTarget {
       return d.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
     })
     recipeSelectorCount++
-    if (previousRecipe !== this.recipe) this.clearQualityNotice()
   }
   getRate(): Rational {
     this.setRateLabel()
@@ -620,9 +480,10 @@ export class BuildTarget implements FactoryBuildTarget {
         baseRate = baseRate.mul(recipe.gives(this.item))
       }
     }
+    const plannedQuality = this.qualityLevel > 0 && this.qualityStrategy !== "direct"
     let qualityRate = baseRate
-    if (baseRate !== null && recipe !== null && this.qualityLevel > 0) {
-      let probability = qualityProbability(
+    if (baseRate !== null && recipe !== null && this.qualityLevel > 0 && !plannedQuality) {
+      const probability = qualityProbability(
         getRecipeQualityChance(spec, recipe),
         this.qualityLevel,
         spec.maxQualityLevel,
@@ -637,9 +498,11 @@ export class BuildTarget implements FactoryBuildTarget {
       rate = this.rate
     }
 
-    if (this.basis !== "machines") {
+    if (plannedQuality) {
+      this.buildingInput.value = "Plan"
+    } else if (this.basis !== "machines") {
       if (qualityRate !== null && !qualityRate.isZero()) {
-        let count = rate.div(qualityRate)
+        const count = rate.div(qualityRate)
         this.buildingInput.value = spec.format.count(count)
       } else {
         this.buildingInput.value = "N/A"
@@ -731,11 +594,39 @@ export class BuildTarget implements FactoryBuildTarget {
     )
   }
   setQuality(level: number | string): void {
-    let maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))
+    const maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))
     select(this.qualitySelector)
       .selectAll("option")
       .property("disabled", (option: { level: number }) => option.level > maxLevel)
     this.qualityLevel = Math.max(0, Math.min(maxLevel, Number(level) || 0))
     this.qualitySelector.value = String(this.qualityLevel)
+    if (this.qualityLevel === 0) {
+      this.qualityStrategy = "direct"
+    }
+    this.syncQualityPlanningControls()
+  }
+  setQualityStrategy(strategy: QualityStrategy, preservedRate: Rational | null = null): void {
+    const switchToRate = strategy !== "direct" && this.qualityLevel > 0 && this.basis !== "rate"
+    const currentRate = switchToRate ? (preservedRate ?? this.getRate()) : null
+    this.qualityStrategy = strategy
+    if (currentRate !== null) {
+      this.basis = "rate"
+      this.buildings = zero
+      this.rate = currentRate
+      this.belts = zero
+      this.rateInput.value = spec.format.rate(currentRate)
+      this.buildingInput.value = "Plan"
+      this.beltInput.value = ""
+      this.syncSelectedInput()
+    }
+    this.syncQualityPlanningControls()
+  }
+  syncQualityPlanningControls(): void {
+    const qualityEnabled = this.qualityLevel > 0
+    const rateOnly = qualityEnabled && this.qualityStrategy !== "direct"
+    this.element.classList.toggle("planned-quality-target", rateOnly)
+    this.recipeSelector.style("display", rateOnly ? "none" : "")
+    this.buildingInput.disabled = rateOnly
+    this.syncBeltInputAvailability()
   }
 }

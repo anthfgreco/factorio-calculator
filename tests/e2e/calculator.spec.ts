@@ -51,6 +51,125 @@ test("calculator workflow persists settings and renders the graph", async ({ pag
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
+test("presets preserve location and Full Legendary upgrades quality only", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await page.goto("/calc.html")
+
+  const nauvis = page.locator("#planet_selector .location-toggle").filter({ hasText: "Nauvis" })
+  const vulcanus = page.locator("#planet_selector .location-toggle").filter({ hasText: "Vulcanus" })
+  await expect(nauvis).toHaveClass(/selected/)
+  await vulcanus.click()
+  await expect(vulcanus).toHaveClass(/selected/)
+  await expect(nauvis).not.toHaveClass(/selected/)
+
+  await page.getByRole("button", { name: "Settings" }).click()
+  const preset = page.getByRole("combobox", { name: "Preset" })
+  await expect(preset).toHaveValue("")
+  await expect(preset.locator("option:checked")).toHaveText("Custom")
+  for (const expected of [
+    { value: "early", mining: "0", belt: "transport-belt", stack: "1", quality: "0" },
+    { value: "pre-rocket", mining: "20.000", belt: "fast-transport-belt", stack: "1", quality: "2" },
+    { value: "first-planets", mining: "30.000", belt: "express-transport-belt", stack: "1", quality: "2" },
+  ]) {
+    await preset.selectOption(expected.value)
+    await expect(preset).toHaveValue(expected.value)
+    await expect(page.locator("#mprod")).toHaveValue(expected.mining)
+    await expect(page.locator(`#belt_selector input[value="${expected.belt}"]`)).toBeChecked()
+    await expect(page.locator("#belt_stack_size")).toHaveValue(expected.stack)
+    await expect(page.locator("#max_quality")).toHaveValue(expected.quality)
+    await expect(vulcanus).toHaveClass(/selected/)
+    await expect(nauvis).not.toHaveClass(/selected/)
+  }
+
+  await page.getByRole("combobox", { name: "Default machine quality" }).selectOption("rare")
+  await page.getByRole("combobox", { name: "Default module quality" }).selectOption("rare")
+  await page.getByRole("combobox", { name: "Default beacon quality" }).selectOption("rare")
+
+  await preset.selectOption("late-space-age")
+  await expect(preset).toHaveValue("late-space-age")
+  await expect(page.locator("#mprod")).toHaveValue("100")
+  await expect(page.locator('#belt_selector input[value="express-transport-belt"]')).toBeChecked()
+  await expect(page.locator("#belt_stack_size")).toHaveValue("4")
+  await expect(page.locator("#max_quality")).toHaveValue("4")
+  await expect(page.getByRole("combobox", { name: "Default machine quality" })).toHaveValue("rare")
+  await expect(page.getByRole("combobox", { name: "Default module quality" })).toHaveValue("rare")
+  await expect(page.getByRole("combobox", { name: "Default beacon quality" })).toHaveValue("rare")
+  await expect(page.locator("#targets > li.target").first().locator(".target-quality")).toHaveValue("0")
+  await expect(vulcanus).toHaveClass(/selected/)
+
+  await preset.selectOption("full-legendary")
+  await expect(preset).toHaveValue("full-legendary")
+  await expect(page.locator("#targets > li.target").first().locator(".target-quality")).toHaveValue("4")
+  await expect(page.getByRole("combobox", { name: "Default machine quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("combobox", { name: "Default module quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("combobox", { name: "Default beacon quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("combobox", { name: "Quality factory quality module quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("combobox", { name: "Quality factory productivity module quality" })).toHaveValue(
+    "legendary",
+  )
+  await expect(page.locator("#mprod")).toHaveValue("100")
+  await expect(page.locator('#belt_selector input[value="express-transport-belt"]')).toBeChecked()
+  await expect(page.locator("#belt_stack_size")).toHaveValue("4")
+  await expect(vulcanus).toHaveClass(/selected/)
+  await expect.poll(() => new URL(page.url()).hash).not.toBe("")
+
+  await page.reload()
+  await expect(vulcanus).toHaveClass(/selected/)
+  await expect(page.locator("#targets > li.target").first().locator(".target-quality")).toHaveValue("4")
+  await page.getByRole("button", { name: "Settings" }).click()
+  await expect(page.getByRole("combobox", { name: "Default machine quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("combobox", { name: "Default module quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("combobox", { name: "Default beacon quality" })).toHaveValue("legendary")
+
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
+test("Full Legendary calculates the default Advanced circuit target on Nauvis", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await page.goto("/calc.html")
+
+  const nauvis = page.locator("#planet_selector .location-toggle").filter({ hasText: "Nauvis" })
+  await expect(nauvis).toHaveClass(/selected/)
+
+  await page.getByRole("combobox", { name: "Preset" }).selectOption("full-legendary")
+
+  await expect(page.locator("#targets > li.target").first().locator(".target-quality")).toHaveValue("4")
+  await expect(page.locator("#calculation_error")).toBeHidden()
+  await expect(page.locator("#factory_summary .quality-plan-title-main")).toHaveText("Legendary Advanced circuit")
+  await expect(nauvis).toHaveClass(/selected/)
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
+test("Nauvis Legendary quality plans replace the ordinary table until a Normal target is added", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await page.goto("/calc.html")
+
+  await page.getByRole("combobox", { name: "Preset" }).selectOption("late-space-age")
+  const target = page.locator("#targets > li.target").first()
+  await target.locator(".target-quality").selectOption("4")
+  await target.locator(".target-rate").fill("60")
+  await target.locator(".target-rate").press("Enter")
+
+  await expect(page.locator("#calculation_error")).toBeHidden()
+  const qualityPlan = page.locator("#factory_summary .quality-plan").first()
+  await expect(qualityPlan.locator(".quality-plan-title-main")).toHaveText("Legendary Advanced circuit")
+  const feed = qualityPlan.locator(":scope > .quality-plan-material")
+  await expect(feed).not.toContainText("Copper cable")
+  await expect(feed).not.toContainText("Plastic bar")
+  await expect(feed).not.toContainText("Electronic circuit")
+  for (const intermediate of ["Copper cable", "Plastic bar", "Electronic circuit"]) {
+    await expect(qualityPlan.locator(".quality-plan-build-line", { hasText: intermediate }).first()).toBeAttached()
+  }
+  await expect(page.locator("table#totals")).toBeHidden()
+  await expect(page.locator("table#totals thead")).toBeHidden()
+
+  await page.getByRole("button", { name: "Add target" }).click()
+  await expect(page.locator("#targets > li.target")).toHaveCount(2)
+  await expect(page.locator("table#totals")).toBeVisible()
+  await expect(page.locator("table#totals thead")).toBeVisible()
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
 test("production targets activate displayed values and preserve belt intent", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page)
   await page.goto("/calc.html")
@@ -276,8 +395,8 @@ test("critical calculator controls remain visible on mobile", async ({ page }) =
   if (quality === null || machines === null || rate === null || belts === null) {
     throw new Error("Expected all mobile target fields to have visible layouts")
   }
-  expect(Math.abs(quality.x - rate.x)).toBeLessThan(2)
   expect(Math.abs(machines.x - belts.x)).toBeLessThan(2)
+  expect(machines.y).toBeGreaterThan(quality.y)
   expect(rate.y).toBeGreaterThan(quality.y)
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
@@ -311,4 +430,94 @@ test("opening a target picker and selecting a shorter target do not shift the pa
 
   await expect(page.locator("html")).toHaveCSS("scrollbar-gutter", "stable")
   await expect.poll(() => targetsHeading.evaluate((element) => element.getBoundingClientRect().left)).toBe(initialLeft)
+})
+
+test("Vulcanus quality results stay below the KPIs and reveal compact icon-based build stages", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto("/calc.html")
+
+  await page.getByRole("button", { name: "Settings" }).click()
+  await expect(page.getByRole("combobox", { name: "Quality factory quality module", exact: true })).toHaveValue(
+    "quality-module-2",
+  )
+  await expect(page.getByRole("combobox", { name: "Quality factory quality module quality" })).toHaveValue("legendary")
+  const productivityModule = page.getByRole("combobox", { name: "Quality factory productivity module", exact: true })
+  const productivityModuleQuality = page.getByRole("combobox", {
+    name: "Quality factory productivity module quality",
+  })
+  await expect(productivityModule).toHaveValue("productivity-module-3")
+  await expect(productivityModuleQuality).toHaveValue("legendary")
+  await productivityModule.selectOption("productivity-module-2")
+  await productivityModuleQuality.selectOption("rare")
+  await page.reload()
+  await expect(page.getByRole("combobox", { name: "Quality factory productivity module", exact: true })).toHaveValue(
+    "productivity-module-2",
+  )
+  await expect(page.getByRole("combobox", { name: "Quality factory productivity module quality" })).toHaveValue("rare")
+  await page.getByRole("button", { name: "Factory" }).click()
+
+  await page.locator("#planet_selector .location-toggle").filter({ hasText: "Vulcanus" }).click()
+  const target = page.locator("#targets > li.target").first()
+  await target.locator(".production-target-item .dropdownWrapper").click()
+  await page.locator(".itemDropdown.open label").filter({ hasText: "Electronic circuit" }).first().click()
+  await target.locator(".target-quality").selectOption("4")
+  await target.locator(".target-rate").fill("1")
+  await target.locator(".target-rate").press("Enter")
+  await target.locator(".target-rate").blur()
+
+  await expect(target.locator(".target-field-label:visible")).toHaveCount(0)
+  const rateHeader = await page.locator(".production-target-header > span").nth(4).boundingBox()
+  const rateInput = await target.locator(".target-rate").boundingBox()
+  if (rateHeader === null || rateInput === null) throw new Error("Expected the desktop rate column to be visible")
+  expect(Math.abs(rateInput.x + rateInput.width / 2 - (rateHeader.x + rateHeader.width / 2))).toBeLessThan(2)
+  expect(rateInput.width).toBeLessThanOrEqual(rateHeader.width + 2)
+  const summaryCards = page.locator("#factory_summary > .factory-summary-card")
+  const qualityPlans = page.locator("#factory_summary > .quality-plan-list")
+  await expect(qualityPlans).toBeVisible()
+  const cardBottoms = await summaryCards.evaluateAll((cards) =>
+    cards.map((card) => card.getBoundingClientRect().bottom),
+  )
+  const qualityPlanTop = await qualityPlans.evaluate((plan) => plan.getBoundingClientRect().top)
+  expect(qualityPlanTop).toBeGreaterThanOrEqual(Math.max(...cardBottoms))
+
+  const qualityCard = qualityPlans.locator(".quality-plan")
+  await expect(qualityCard.locator(":scope > .quality-plan-metrics")).toHaveCount(0)
+  await expect(qualityCard.locator("details.quality-plan-build-stage[open]")).toHaveCount(0)
+  const qualityStage = qualityCard
+    .locator("details.quality-plan-build-stage")
+    .filter({ has: page.getByText("Quality production", { exact: true }) })
+  const qualityStageSummary = qualityStage.locator("summary")
+  await expect
+    .poll(() => qualityStageSummary.evaluate((summary) => getComputedStyle(summary, "::before").content))
+    .toBe('"▸"')
+  await expect
+    .poll(() =>
+      qualityCard.locator(":scope > summary").evaluate((summary) => getComputedStyle(summary, "::before").content),
+    )
+    .toBe('"▾"')
+  await qualityStageSummary.click()
+  await expect(qualityStage).toHaveAttribute("open", "")
+  await expect(
+    qualityStage.locator('.quality-plan-equipment-icon[aria-label="Legendary Quality Module 2"]'),
+  ).not.toHaveCount(0)
+  await expect(qualityStage.locator('.equipment-quality-badge[data-quality="legendary"]').first()).toBeVisible()
+  await expect(qualityStage.locator(".quality-plan-build-rate")).toHaveCount(0)
+
+  const guaranteedStage = qualityCard
+    .locator("details.quality-plan-build-stage")
+    .filter({ has: page.getByText("Guaranteed-quality crafting", { exact: true }) })
+  await guaranteedStage.locator("summary").click()
+  await expect(
+    guaranteedStage.locator('.quality-plan-equipment-icon[aria-label="Rare Productivity Module 2"]'),
+  ).not.toHaveCount(0)
+  await expect(guaranteedStage.locator('.equipment-quality-badge[data-quality="rare"]').first()).toBeVisible()
+  await expect(guaranteedStage).not.toContainText("4 × Rare Productivity module 2")
+
+  await qualityCard.locator("details.quality-plan-advanced > summary").click()
+  const operationEquipment = qualityCard.locator(".quality-plan-operation-equipment")
+  await expect(operationEquipment.first()).toBeVisible()
+  await expect(operationEquipment.locator(".quality-plan-equipment-icon")).not.toHaveCount(0)
+  await expect(operationEquipment.filter({ hasText: "Productivity module 2" })).toHaveCount(0)
+  expect(browserErrors, "uncaught browser errors").toEqual([])
 })

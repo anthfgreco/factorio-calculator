@@ -243,6 +243,7 @@ test("production target URL settings preserve machine, rate, and belt intent", (
       value: "24",
       recipeKey: "iron-plate",
       qualityLevel: 0,
+      qualityStrategy: "direct",
     },
     {
       itemKey: "advanced-circuit",
@@ -250,6 +251,7 @@ test("production target URL settings preserve machine, rate, and belt intent", (
       value: "198",
       recipeKey: null,
       qualityLevel: 2,
+      qualityStrategy: "auto",
     },
     {
       itemKey: "processing-unit",
@@ -257,21 +259,41 @@ test("production target URL settings preserve machine, rate, and belt intent", (
       value: "0.5",
       recipeKey: null,
       qualityLevel: 0,
+      qualityStrategy: "direct",
     },
   ]
 
   const settings = targets.map(formatTargetSetting)
-  assert.deepEqual(settings, ["iron-plate:f:24:iron-plate", "advanced-circuit:r:198:q2", "processing-unit:b:0.5"])
+  assert.deepEqual(settings, [
+    "iron-plate:f:24:iron-plate",
+    "advanced-circuit:r:198:q2:qs-auto",
+    "processing-unit:b:0.5",
+  ])
   assert.deepEqual(settings.map(parseTargetSetting), targets)
 })
 
-test("production target URL settings reject malformed modes without weakening old links", () => {
+test("production target URL settings round-trip automatic planet quality planning", () => {
+  const target = {
+    itemKey: "iron-plate",
+    mode: "r",
+    value: "100",
+    recipeKey: null,
+    qualityLevel: 4,
+    qualityStrategy: "auto",
+  }
+  const setting = formatTargetSetting(target)
+  assert.equal(setting, "iron-plate:r:100:q4:qs-auto")
+  assert.deepEqual(parseTargetSetting(setting), target)
+})
+
+test("production target URL settings reject removed planning modes without weakening direct links", () => {
   assert.deepEqual(parseTargetSetting("advanced-circuit:f:24:q1"), {
     itemKey: "advanced-circuit",
     mode: "f",
     value: "24",
     recipeKey: null,
     qualityLevel: 1,
+    qualityStrategy: "direct",
   })
   assert.deepEqual(parseTargetSetting("advanced-circuit:r:198"), {
     itemKey: "advanced-circuit",
@@ -279,8 +301,19 @@ test("production target URL settings reject malformed modes without weakening ol
     value: "198",
     recipeKey: null,
     qualityLevel: 0,
+    qualityStrategy: "direct",
   })
-  for (const malformed of ["", "advanced-circuit", "advanced-circuit:x:1", "advanced-circuit:b:", "x:b:1:q1:q2"]) {
+  for (const malformed of [
+    "",
+    "advanced-circuit",
+    "advanced-circuit:x:1",
+    "advanced-circuit:b:",
+    "x:b:1:q1:q2",
+    "advanced-circuit:r:1:qs-recycle",
+    "advanced-circuit:r:1:q1:qo-materials",
+    "advanced-circuit:r:1:q1:qs-recycle:qx-recycle",
+    "mech-armor:r:1:q4:qs-fulgora:qo-power:qx-recycle",
+  ]) {
     assert.equal(parseTargetSetting(malformed), null)
   }
 })

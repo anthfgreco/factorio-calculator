@@ -2,7 +2,7 @@ import { Fragment, type ChangeEvent } from "react"
 
 import { HelpPanel } from "./HelpPanel.js"
 import { SettingsPanel } from "./SettingsPanel.js"
-import { isProgressionPreset } from "../application/contracts.js"
+import { isProgressionPreset, isQualityPreset } from "../application/contracts.js"
 import type { DisplayRate } from "../math.js"
 import type { CalculatorCommands, CalculatorSnapshot } from "./types.js"
 
@@ -41,9 +41,6 @@ function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
     <section className="targets-panel" aria-labelledby="targets_title">
       <div className="targets-heading">
         <span id="targets_title">Production targets</span>
-        <span className="targets-hint">
-          Choose an output, then set its quality, machine count, production rate, or belt throughput.
-        </span>
       </div>
       <div className="production-target-header" aria-hidden="true">
         <span />
@@ -83,7 +80,7 @@ function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
           <span className="location-toolbar-help">Shift-click to combine</span>
         </div>
       </div>
-      <div className="progression-presets" role="group" aria-label="Progression preset">
+      <div className="progression-presets" role="group" aria-label="Calculator preset">
         <label htmlFor="progression_preset">Preset</label>
         <select
           id="progression_preset"
@@ -91,6 +88,7 @@ function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
           onChange={(event: ChangeEvent<HTMLSelectElement>) => {
             const value = event.currentTarget.value
             if (isProgressionPreset(value)) commands.applyProgressionPreset(value)
+            else if (isQualityPreset(value)) commands.applyQualityPreset(value)
           }}
         >
           <option value="">Custom</option>
@@ -98,7 +96,9 @@ function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
           <option value="pre-rocket">Pre-rocket</option>
           <option value="first-planets">Early Space Age</option>
           <option value="late-space-age">Late Space Age</option>
-          <option value="megabase">Established megabase</option>
+          <option value="full-legendary" disabled={!snapshot.settings.equipmentQualityAvailable}>
+            Full Legendary
+          </option>
         </select>
       </div>
       <div className="planner-actions">

@@ -9,7 +9,7 @@ This fork supports experimental **Factorio Space Age 2.1.14** using the unchange
 - Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
 - Factorio 2.1 recipe categories, combined result probabilities, recycling, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
 - Gleba growth-time and agricultural-tower sizing, seed flows, spoilage/freshness reporting, effective agricultural-science throughput, and exact harvest-plus-tower spores.
-- Exact target-quality selection using direct quality probabilities and explicit non-target-quality byproduct reporting.
+- Planet-aware quality planning with recursive local intermediates on Nauvis and a curated Vulcanus workflow from lava and calcite through molten-metal casting, tiered crafting, real recycler loops, imports, machinery, power, and unavoidable outputs.
 - Recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or Space platforms, with row-level locations and compact cross-location flow accounting.
 - Configurable pumpjack/resource yield and asteroid-chunk collection capacities.
 - Surface-aware pollution, configured beacon-equivalent electricity, and Aquilo production heat.
@@ -20,7 +20,7 @@ This fork supports experimental **Factorio Space Age 2.1.14** using the unchange
 
 ## Current model boundaries
 
-The exact simplex solver still balances scalar item rates. Quality targets use Factorio's direct expected-value probability chain, but automatic recycler-loop optimization and a fully generalized `(item, quality, location)` simplex are not included. Location assignments and transport are explicit accounting after solving rather than route-capacity constraints inside the LP.
+The ordinary factory solver still balances scalar item rates. A newly selected non-Normal target automatically uses the active planet and the shared Quality factory gear profile. Nauvis and other ordinary planet plans recursively expand local recipes and quality-qualified intermediates down to resources and qualityless fluids; eligible crafts below the requested tier use the configured quality modules, while requested-tier crafts use the configured productivity modules. Vulcanus uses the same exact graph with curated lava, calcite, molten-metal casting, downstream crafting, and generated recycler routes. Non-local materials remain explicit imports. Legacy one-pass quality links retain their direct probability calculation. Quality targets are currently solved independently, so separate targets do not share higher-quality intermediate pools. Location assignments and transport remain explicit accounting rather than route-capacity constraints inside the LP.
 
 Agricultural tower electricity remains a conservative active-load value because planting/harvesting duty timing is absent from the export. Spore totals are exact for the planned harvest rate and placed tower count. Rocket launch timing uses the selected silo quality from Normal through Legendary. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
 
@@ -74,6 +74,7 @@ The codebase is organized around strict ownership boundaries rather than a frame
 - `src/math.ts` — exact rational/matrix arithmetic and formatting
 - `src/solver.ts`, `src/solver/` — exact solver implementation, structural contracts, and typed failures
 - `src/planning.ts`, `src/planning/` — deterministic Space Age planning reports and contracts
+- `src/quality/` — exact quality transitions, automatic selected-planet planning, real recycler disposal, and quality-qualified flow graphs
 - `src/factory.ts` — calculator facade, machine/location policy, solver adaptation, and renderer port
 - `src/models.ts`, `src/models/` — buildings, modules, belts, fuel, planets, item groups, and research factories
 - `src/recipes.ts` — item/recipe models and recipe policy

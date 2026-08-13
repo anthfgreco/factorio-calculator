@@ -57,9 +57,11 @@ The solver depends only on exact math and its own contracts. It has no knowledge
 
 ### Planning
 
-`src/planning/contracts.ts` defines planning targets, specification capabilities, and report rows. `src/planning.ts` owns exact quality target transformation, compatible locations, transport flows, freshness, resource/asteroid capacity, pollution/spores, rocket launches, beacon power, Aquilo heat, logistics, and planning summaries.
+`src/planning/contracts.ts` defines planning targets, specification capabilities, and report rows. `src/planning.ts` owns one-pass quality reporting, compatible locations, transport flows, freshness, resource/asteroid capacity, pollution/spores, rocket launches, beacon power, Aquilo heat, logistics, and planning summaries.
 
-Planning is deterministic over targets and solved totals. Route capacities and quality-qualified loop optimization are not silently inserted into the scalar solver; those require an explicit future graph-model change.
+`src/quality/math.ts` owns exact quality-transition probabilities and linear-system helpers. `src/quality/graph.ts` adapts quality-qualified commodities to the existing exact simplex. `src/quality/operations.ts` owns shared quality operation construction, equipment configuration, recycler closures, and capacity accounting. `src/quality/disposal.ts` recursively balances generated recycler routes for surplus without inventing a destruction sink. `src/quality/practical.ts` owns recursive selected-planet quality graphs, local-resource boundaries, qualified intermediates, module policy, imports, and real recycling. `src/quality/vulcanus.ts` supplies the curated lava-to-molten route policy to that shared graph.
+
+Planning remains deterministic over targets and solved totals. Ordinary Normal and legacy one-pass targets stay on the scalar solver. New non-Normal targets enter automatic planet-aware planning at the factory boundary, so the player chooses target, quality, rate, planet availability, and shared gear rather than an implementation strategy. No quality graph cost is paid by ordinary plans.
 
 ### Factory facade
 
@@ -110,6 +112,6 @@ Use direct imports from owning modules. Compatibility re-exports in `solver.ts`,
 
 The simplex solves a shared scalar item graph. Planning assigns active recipes to pinned or compatible locations and derives transfers from solved material links. This is exact accounting for the selected assignment, not a route-capacity optimization solver.
 
-Quality-module compatibility belongs to runtime models. Exact quality targets are converted into expected total production before solving and reported with non-target-quality byproducts afterward. Automatic recycler-loop optimization still requires a quality-qualified solver graph.
+Quality-module compatibility and the shared direct-plus-beacon quality effect belong to runtime models. New non-Normal targets use the selected planet profile automatically. Ordinary planet profiles recursively balance `(item, quality)` commodities through local resources and intermediates; eligible operations below the requested tier use quality modules and requested-tier operations use productivity modules. The Vulcanus policy adds curated lava and calcite routes, prefers foundries and electromagnetic plants where applicable, and retains its established locally-required-tier module policy. All practical profiles use generated recycler recipes, keep fluids qualityless, and begin fluid-only solid recipes at Normal. Legacy one-pass targets retain the reciprocal probability transformation.
 
 Freshness, asteroid capacity, surface-aware emissions, rocket launch reporting, and Aquilo heat are deterministic planning layers over solved rates. Version-specific mechanics belong in validated dataset contracts; layout assumptions remain visible rather than hidden in recipe equations.

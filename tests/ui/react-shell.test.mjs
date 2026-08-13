@@ -37,6 +37,7 @@ const snapshot = {
     freshnessDelayMinutes: "0",
     maxQualityLevel: 2,
     equipmentQualityAvailable: true,
+    qualityPlannerObjective: "practical",
     visualizationType: "sankey",
     visualizationRender: "zoom",
     visualizationDirection: "right",
@@ -58,7 +59,9 @@ const normalOnlyHtml = renderToStaticMarkup(
 test("React shell renders the complete accessible calculator workflow", () => {
   for (const text of [
     "Production targets",
-    "Choose an output, then set its quality, machine count, production rate, or belt throughput.",
+    "Practical Quality Factories &amp; Presets",
+    "Added recursive exact quality factories for Nauvis intermediates and a curated Vulcanus route from lava and calcite through casting, crafting, and real recycling.",
+    "Added Full Legendary as a separate quality-only preset; progression presets preserve locations and Late Space Age uses express belts.",
     "Machine, Module &amp; Beacon Quality Support",
     "Added quality controls for machines, modules, and beacons.",
     "Choose automatic or per-item belt stacking, including Big mining drill output.",
@@ -69,8 +72,14 @@ test("React shell renders the complete accessible calculator workflow", () => {
     "Help",
     "Factorio 2.1.14",
     "Updated to Factorio 2.1.14, production values unchanged.",
+    "Custom",
     "Early Space Age",
-    "Established megabase",
+    "Late Space Age",
+    "Full Legendary",
+    "Quality factory",
+    "Quality module",
+    "Productivity module",
+    "Practical factory (recommended)",
     "Default module (all eligible slots)",
     "Default item stacking",
     "Recipe productivity is capped at +300% total; mining productivity is uncapped.",
@@ -79,6 +88,10 @@ test("React shell renders the complete accessible calculator workflow", () => {
   ]) {
     assert.match(html, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")))
   }
+  assert.doesNotMatch(html, /<optgroup/)
+  assert.match(html, /<option value="" selected="">Custom<\/option>/)
+  assert.doesNotMatch(html, /Choose what you want|Non-Normal targets|non-Normal target/)
+  assert.doesNotMatch(html, /class="targets-hint"/)
 })
 
 test("React shell preserves imperative mount points and snapshot-owned controls", () => {
@@ -90,6 +103,8 @@ test("React shell preserves imperative mount points and snapshot-owned controls"
     "resource_settings",
     "graph",
     "progression_preset",
+    "quality_planner_productivity_module",
+    "quality_planner_productivity_module_quality",
     "title_setting",
     "mprod",
   ]) {
@@ -108,6 +123,7 @@ test("React shell disables target addition until the dataset is ready", () => {
 test("React shell hides equipment quality defaults when the dataset has no quality tiers", () => {
   assert.match(html, /Equipment quality defaults/)
   assert.match(normalOnlyHtml, /<tr class="setting-row" hidden="">.*Equipment quality defaults/)
+  assert.match(normalOnlyHtml, /<option value="full-legendary" disabled="">Full Legendary<\/option>/)
 })
 
 test("React shell labels production target rates with the selected display rate", () => {

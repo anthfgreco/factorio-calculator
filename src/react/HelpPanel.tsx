@@ -23,8 +23,7 @@ export function HelpPanel() {
           <h2 className="help-section-title">Using the calculator</h2>
           <ol className="help-steps">
             <li>Add a production target.</li>
-            <li>Enter a machine count, rate, or belt throughput.</li>
-            <li>Select the locations available to your factory.</li>
+            <li>Choose the output quality, target rate, and production planet.</li>
             <li>
               Open <strong>Factory</strong> to choose recipes, machines, modules, and imported ingredients.
             </li>
@@ -45,6 +44,8 @@ export function HelpPanel() {
               ["Restore an imported ingredient to the production chain", "Click the icon again"],
               ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
               ["Change belt stacking for one item", "Use the stacking selector beside its belt count"],
+              ["Plan a quality factory", "Set the output quality and production planet"],
+              ["Choose available quality gear", "Settings → Quality factory"],
               ["Change recipe defaults", "Open Settings"],
               ["Share the current calculation", "Copy plan link"],
             ]}
@@ -60,7 +61,11 @@ export function HelpPanel() {
               ["An item cannot be produced", "Enabled recipes and selected locations"],
               ["An ingredient is missing from the chain", "Whether it is marked as imported"],
               ["The calculator chose an unexpected resource", "Resource priorities and alternate recipes"],
-              ["Quality production is incomplete", "Recycling and quality progression limits"],
+              [
+                "A quality plan cannot solve",
+                "Selected planet, target recipe, recycler recipe, and available machines",
+              ],
+              ["A Vulcanus plan imports basic metal", "Selected planet and whether lava casting recipes are enabled"],
               ["Machine counts look higher than expected", "Recipe, modules, beacons, and machine quality"],
             ]}
           />
@@ -69,6 +74,21 @@ export function HelpPanel() {
         <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
+            <ChangelogEntry date="2026-08-13" title="Practical Quality Factories & Presets">
+              <li>
+                Added recursive exact quality factories for Nauvis intermediates and a curated Vulcanus route from lava
+                and calcite through casting, crafting, and real recycling.
+              </li>
+              <li>
+                Added Full Legendary as a separate quality-only preset; progression presets preserve locations and Late
+                Space Age uses express belts.
+              </li>
+              <li>
+                Results now lead with feed, machines, module loadouts, recycling, imports, and power; detailed quality
+                math is collapsed, and quality-only plans omit the ordinary Factory table and header.
+              </li>
+            </ChangelogEntry>
+
             <ChangelogEntry date="2026-08-12" title="Machine, Module & Beacon Quality Support">
               <li>Added quality controls for machines, modules, and beacons.</li>
               <li>

@@ -1,14 +1,17 @@
 import { select, selectAll } from "d3"
 import {
   isProgressionPreset,
+  isQualityPreset,
   type CalculatorTab,
   type FactoryDensity,
   type PlanningSettingValue,
   type ProgressionPreset,
+  type QualityPreset,
 } from "./application/contracts.js"
 import { isBeltStackPolicy, spec } from "./factory.js"
 import { type DisplayFormat, Rational } from "./math.js"
-import { Building, Planet } from "./models.js"
+import { Building } from "./models.js"
+import { isQualityPlannerObjective } from "./quality/contracts.js"
 import type { Item } from "./recipes.js"
 
 // -----------------------------------------------------------------------------
@@ -66,7 +69,6 @@ export function changeFactoryDensity(event: Event) {
 export type { ProgressionPreset } from "./application/contracts.js"
 
 type PresetDefinition = {
-  planets: string[]
   miningProductivity: number
   belt: string
   beltStackSize: number
@@ -76,7 +78,6 @@ type PresetDefinition = {
 
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   early: {
-    planets: ["nauvis"],
     miningProductivity: 0,
     belt: "transport-belt",
     beltStackSize: 1,
@@ -84,50 +85,22 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
     defaultMachines: ["assembling-machine-1", "chemical-plant", "stone-furnace", "electric-mining-drill"],
   },
   "pre-rocket": {
-    planets: ["nauvis"],
     miningProductivity: 20,
     belt: "fast-transport-belt",
     beltStackSize: 1,
-    maxQualityLevel: 0,
+    maxQualityLevel: 2,
     defaultMachines: ["assembling-machine-2", "chemical-plant", "steel-furnace", "electric-mining-drill"],
   },
   "first-planets": {
-    planets: ["nauvis", "space-platform"],
     miningProductivity: 30,
     belt: "express-transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 2,
-    defaultMachines: [
-      "assembling-machine-3",
-      "chemical-plant",
-      "foundry",
-      "electromagnetic-plant",
-      "biochamber",
-      "electric-furnace",
-      "electric-mining-drill",
-    ],
+    defaultMachines: ["assembling-machine-3", "chemical-plant", "electric-furnace", "electric-mining-drill"],
   },
   "late-space-age": {
-    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
     miningProductivity: 100,
-    belt: "turbo-transport-belt",
-    beltStackSize: 4,
-    maxQualityLevel: 4,
-    defaultMachines: [
-      "assembling-machine-3",
-      "chemical-plant",
-      "foundry",
-      "electromagnetic-plant",
-      "biochamber",
-      "cryogenic-plant",
-      "electric-furnace",
-      "big-mining-drill",
-    ],
-  },
-  megabase: {
-    planets: ["nauvis", "vulcanus", "fulgora", "gleba", "aquilo", "space-platform"],
-    miningProductivity: 300,
-    belt: "turbo-transport-belt",
+    belt: "express-transport-belt",
     beltStackSize: 4,
     maxQualityLevel: 4,
     defaultMachines: [
@@ -164,7 +137,7 @@ function getEventControl(event: Event): HTMLInputElement | HTMLSelectElement | n
   return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement ? event.target : null
 }
 
-function syncProgressionControls(): void {
+function syncPresetControls(): void {
   document.querySelectorAll<HTMLInputElement>('#belt_selector input[type="radio"]').forEach((input) => {
     input.checked = input.value === spec.belt?.key
   })
@@ -179,6 +152,8 @@ function syncProgressionControls(): void {
     ["default_machine_quality", spec.defaultMachineQuality],
     ["default_module_quality", spec.defaultModuleQuality],
     ["default_beacon_quality", spec.defaultBeaconQuality],
+    ["quality_planner_module_quality", spec.qualityPlannerModuleQuality],
+    ["quality_planner_productivity_module_quality", spec.qualityPlannerProductivityModuleQuality],
   ] as const
   for (const [containerId, selected] of qualityDefaults) {
     const input = document.querySelector<HTMLSelectElement>(`#${containerId} select`)
@@ -199,16 +174,6 @@ function syncProgressionControls(): void {
 export function applyProgressionPresetValue(value: ProgressionPreset): void {
   const preset = PROGRESSION_PRESETS[value]
 
-  spec.selectedPlanets.clear()
-  for (let key of preset.planets) {
-    let planet = getByKey(spec.planets, key)
-    if (planet !== null) spec.selectPlanet(planet)
-  }
-  if (spec.selectedPlanets.size === 0 && spec.planets !== null && spec.planets.size > 0) {
-    const firstPlanet = spec.planets.values().next().value
-    if (firstPlanet !== undefined) spec.selectPlanet(firstPlanet)
-  }
-
   spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
   let belt = getByKey(spec.belts, preset.belt)
   if (belt !== null) spec.belt = belt
@@ -225,15 +190,14 @@ export function applyProgressionPresetValue(value: ProgressionPreset): void {
     preset.defaultMachines.map((key) => getByKey(spec.buildingKeys, key)).filter((building) => building !== null),
   )
 
-  document.querySelectorAll<HTMLElement>("#planet_selector .toggle").forEach((toggle) => {
-    const location = getBoundDatum(toggle)
-    const selected = location instanceof Planet && spec.selectedPlanets.has(location)
-    toggle.classList.toggle("selected", selected)
-    toggle.setAttribute("aria-pressed", String(selected))
-  })
-
   syncMiningProductivityControls()
-  syncProgressionControls()
+  syncPresetControls()
+  spec.updateSolution()
+}
+
+export function applyQualityPresetValue(value: QualityPreset): void {
+  if (value !== "full-legendary" || !spec.applyFullLegendaryQuality()) return
+  syncPresetControls()
   spec.updateSolution()
 }
 
@@ -241,6 +205,12 @@ export function applyProgressionPreset(event: Event): void {
   const select = event.target
   if (!(select instanceof HTMLSelectElement) || !isProgressionPreset(select.value)) return
   applyProgressionPresetValue(select.value)
+}
+
+export function applyQualityPreset(event: Event): void {
+  const select = event.target
+  if (!(select instanceof HTMLSelectElement) || !isQualityPreset(select.value)) return
+  applyQualityPresetValue(select.value)
 }
 
 export type { PlanningSettingValue } from "./application/contracts.js"
@@ -265,6 +235,10 @@ export function setPlanningSetting(input: PlanningSettingValue): void {
       for (let target of spec.buildTargets) {
         target.setQuality(target.qualityLevel)
       }
+      break
+    case "quality_planner_objective":
+      if (!isQualityPlannerObjective(input.value)) return
+      spec.qualityPlannerObjective = input.value
       break
     default: {
       const resourceKey = input.resourceKey

@@ -47,12 +47,18 @@ test("calculator store publishes stable snapshots from the bound specification",
     changedBuilding: false,
     buildings: Rational.from_integer(1),
     rate: Rational.from_integer(2),
+    belts: Rational.from_integer(0),
+    basis: "rate",
     qualityLevel: 1,
+    qualityStrategy: "auto",
     getRate: () => Rational.from_integer(2),
     getBuildingCountInput: () => "1",
+    getBeltCountInput: () => "0",
     setBuildings: () => undefined,
     setRate: () => undefined,
+    setBelts: () => undefined,
     setQuality: () => undefined,
+    setQualityStrategy: () => undefined,
     displayRecipes: () => undefined,
     rateChanged: () => undefined,
   })
@@ -62,6 +68,7 @@ test("calculator store publishes stable snapshots from the bound specification",
   assert.ok(updated.revision > initial.revision)
   assert.equal(updated.targets[0].itemKey, "advanced-circuit")
   assert.equal(updated.targets[0].qualityLevel, 1)
+  assert.equal(updated.targets[0].qualityStrategy, "auto")
   assert.equal(updated.targets[0].rate, "2")
   assert.ok(notifications >= 2)
 })

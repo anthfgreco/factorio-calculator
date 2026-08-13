@@ -66,6 +66,24 @@ export function getFactorySummary(specification: FactorySpecification, totals: T
     }
   }
 
+  const planning = getPlanningSummary(specification, totals)
+  for (const plan of planning.qualityPlans) {
+    exactMachines = exactMachines.add(plan.totalMachineCount)
+    placedMachines = placedMachines.add(
+      plan.operations.reduce((total, operation) => total.add(operation.machineCount.ceil()), zero),
+    )
+    electricalPower = electricalPower.add(plan.totalPower)
+    recipeCount += plan.operations.length
+    qualityRecipeCount += plan.operations.filter((operation) =>
+      operation.configuration.modules.some((module) => module?.category === "quality"),
+    ).length
+    beaconedRecipeCount += plan.operations.filter(
+      (operation) =>
+        !operation.configuration.beaconCount.isZero() &&
+        operation.configuration.beaconModules.some((module) => module !== null),
+    ).length
+  }
+
   const selectedLocations = [...specification.selectedPlanets].sort((a, b) => a.order.localeCompare(b.order))
   const importedItems = [...specification.ignore]
     .filter((item) => totals.items.has(item))
@@ -82,6 +100,6 @@ export function getFactorySummary(specification: FactorySpecification, totals: T
     beaconedRecipeCount,
     selectedLocations,
     importedItems,
-    planning: getPlanningSummary(specification, totals),
+    planning,
   }
 }

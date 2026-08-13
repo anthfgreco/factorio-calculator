@@ -7,7 +7,16 @@ import {
 } from "./url/codec.js"
 import { CalculatorUrlHistory } from "./url/history.js"
 import { sorted } from "./data.js"
-import { DEFAULT_BELT, DEFAULT_FUEL, spec, type FactorySpecification } from "./factory.js"
+import {
+  DEFAULT_BELT,
+  DEFAULT_FUEL,
+  DEFAULT_QUALITY_PLANNER_MODULE_KEY,
+  DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY,
+  DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY,
+  DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY,
+  spec,
+  type FactorySpecification,
+} from "./factory.js"
 import { DEFAULT_COUNT_PRECISION, DEFAULT_FORMAT, DEFAULT_RATE, DEFAULT_RATE_PRECISION, Rational } from "./math.js"
 import type { Module } from "./models.js"
 import type { Item } from "./recipes.js"
@@ -275,6 +284,22 @@ export function formatSettings(
   if (spec.defaultMachineQuality.key !== "normal") settings += "dmachq=" + spec.defaultMachineQuality.key + "&"
   if (spec.defaultModuleQuality.key !== "normal") settings += "dmq=" + spec.defaultModuleQuality.key + "&"
   if (spec.defaultBeaconQuality.key !== "normal") settings += "dbq=" + spec.defaultBeaconQuality.key + "&"
+  const defaultQualityPlannerModule = spec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null
+  if (spec.qualityPlannerModule !== defaultQualityPlannerModule) {
+    settings += "qpm=" + getModuleKey(spec.qualityPlannerModule) + "&"
+  }
+  if (spec.qualityPlannerModuleQuality.key !== DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) {
+    settings += "qpmq=" + spec.qualityPlannerModuleQuality.key + "&"
+  }
+  const defaultQualityPlannerProductivityModule =
+    spec.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY) ?? null
+  if (spec.qualityPlannerProductivityModule !== defaultQualityPlannerProductivityModule) {
+    settings += "qppm=" + getModuleKey(spec.qualityPlannerProductivityModule) + "&"
+  }
+  if (spec.qualityPlannerProductivityModuleQuality.key !== DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) {
+    settings += "qppmq=" + spec.qualityPlannerProductivityModuleQuality.key + "&"
+  }
+  if (spec.qualityPlannerObjective !== "practical") settings += "qpo=" + spec.qualityPlannerObjective + "&"
   if (spec.secondaryDefaultModule !== null) {
     settings += "dm2=" + spec.secondaryDefaultModule.shortName() + "&"
   }
@@ -330,6 +355,7 @@ export function formatSettings(
           recipeKey:
             mode === "f" && target.recipe !== null && target.recipe !== target.defaultRecipe ? target.recipe.key : null,
           qualityLevel: target.qualityLevel,
+          qualityStrategy: target.qualityStrategy,
         }),
       )
     }

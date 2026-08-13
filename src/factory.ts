@@ -38,9 +38,12 @@ import {
   type SolverRecipe,
   type SolverSpec,
   type SolverTarget,
-  type Totals,
+  Totals,
 } from "./solver.js"
 import { getQualityTargetMultiplier, type QualityTargetFeasibility } from "./planning.js"
+import { planPlanetQualityTarget } from "./quality/practical.js"
+import { planVulcanusQualityTarget } from "./quality/vulcanus.js"
+import type { QualityPlannerObjective, QualityStrategy, QualityTargetPlan } from "./quality/contracts.js"
 
 // -----------------------------------------------------------------------------
 // Calculator defaults
@@ -50,6 +53,10 @@ export const DEFAULT_ITEM_KEY = "advanced-circuit"
 export const DEFAULT_PLANET = "nauvis"
 export const DEFAULT_BELT = "transport-belt"
 export const DEFAULT_FUEL = "coal"
+export const DEFAULT_QUALITY_PLANNER_MODULE_KEY = "quality-module-2"
+export const DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY = "legendary"
+export const DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY = "productivity-module-3"
+export const DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY = "legendary"
 export const DEFAULT_BUILDING_KEYS = new Set([
   "assembling-machine-1",
   "chemical-plant",
@@ -80,6 +87,7 @@ export interface FactoryBuildTarget {
   rate: Rational
   belts: Rational
   qualityLevel: number
+  qualityStrategy: QualityStrategy
   readonly defaultRecipe: Recipe | null
   getRate(): Rational
   getBuildingCountInput(): string
@@ -88,6 +96,7 @@ export interface FactoryBuildTarget {
   setRate(value: string): void
   setBelts(value: string): void
   setQuality(level: number | string): void
+  setQualityStrategy(strategy: QualityStrategy, preservedRate?: Rational | null): void
   displayRecipes(): void
   rateChanged(): void
   invalidateQualityUndo?(recipe: Recipe): void
@@ -392,6 +401,11 @@ export class FactorySpecification {
   defaultMachineQuality: Quality = normalQuality
   defaultModuleQuality: Quality = normalQuality
   defaultBeaconQuality: Quality = normalQuality
+  qualityPlannerModule: Module | null = null
+  qualityPlannerModuleQuality: Quality = normalQuality
+  qualityPlannerProductivityModule: Module | null = null
+  qualityPlannerProductivityModuleQuality: Quality = normalQuality
+  qualityPlannerObjective: QualityPlannerObjective = "practical"
   readonly defaultBeacon: (Module | null)[] = [null, null]
   defaultBeaconCount = zero
   belt: Belt | null = null
@@ -424,6 +438,7 @@ export class FactorySpecification {
   lastTableau: Matrix | null = null
   lastMetadata: unknown = null
   lastSolution: Matrix | null = null
+  readonly qualityPlans: QualityTargetPlan[] = []
   debug = false
   private readonly stateListeners = new Set<() => void>()
   private stateRevision = 0
@@ -469,6 +484,16 @@ export class FactorySpecification {
     this.defaultMachineQuality = normal
     this.defaultModuleQuality = normal
     this.defaultBeaconQuality = normal
+    const qualityPlannerModule = this.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY)
+    this.qualityPlannerModule = qualityPlannerModule?.hasQualityEffect() ? qualityPlannerModule : null
+    this.qualityPlannerModuleQuality = this.qualities.get(DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) ?? normal
+    const qualityPlannerProductivityModule = this.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY)
+    this.qualityPlannerProductivityModule = qualityPlannerProductivityModule?.hasProdEffect()
+      ? qualityPlannerProductivityModule
+      : null
+    this.qualityPlannerProductivityModuleQuality =
+      this.qualities.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) ?? normal
+    this.qualityPlannerObjective = "practical"
     this.machineQualityOverrides.clear()
     replaceMap(this.buildings, getBuildingGroups(buildings, recipes.values()))
     this.buildingKeys.clear()
@@ -610,6 +635,10 @@ export class FactorySpecification {
     if (!available.has(this.defaultMachineQuality)) this.defaultMachineQuality = normal
     if (!available.has(this.defaultModuleQuality)) this.defaultModuleQuality = normal
     if (!available.has(this.defaultBeaconQuality)) this.defaultBeaconQuality = normal
+    if (!available.has(this.qualityPlannerModuleQuality)) this.qualityPlannerModuleQuality = normal
+    if (!available.has(this.qualityPlannerProductivityModuleQuality)) {
+      this.qualityPlannerProductivityModuleQuality = normal
+    }
     for (const [recipe, quality] of this.machineQualityOverrides) {
       if (!available.has(quality)) this.machineQualityOverrides.delete(recipe)
     }
@@ -668,6 +697,35 @@ export class FactorySpecification {
     }
     this.defaultBeaconQuality = quality
     this.notifyStateChanged()
+  }
+  applyFullLegendaryQuality(): boolean {
+    const legendary = this.qualities.get("legendary")
+    if (legendary === undefined) return false
+
+    const qualityLevel = this.getQualityIndex(legendary)
+    this.setMaxQualityLevel(qualityLevel)
+    this.defaultMachineQuality = legendary
+    this.defaultModuleQuality = legendary
+    this.defaultBeaconQuality = legendary
+    this.qualityPlannerModuleQuality = legendary
+    this.qualityPlannerProductivityModuleQuality = legendary
+    this.machineQualityOverrides.clear()
+
+    for (const target of this.buildTargets) {
+      const currentRate = target.getRate()
+      target.setQuality(qualityLevel)
+      target.setQualityStrategy("auto", currentRate)
+    }
+
+    for (const moduleSpec of this.spec.values()) {
+      moduleSpec.moduleQualities.fill(legendary)
+      moduleSpec.moduleQualityOverrides.clear()
+      moduleSpec.beaconModuleQualities.fill(legendary)
+      moduleSpec.beaconModuleQualityOverrides.clear()
+      moduleSpec.beaconQuality = legendary
+      moduleSpec.beaconQualityOverride = false
+    }
+    return true
   }
   setBuildingOverride(recipe: Recipe, building: Building | null, source: ConfigurationSource = "user"): boolean {
     if (building !== null && (!buildingCanCraft(building, recipe) || !this.isBuildingAvailable(building, recipe))) {
@@ -1234,6 +1292,7 @@ export class FactorySpecification {
 
   solve(): Totals {
     const outputs: SolverOutput[] = []
+    this.qualityPlans.splice(0, this.qualityPlans.length)
     for (const target of this.buildTargets) {
       const item = target.item
       let rate = target.getRate()
@@ -1244,8 +1303,41 @@ export class FactorySpecification {
         if (qualityRecipe === null) {
           throw new Error(`No recipe is available to produce ${item.name} at the selected quality.`)
         }
-        rate = rate.mul(getQualityTargetMultiplier(this, qualityRecipe, target.qualityLevel))
-        recipe = qualityRecipe
+        const vulcanus = this.planets?.get("vulcanus") ?? null
+        const onlySelectedPlanet = this.selectedPlanets.size === 1 ? ([...this.selectedPlanets][0] ?? null) : null
+        const automaticPlanet =
+          onlySelectedPlanet ??
+          this.recipeLocations.get(qualityRecipe) ??
+          (vulcanus !== null && this.selectedPlanets.has(vulcanus) ? vulcanus : null)
+        if (target.qualityStrategy === "direct") {
+          rate = rate.mul(getQualityTargetMultiplier(this, qualityRecipe, target.qualityLevel))
+          recipe = qualityRecipe
+        } else {
+          if (automaticPlanet === null) {
+            throw new Error(
+              `Automatic quality planning for ${item.name} requires one selected planet or an assigned recipe location.`,
+            )
+          }
+          const plan =
+            automaticPlanet.key === "vulcanus"
+              ? planVulcanusQualityTarget({
+                  specification: this,
+                  item,
+                  recipe: qualityRecipe,
+                  requested: rate,
+                  qualityLevel: target.qualityLevel,
+                })
+              : planPlanetQualityTarget({
+                  specification: this,
+                  planet: automaticPlanet,
+                  item,
+                  recipe: qualityRecipe,
+                  requested: rate,
+                  qualityLevel: target.qualityLevel,
+                })
+          this.qualityPlans.push(plan)
+          continue
+        }
       }
       outputs.push({ item, rate, recipe })
     }
@@ -1261,7 +1353,10 @@ export class FactorySpecification {
       }
       dedupedOutputs.push(output)
     }
-    return solve(this.createSolverSpec(), dedupedOutputs)
+    const solverSpec = this.createSolverSpec()
+    return dedupedOutputs.length === 0
+      ? new Totals(solverSpec, new Map(), new Map(), new Map(), new Map())
+      : solve(solverSpec, dedupedOutputs)
   }
   persistUrlState(): void {
     this.view?.persistUrlState()

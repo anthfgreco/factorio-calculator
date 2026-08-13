@@ -44,6 +44,17 @@ test("equipment quality applies exact machine, module, beacon, drill, and rocket
   assert.equal(efficiencyModule.pollutionFor(legendary).toString(), "0")
   assert.equal(speedModule.qualityFor(legendary).toString(), "-1/40")
 
+  for (let index = 0; index < moduleSpec.modules.length; index++) moduleSpec.setModule(index, null)
+  for (let index = 0; index < moduleSpec.beaconModules.length; index++) moduleSpec.setBeaconModule(null, index)
+  moduleSpec.setModule(0, qualityModule)
+  moduleSpec.setModuleQuality(0, legendary)
+  moduleSpec.setBeaconModule(speedModule, 0)
+  moduleSpec.setBeaconModuleQuality(legendary, 0)
+  moduleSpec.setBeaconQuality(normal)
+  moduleSpec.setBeaconCount(math.one)
+  assert.equal(planning.getRecipeQualityChance(specification, circuit).toString(), "49/2000")
+  moduleSpec.setBeaconModuleQuality(normal, 0)
+
   specification.setMachineQuality(circuit, normal)
   for (let index = 0; index < moduleSpec.modules.length; index++) moduleSpec.setModule(index, null)
   moduleSpec.setBeaconModule(efficiencyModule, 0)
@@ -117,4 +128,85 @@ test("explicit equipment quality choices survive later default changes", async (
   assert.equal(moduleSpec.beaconModuleQualities[0], rare)
   assert.equal(moduleSpec.beaconModuleQualities[1], legendary)
   assert.equal(moduleSpec.beaconQuality, rare)
+})
+
+test("Full Legendary upgrades every quality surface without changing factory progression", async () => {
+  const { specification, recipes, planets, calculatorModules, math } = await setupSpaceAgeFactory()
+  const rare = specification.qualities.get("rare")
+  const legendary = specification.qualities.get("legendary")
+  const circuit = recipes.get("advanced-circuit")
+  const assembler = specification.buildingKeys.get("assembling-machine-3")
+  const qualityModule = calculatorModules.get("quality-module-3")
+  const speedModule = calculatorModules.get("speed-module-3")
+  const vulcanus = planets.get("vulcanus")
+  const belt = specification.belts.get("fast-transport-belt")
+  assert.ok(rare)
+  assert.ok(legendary)
+  assert.ok(circuit)
+  assert.ok(assembler)
+  assert.ok(qualityModule)
+  assert.ok(speedModule)
+  assert.ok(vulcanus)
+  assert.ok(belt)
+
+  specification.selectOnePlanet(vulcanus)
+  specification.belt = belt
+  specification.beltStackSize = math.Rational.from_integer(3)
+  specification.miningProd = math.Rational.from_floats(7, 10)
+  specification.setBuildingOverride(circuit, assembler)
+  specification.setMachineQuality(circuit, rare)
+  const moduleSpec = specification.getModuleSpec(circuit)
+  assert.ok(moduleSpec)
+  moduleSpec.setModule(0, qualityModule)
+  moduleSpec.setModuleQuality(0, rare)
+  moduleSpec.setBeaconModule(speedModule, 0)
+  moduleSpec.setBeaconModuleQuality(rare, 0)
+  moduleSpec.setBeaconQuality(rare)
+  moduleSpec.setBeaconCount(math.Rational.from_integer(6))
+  specification.qualityPlannerModuleQuality = rare
+  specification.qualityPlannerProductivityModuleQuality = rare
+
+  const modulesBefore = [...moduleSpec.modules]
+  const beaconModulesBefore = [...moduleSpec.beaconModules]
+  const targetRate = math.Rational.from_integer(17)
+  const target = {
+    qualityLevel: 0,
+    qualityStrategy: "direct",
+    getRate: () => targetRate,
+    setQuality(level) {
+      this.qualityLevel = Number(level)
+    },
+    setQualityStrategy(strategy, preservedRate) {
+      this.qualityStrategy = strategy
+      this.preservedRate = preservedRate
+    },
+  }
+  specification.buildTargets.push(target)
+
+  assert.equal(specification.applyFullLegendaryQuality(), true)
+  assert.equal(specification.maxQualityLevel, 4)
+  assert.equal(specification.defaultMachineQuality, legendary)
+  assert.equal(specification.defaultModuleQuality, legendary)
+  assert.equal(specification.defaultBeaconQuality, legendary)
+  assert.equal(specification.qualityPlannerModuleQuality, legendary)
+  assert.equal(specification.qualityPlannerProductivityModuleQuality, legendary)
+  assert.equal(specification.machineQualityOverrides.size, 0)
+  assert.ok(moduleSpec.moduleQualities.every((quality) => quality === legendary))
+  assert.equal(moduleSpec.moduleQualityOverrides.size, 0)
+  assert.ok(moduleSpec.beaconModuleQualities.every((quality) => quality === legendary))
+  assert.equal(moduleSpec.beaconModuleQualityOverrides.size, 0)
+  assert.equal(moduleSpec.beaconQuality, legendary)
+  assert.equal(moduleSpec.beaconQualityOverride, false)
+  assert.equal(target.qualityLevel, 4)
+  assert.equal(target.qualityStrategy, "auto")
+  assert.equal(target.preservedRate, targetRate)
+
+  assert.deepEqual([...specification.selectedPlanets], [vulcanus])
+  assert.equal(specification.belt, belt)
+  assert.equal(specification.beltStackSize.toString(), "3")
+  assert.equal(specification.miningProd.toString(), "7/10")
+  assert.equal(specification.getBuildingOverride(circuit), assembler)
+  assert.deepEqual(moduleSpec.modules, modulesBefore)
+  assert.deepEqual(moduleSpec.beaconModules, beaconModulesBefore)
+  assert.equal(moduleSpec.beaconCount.toString(), "6")
 })

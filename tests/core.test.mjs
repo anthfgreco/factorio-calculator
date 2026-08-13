@@ -1302,13 +1302,22 @@ test("default advanced circuit quality target recommends assembling machine 2 an
   assert.equal(factorySpec.getBuilding(unrelatedRecipe), unrelatedBuilding)
   assert.equal(factorySpec.spec.has(unrelatedRecipe), false)
 
-  factorySpec.buildTargets = [{ item, recipe, qualityLevel: 1, changedBuilding: false, getRate: () => one }]
+  factorySpec.buildTargets = [
+    {
+      item,
+      recipe,
+      qualityLevel: 1,
+      qualityStrategy: "direct",
+      changedBuilding: false,
+      getRate: () => one,
+    },
+  ]
   assert.doesNotThrow(() => factorySpec.updateSolution())
   assert.equal(factorySpec.lastError, null)
   assert.ok(factorySpec.lastTotals !== null)
 })
 
-test("target quality handler configures only the advanced circuit and keeps results valid", async () => {
+test("target quality handler enables automatic planet planning without mutating recipe equipment", async () => {
   const runtime = await createTestRuntime()
   const factorySpec = resetSpec()
   configureModelRuntime({
@@ -1328,51 +1337,53 @@ test("target quality handler configures only the advanced circuit and keeps resu
     runtime.beaconPower,
   )
   factorySpec.setDefaultPriority()
-  factorySpec.selectOnePlanet(runtime.planets.get("nauvis"))
+  factorySpec.selectOnePlanet(runtime.planets.get("vulcanus"))
+  factorySpec.setRecipeLocation(runtime.recipes.get("iron-plate"), runtime.planets.get("fulgora"))
+  factorySpec.qualityPlannerModule = runtime.modules.get("quality-module-2")
+  factorySpec.qualityPlannerModuleQuality = factorySpec.qualities.get("legendary")
 
-  const item = runtime.items.get("advanced-circuit")
-  const recipe = runtime.recipes.get("advanced-circuit")
+  const item = runtime.items.get("iron-plate")
+  const recipe = runtime.recipes.get("iron-plate")
   const unrelatedRecipe = runtime.recipes.get("electronic-circuit")
   const unrelatedBuilding = factorySpec.getBuilding(unrelatedRecipe)
+  const hadRecipeCustomization = factorySpec.spec.has(recipe)
+  const originalBuilding = factorySpec.getBuilding(recipe)
   const target = {
     item,
     recipe,
     qualityLevel: 0,
+    qualityStrategy: "direct",
     changedBuilding: false,
     getRate: () => one,
     setQuality(level) {
       this.qualityLevel = level
     },
-    clearQualityWarning() {
-      this.warningCleared = true
-    },
-    showQualityUnavailable() {
-      throw new Error("The default quality target should be configurable")
+    setQualityStrategy(strategy, preservedRate) {
+      this.qualityStrategy = strategy
+      this.preservedRate = preservedRate
     },
   }
   factorySpec.buildTargets = [target]
 
-  handleTargetQualityChange(target, 1)
+  handleTargetQualityChange(target, 4)
 
-  const moduleSpec = factorySpec.getModuleSpec(recipe)
-  assert.equal(target.qualityLevel, 1)
-  assert.equal(target.warningCleared, true)
-  assert.equal(
-    moduleSpec.modules.every((module) => module.key === "quality-module"),
-    true,
-  )
+  assert.equal(target.qualityLevel, 4)
+  assert.equal(target.qualityStrategy, "auto")
+  assert.equal(target.preservedRate.toString(), "1")
+  assert.equal(factorySpec.spec.has(recipe), hadRecipeCustomization)
+  assert.equal(factorySpec.getBuilding(recipe), originalBuilding)
   assert.equal(factorySpec.getBuilding(unrelatedRecipe), unrelatedBuilding)
   assert.equal(factorySpec.lastError, null)
-  assert.ok(factorySpec.lastTotals !== null)
+  assert.equal(factorySpec.qualityPlans.length, 1)
+  assert.equal(factorySpec.qualityPlans[0].profile, "vulcanus")
+  assert.equal(factorySpec.qualityPlans[0].recipe.key, "casting-iron")
 
-  handleTargetQualityChange(target, 1)
   handleTargetQualityChange(target, 0)
   assert.equal(target.qualityLevel, 0)
-  assert.equal(factorySpec.getBuilding(recipe).key, "assembling-machine-2")
-  assert.equal(
-    factorySpec.getModuleSpec(recipe).modules.every((module) => module.key === "quality-module"),
-    true,
-  )
+  assert.equal(target.qualityStrategy, "direct")
+  assert.equal(factorySpec.qualityPlans.length, 0)
+  assert.equal(factorySpec.spec.has(recipe), hadRecipeCustomization)
+  assert.equal(factorySpec.getBuilding(recipe), originalBuilding)
 })
 
 test("quality target recommendation follows the default module tier and stays idempotent", async () => {
@@ -1462,6 +1473,7 @@ test("the solver still rejects a manually constructed impossible quality target"
       item: items.get("advanced-circuit"),
       recipe,
       qualityLevel: 1,
+      qualityStrategy: "direct",
       changedBuilding: false,
       getRate: () => one,
     },
@@ -1487,6 +1499,7 @@ test("exact-quality targets scale the selected recipe by its direct yield", asyn
       item,
       recipe,
       qualityLevel: 1,
+      qualityStrategy: "direct",
       changedBuilding: false,
       getRate: () => one,
     },

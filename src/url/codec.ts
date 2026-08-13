@@ -1,4 +1,5 @@
 import { deflateRaw, inflateRaw } from "pako"
+import { isQualityStrategy, type QualityStrategy } from "../quality/contracts.js"
 
 const MAX_COMPRESSED_FRAGMENT_DEPTH = 3
 
@@ -21,36 +22,58 @@ export interface TargetSetting {
   readonly value: string
   readonly recipeKey: string | null
   readonly qualityLevel: number
+  readonly qualityStrategy: QualityStrategy
 }
 
 export function formatTargetSetting(target: TargetSetting): string {
   let setting = `${target.itemKey}:${target.mode}:${target.value}`
   if (target.mode === "f" && target.recipeKey !== null) setting += `:${target.recipeKey}`
   if (target.qualityLevel > 0) setting += `:q${target.qualityLevel}`
+  if (target.qualityStrategy !== "direct") setting += `:qs-${target.qualityStrategy}`
   return setting
 }
 
 export function parseTargetSetting(setting: string): TargetSetting | null {
   const parts = setting.split(":")
-  const qualityParts = parts.filter((part) => /^q\d+$/.test(part))
-  if (qualityParts.length > 1) return null
-
-  const coreParts = parts.filter((part) => !/^q\d+$/.test(part))
-  const itemKey = coreParts[0]
-  const mode = coreParts[1]
-  const value = coreParts[2]
+  const itemKey = parts[0]
+  const mode = parts[1]
+  const value = parts[2]
   if (itemKey === undefined || itemKey === "" || value === undefined || value === "") return null
   if (mode !== "f" && mode !== "r" && mode !== "b") return null
-  if ((mode === "f" && coreParts.length > 4) || (mode !== "f" && coreParts.length !== 3)) return null
 
-  const recipeKey = mode === "f" ? (coreParts[3] ?? null) : null
-  const qualityPart = qualityParts[0]
+  let recipeKey: string | null = null
+  let qualityLevel = 0
+  let qualityStrategy: QualityStrategy = "direct"
+  let seenQuality = false
+  let seenStrategy = false
+
+  for (const part of parts.slice(3)) {
+    if (/^q\d+$/.test(part)) {
+      if (seenQuality) return null
+      qualityLevel = Number(part.slice(1))
+      seenQuality = true
+      continue
+    }
+    if (part.startsWith("qs-")) {
+      const strategy = part.slice(3)
+      if (seenStrategy || !isQualityStrategy(strategy)) return null
+      qualityStrategy = strategy
+      seenStrategy = true
+      continue
+    }
+    if (mode !== "f" || recipeKey !== null || part === "") return null
+    recipeKey = part
+  }
+
+  if (qualityLevel === 0 && qualityStrategy !== "direct") return null
+
   return {
     itemKey,
     mode,
     value,
     recipeKey,
-    qualityLevel: qualityPart === undefined ? 0 : Number(qualityPart.slice(1)),
+    qualityLevel,
+    qualityStrategy,
   }
 }
 

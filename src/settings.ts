@@ -6,6 +6,10 @@ import {
   DEFAULT_BELT,
   DEFAULT_FUEL,
   DEFAULT_PLANET,
+  DEFAULT_QUALITY_PLANNER_MODULE_KEY,
+  DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY,
+  DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY,
+  DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY,
   FactorySpecification,
   setRecipeEnabled,
   spec,
@@ -68,6 +72,7 @@ import {
   visualizerRender,
   visualizerType,
 } from "./state.js"
+import { isQualityPlannerObjective } from "./quality/contracts.js"
 import { parseBeltStackItemSettings, parseBeltStackSettingPolicy, parseTargetSetting } from "./url/codec.js"
 
 type SettingsMap = ReadonlyMap<string, string>
@@ -538,6 +543,7 @@ function renderTargets(settings: SettingsMap) {
         target.setBelts(parsed.value)
       }
       target.setQuality(parsed.qualityLevel)
+      target.setQualityStrategy(parsed.qualityStrategy)
     }
   } else {
     spec.addTarget()
@@ -596,6 +602,34 @@ function renderQualitySelect(
   })
 }
 
+function renderQualityPlannerModuleSelect(options: {
+  readonly containerId: string
+  readonly label: string
+  readonly modules: readonly Module[]
+  readonly selected: Module | null
+  readonly automaticLabel: string
+  readonly choose: (module: Module | null) => void
+}): void {
+  const container = select<HTMLElement, unknown>(`#${options.containerId}`)
+  container.selectAll("*").remove()
+  const input = container
+    .append("select")
+    .attr("aria-label", options.label)
+    .classed("quality-planner-module-select", true)
+  input
+    .selectAll("option")
+    .data<Module | null>([null, ...options.modules])
+    .join("option")
+    .attr("value", (module) => module?.key ?? "")
+    .text((module) => module?.name ?? options.automaticLabel)
+  input.property("value", options.selected?.key ?? "").on("change", (event: Event) => {
+    const target = event.target
+    if (!(target instanceof HTMLSelectElement)) return
+    options.choose(target.value === "" ? null : (spec.modules.get(target.value) ?? null))
+    spec.updateSolution()
+  })
+}
+
 function renderEquipmentQualityDefaults(settings: SettingsMap): void {
   spec.setDefaultMachineQuality(getQuality(settings.get("dmachq")))
   spec.setDefaultModuleQuality(getQuality(settings.get("dmq")))
@@ -608,6 +642,74 @@ function renderEquipmentQualityDefaults(settings: SettingsMap): void {
   )
   renderQualitySelect("default_beacon_quality", "Default beacon quality", spec.defaultBeaconQuality, (quality) =>
     spec.setDefaultBeaconQuality(quality),
+  )
+}
+
+function renderQualityPlanner(settings: SettingsMap): void {
+  const configuredQualityModule = settings.has("qpm")
+    ? getModule(settings.get("qpm") ?? "null")
+    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null)
+  spec.qualityPlannerModule = configuredQualityModule?.hasQualityEffect() ? configuredQualityModule : null
+  spec.qualityPlannerModuleQuality = settings.has("qpmq")
+    ? getQuality(settings.get("qpmq"))
+    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
+  const configuredProductivityModule = settings.has("qppm")
+    ? getModule(settings.get("qppm") ?? "null")
+    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY) ?? null)
+  spec.qualityPlannerProductivityModule = configuredProductivityModule?.hasProdEffect()
+    ? configuredProductivityModule
+    : null
+  spec.qualityPlannerProductivityModuleQuality = settings.has("qppmq")
+    ? getQuality(settings.get("qppmq"))
+    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
+  const objective = settings.get("qpo")
+  spec.qualityPlannerObjective =
+    objective !== undefined && isQualityPlannerObjective(objective) ? objective : "practical"
+
+  const qualityModules = sorted(
+    [...spec.modules.values()].filter((module) => module.hasQualityEffect()),
+    (module) => module.order,
+  )
+  renderQualityPlannerModuleSelect({
+    containerId: "quality_planner_module",
+    label: "Quality factory quality module",
+    modules: qualityModules,
+    selected: spec.qualityPlannerModule,
+    automaticLabel: "Best compatible quality module",
+    choose(module) {
+      spec.qualityPlannerModule = module?.hasQualityEffect() ? module : null
+    },
+  })
+  renderQualitySelect(
+    "quality_planner_module_quality",
+    "Quality factory quality module quality",
+    spec.qualityPlannerModuleQuality,
+    (quality) => {
+      spec.qualityPlannerModuleQuality = quality
+    },
+  )
+
+  const productivityModules = sorted(
+    [...spec.modules.values()].filter((module) => module.hasProdEffect()),
+    (module) => module.order,
+  )
+  renderQualityPlannerModuleSelect({
+    containerId: "quality_planner_productivity_module",
+    label: "Quality factory productivity module",
+    modules: productivityModules,
+    selected: spec.qualityPlannerProductivityModule,
+    automaticLabel: "Best compatible productivity module",
+    choose(module) {
+      spec.qualityPlannerProductivityModule = module?.hasProdEffect() ? module : null
+    },
+  })
+  renderQualitySelect(
+    "quality_planner_productivity_module_quality",
+    "Quality factory productivity module quality",
+    spec.qualityPlannerProductivityModuleQuality,
+    (quality) => {
+      spec.qualityPlannerProductivityModuleQuality = quality
+    },
   )
 }
 
@@ -1403,6 +1505,7 @@ export function renderSettings(settings: SettingsMap) {
   renderVisualizer(settings)
   renderEquipmentQualityDefaults(settings)
   renderDefaultModule(settings)
+  renderQualityPlanner(settings)
   renderDefaultBeacon(settings)
   renderResourcePriorities(settings)
   renderRecipeAndLocationSettings(settings)

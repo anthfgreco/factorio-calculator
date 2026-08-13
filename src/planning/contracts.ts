@@ -1,6 +1,7 @@
 import type { Rational } from "../math.js"
 import type { Building, ModelFactorySpecification, Module, ModuleSpec, Planet } from "../models.js"
 import type { DisabledRecipe, Item, Recipe } from "../recipes.js"
+import type { QualityStrategy, QualityTargetPlan } from "../quality/contracts.js"
 
 export const QUALITY_TIERS = ["Normal", "Uncommon", "Rare", "Epic", "Legendary"] as const
 
@@ -8,6 +9,7 @@ export interface PlanningTarget {
   readonly item: Item
   readonly recipe: Recipe | null
   readonly qualityLevel: number
+  readonly qualityStrategy: QualityStrategy
   getRate(): Rational
 }
 
@@ -23,6 +25,7 @@ export interface PlanningSpecification extends ModelFactorySpecification {
   readonly bufferMinutes: Rational
   readonly beaconPower: Rational
   readonly buildTargets: readonly PlanningTarget[]
+  readonly qualityPlans: readonly QualityTargetPlan[]
   getBuildingOverrideSource(recipe: Recipe): "default" | "automatic-quality" | "user"
   getBuildingOverride(recipe: Recipe): Building | null
   getCompatibleBuildings(recipe: Recipe, availableOnly?: boolean): Building[]
@@ -74,6 +77,7 @@ export interface QualityTargetRow {
   readonly requested: Rational
   readonly totalProduction: Rational
   readonly otherQualityByproduct: Rational
+  readonly strategy: "direct"
 }
 
 export type QualityTargetFeasibility =

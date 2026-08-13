@@ -1,4 +1,4 @@
-import { create, select, selectAll } from "d3"
+import { create, select, selectAll, type BaseType, type Selection } from "d3"
 import type { Instance } from "tippy.js"
 import {
   FactorySpecification,
@@ -31,6 +31,13 @@ import { toggleIgnoreHandler, usesLegacyCalculation } from "./state.js"
 import { formatSettings } from "./url-state.js"
 import type { SolverItem, SolverRecipe, Totals } from "./solver.js"
 import { getAssignedLocation, getCompatibleLocations as getPlanningLocations, getLogistics } from "./planning.js"
+import { QUALITY_TIERS } from "./planning/contracts.js"
+import type {
+  QualifiedItemAmount,
+  QualityOperationRate,
+  QualityTargetPlan,
+  QualityTierConfiguration,
+} from "./quality/contracts.js"
 
 import { type FactoryRecipe, getRecipeGroups, isFactoryRecipe, isItem, topoSort } from "./results/grouping.js"
 import { getFactorySummary } from "./results/summary.js"
@@ -898,6 +905,471 @@ interface SummaryCard {
   readonly value: string
 }
 
+interface QualityPlanMetric {
+  readonly label: string
+  readonly value: string
+}
+
+interface QualityBuildLine {
+  readonly stage: string
+  readonly recipe: Recipe
+  readonly kind: QualityOperationRate["kind"]
+  readonly configuration: QualityTierConfiguration
+  readonly qualityLevels: Set<number>
+  machineCount: Rational
+}
+
+const QUALITY_BUILD_STAGE_ORDER = [
+  "Local sources",
+  "Fluid production",
+  "Quality production",
+  "Guaranteed-quality crafting",
+  "Recycling",
+] as const
+
+function formatQualityPercent(value: Rational, precision = 6): string {
+  return `${formatCanadianNumber(value.mul(Rational.from_integer(100)).toDecimal(precision))}%`
+}
+
+function qualifiedAmountKey(entry: Pick<QualifiedItemAmount, "item" | "qualityLevel">): string {
+  return `${entry.item.key}@q${entry.qualityLevel}`
+}
+
+function formatQualifiedAmounts(
+  specification: FactorySpecification,
+  amounts: readonly QualifiedItemAmount[],
+): string[] {
+  return amounts.map((entry) => {
+    const quality =
+      entry.item.phase === "solid" ? `${QUALITY_TIERS[entry.qualityLevel] ?? `Quality ${entry.qualityLevel}`} ` : ""
+    return `${specification.format.rate(entry.amount)}/${specification.format.rateName} ${quality}${entry.item.name}`
+  })
+}
+
+function subtractQualifiedAmounts(
+  amounts: readonly QualifiedItemAmount[],
+  subtract: readonly QualifiedItemAmount[],
+): QualifiedItemAmount[] {
+  const remaining = new Map(subtract.map((entry) => [qualifiedAmountKey(entry), entry.amount]))
+  return amounts.flatMap((entry) => {
+    const amount = entry.amount.sub(remaining.get(qualifiedAmountKey(entry)) ?? zero)
+    return zero.less(amount) ? [{ ...entry, amount }] : []
+  })
+}
+
+function moduleLoadoutLabel(configuration: QualityTierConfiguration): string {
+  const groups = new Map<string, { count: number; label: string }>()
+  for (let index = 0; index < configuration.modules.length; index++) {
+    const module = configuration.modules[index]
+    if (module === null || module === undefined) continue
+    const quality = configuration.moduleQualities[index]?.name ?? "Normal"
+    const key = `${quality}::${module.key}`
+    const group = groups.get(key) ?? { count: 0, label: `${quality} ${module.name}` }
+    group.count++
+    groups.set(key, group)
+  }
+  const modules = [...groups.values()].map(({ count, label }) => `${count} × ${label}`).join(", ")
+  const beaconGroups = new Map<string, { count: number; label: string }>()
+  for (let index = 0; index < configuration.beaconModules.length; index++) {
+    const module = configuration.beaconModules[index]
+    if (module === null || module === undefined) continue
+    const quality = configuration.beaconModuleQualities[index]?.name ?? "Normal"
+    const key = `${quality}::${module.key}`
+    const group = beaconGroups.get(key) ?? { count: 0, label: `${quality} ${module.name}` }
+    group.count++
+    beaconGroups.set(key, group)
+  }
+  const beacons = [...beaconGroups.values()].map(({ count, label }) => `${count} × ${label}`).join(", ")
+  const beacon =
+    beacons === "" || configuration.beaconCount.isZero()
+      ? ""
+      : `${configuration.beaconCount.toDecimal()} × ${configuration.beaconQuality.name} beacon (${beacons})`
+  return [modules || "No direct modules", beacon].filter(Boolean).join("; ")
+}
+
+function moduleConfigurationLabel(configuration: QualityTierConfiguration): string {
+  return `${configuration.machineQuality.name} ${configuration.building?.name ?? "hand crafting"}; ${moduleLoadoutLabel(configuration)}`
+}
+
+function qualityPlanDiagnosticMetrics(
+  specification: FactorySpecification,
+  plan: QualityTargetPlan,
+): QualityPlanMetric[] {
+  const metrics: QualityPlanMetric[] = [
+    {
+      label: "Expected target",
+      value: `${specification.format.rate(plan.requested)}/${specification.format.rateName}`,
+    },
+    { label: "First-pass Normal → target", value: formatQualityPercent(plan.firstPassChance) },
+    {
+      label: "Crafting operations",
+      value: `${specification.format.rate(plan.totalCrafts)}/${specification.format.rateName}`,
+    },
+    {
+      label: "Recycling operations",
+      value: `${specification.format.rate(plan.totalRecycles)}/${specification.format.rateName}`,
+    },
+    {
+      label: "Machines to place",
+      value: specification.format.count(plan.totalMachineCount),
+    },
+  ]
+  const represented = powerRepresentation(plan.totalPower)
+  metrics.push({
+    label: "Power",
+    value: `${specification.format.count(represented.power)} ${represented.suffix}`,
+  })
+  return metrics
+}
+
+function recycledItemName(recipe: Recipe): string {
+  return recipe.ingredients.find(({ item }) => item.phase === "solid")?.item.name ?? recipe.name
+}
+
+function qualityOperationLabel(operation: Pick<QualityOperationRate, "kind" | "recipe">): string {
+  if (operation.kind === "dispose" || operation.kind === "recycle") {
+    return `Recycle ${recycledItemName(operation.recipe)}`
+  }
+  if (operation.kind === "source") {
+    if (!operation.recipe.isResource()) return operation.recipe.name
+    return operation.recipe.products.some(({ item }) => item.phase !== "solid")
+      ? `Pump ${operation.recipe.name}`
+      : `Mine ${operation.recipe.name}`
+  }
+  return operation.recipe.name
+}
+
+function qualityBuildStage(operation: QualityOperationRate): string {
+  if (operation.kind === "source") return "Local sources"
+  if (operation.kind === "recycle" || operation.kind === "dispose") return "Recycling"
+  if (operation.recipe.products[0]?.item.phase !== "solid") return "Fluid production"
+  return zero.less(operation.configuration.qualityChance) ? "Quality production" : "Guaranteed-quality crafting"
+}
+
+function aggregateQualityBuildLines(plan: QualityTargetPlan): QualityBuildLine[] {
+  const lines = new Map<string, QualityBuildLine>()
+  for (const operation of plan.operations) {
+    const stage = qualityBuildStage(operation)
+    const configurationKey = moduleConfigurationLabel(operation.configuration)
+    const key = `${stage}::${operation.kind}::${operation.recipe.key}::${configurationKey}`
+    const existing = lines.get(key)
+    if (existing === undefined) {
+      lines.set(key, {
+        stage,
+        recipe: operation.recipe,
+        kind: operation.kind,
+        configuration: operation.configuration,
+        qualityLevels: new Set([operation.qualityLevel]),
+        machineCount: operation.machineCount,
+      })
+      continue
+    }
+    existing.qualityLevels.add(operation.qualityLevel)
+    existing.machineCount = existing.machineCount.add(operation.machineCount)
+  }
+  return [...lines.values()].sort((left, right) => {
+    const stage =
+      QUALITY_BUILD_STAGE_ORDER.indexOf(left.stage as (typeof QUALITY_BUILD_STAGE_ORDER)[number]) -
+      QUALITY_BUILD_STAGE_ORDER.indexOf(right.stage as (typeof QUALITY_BUILD_STAGE_ORDER)[number])
+    if (stage !== 0) return stage
+    return (left.recipe.order ?? "").localeCompare(right.recipe.order ?? "")
+  })
+}
+
+function qualityPlanProfileLabel(specification: FactorySpecification, plan: QualityTargetPlan): string {
+  if (plan.profile === "planet") {
+    const planetName = specification.planets?.get(plan.planetKey)?.name
+    return `${planetName ?? plan.planetKey} practical quality factory`
+  }
+  return "Vulcanus practical quality factory"
+}
+
+function renderQualityEquipment<GElement extends BaseType, Datum, PElement extends BaseType, PDatum>(
+  container: Selection<GElement, Datum, PElement, PDatum>,
+  configuration: QualityTierConfiguration,
+): void {
+  const directModules = configuration.modules.flatMap((module, index) => {
+    const quality = configuration.moduleQualities[index]
+    return module === null || module === undefined || quality === undefined ? [] : [{ module, quality }]
+  })
+  const beaconModules = configuration.beaconModules.flatMap((module, index) => {
+    const quality = configuration.beaconModuleQualities[index]
+    return module === null || module === undefined || quality === undefined ? [] : [{ module, quality }]
+  })
+
+  if (directModules.length === 0) {
+    container.append("span").classed("quality-plan-equipment-empty", true).text("No direct modules")
+  } else {
+    const slots = container
+      .append("span")
+      .classed("quality-plan-equipment-slots", true)
+      .selectAll<HTMLSpanElement, (typeof directModules)[number]>("span")
+      .data(directModules)
+      .join("span")
+      .classed("quality-plan-equipment-icon", true)
+      .attr("role", "img")
+      .attr("aria-label", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
+      .attr("title", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
+    slots.append(({ module }) => module.icon.make(32, true))
+    slots
+      .append(({ quality }) => quality.icon.make(16, true))
+      .classed("equipment-quality-badge", true)
+      .attr("data-quality", ({ quality }) => quality.key)
+      .attr("title", ({ quality }) => `${quality.name} quality`)
+  }
+
+  if (!configuration.beaconCount.isZero() && beaconModules.length > 0) {
+    container
+      .append("span")
+      .classed("quality-plan-beacon-label", true)
+      .text(`${configuration.beaconCount.toDecimal()} × ${configuration.beaconQuality.name} beacon`)
+    const slots = container
+      .append("span")
+      .classed("quality-plan-equipment-slots", true)
+      .selectAll<HTMLSpanElement, (typeof beaconModules)[number]>("span")
+      .data(beaconModules)
+      .join("span")
+      .classed("quality-plan-equipment-icon", true)
+      .attr("role", "img")
+      .attr("aria-label", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
+      .attr("title", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
+    slots.append(({ module }) => module.icon.make(32, true))
+    slots
+      .append(({ quality }) => quality.icon.make(16, true))
+      .classed("equipment-quality-badge", true)
+      .attr("data-quality", ({ quality }) => quality.key)
+      .attr("title", ({ quality }) => `${quality.name} quality`)
+  }
+}
+
+function renderMetricGrid<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
+  container: Selection<GElement, TDatum, PElement, PDatum>,
+  metrics: readonly QualityPlanMetric[],
+): void {
+  const metric = container
+    .append("div")
+    .classed("quality-plan-metrics", true)
+    .selectAll<HTMLDivElement, QualityPlanMetric>("div")
+    .data(metrics)
+    .join("div")
+    .classed("quality-plan-metric", true)
+  metric
+    .append("div")
+    .classed("quality-plan-metric-value", true)
+    .text((entry: QualityPlanMetric) => entry.value)
+  metric
+    .append("div")
+    .classed("quality-plan-metric-label", true)
+    .text((entry: QualityPlanMetric) => entry.label)
+}
+
+function renderQualityPlans<PElement extends BaseType, PDatum>(
+  root: Selection<HTMLElement, unknown, PElement, PDatum>,
+  specification: FactorySpecification,
+  plans: readonly QualityTargetPlan[],
+): void {
+  const list = root
+    .selectAll<HTMLDivElement, readonly QualityTargetPlan[]>("div.quality-plan-list")
+    .data(plans.length === 0 ? [] : [plans])
+    .join("div")
+    .classed("quality-plan-list", true)
+
+  list
+    .selectAll<HTMLDetailsElement, QualityTargetPlan>("details.quality-plan")
+    .data(plans)
+    .join("details")
+    .classed("quality-plan", true)
+    .property("open", true)
+    .each(function (this: HTMLDetailsElement, plan: QualityTargetPlan) {
+      const card = select(this)
+      card.selectAll("*").remove()
+      const tier = QUALITY_TIERS[plan.qualityLevel] ?? `Quality ${plan.qualityLevel}`
+      const summary = card.append("summary").classed("quality-plan-title", true)
+      summary.append("span").classed("quality-plan-title-main", true).text(`${tier} ${plan.item.name}`)
+      summary
+        .append("span")
+        .classed("quality-plan-title-rate", true)
+        .text(`${specification.format.rate(plan.requested)}/${specification.format.rateName}`)
+      const recyclerMachines = plan.operations
+        .filter((operation) => operation.kind === "recycle" || operation.kind === "dispose")
+        .reduce((total, operation) => total.add(operation.machineCount), zero)
+      summary
+        .append("span")
+        .classed("quality-plan-title-profile", true)
+        .text(
+          `${qualityPlanProfileLabel(specification, plan)}${recyclerMachines.isZero() ? "" : ` · ${specification.format.count(recyclerMachines)} recyclers`}`,
+        )
+
+      const allFresh = [...plan.freshInputs, ...plan.fluidInputs]
+      const localFeed = subtractQualifiedAmounts(allFresh, plan.importedInputs)
+      const feed = card.append("section").classed("quality-plan-material quality-plan-primary-section", true)
+      feed.append("h4").text("Feed")
+      feed
+        .append("div")
+        .classed("quality-plan-lines", true)
+        .selectAll("div")
+        .data(
+          formatQualifiedAmounts(specification, localFeed).length === 0
+            ? ["No local raw inputs"]
+            : formatQualifiedAmounts(specification, localFeed),
+        )
+        .join("div")
+        .text((line: string) => line)
+
+      if (plan.importedInputs.length > 0) {
+        const planetName = specification.planets?.get(plan.planetKey)?.name ?? plan.planetKey
+        const imports = card.append("section").classed("quality-plan-imports quality-plan-primary-section", true)
+        imports.append("h4").text(`Bring to ${planetName}`)
+        imports
+          .append("div")
+          .classed("quality-plan-lines", true)
+          .selectAll("div")
+          .data(formatQualifiedAmounts(specification, plan.importedInputs))
+          .join("div")
+          .text((line: string) => line)
+      }
+
+      const build = card.append("section").classed("quality-plan-build quality-plan-primary-section", true)
+      build.append("h4").text("Build")
+      const buildLines = aggregateQualityBuildLines(plan)
+      for (const stageName of QUALITY_BUILD_STAGE_ORDER) {
+        const stageLines = buildLines.filter((line) => line.stage === stageName)
+        if (stageLines.length === 0) continue
+        const stage = build.append("details").classed("quality-plan-build-stage", true)
+        const stageMachines = stageLines.reduce((total, line) => total.add(line.machineCount), zero)
+        const stageSummary = stage.append("summary")
+        stageSummary.append("span").text(stageName)
+        stageSummary
+          .append("span")
+          .classed("quality-plan-build-stage-meta", true)
+          .text(
+            `${stageLines.length} ${stageLines.length === 1 ? "step" : "steps"}${stageMachines.isZero() ? "" : ` · ${specification.format.count(stageMachines)} machines`}`,
+          )
+        const rows = stage
+          .selectAll<HTMLDivElement, QualityBuildLine>("div.quality-plan-build-line")
+          .data(stageLines)
+          .join("div")
+          .classed("quality-plan-build-line", true)
+        const machine = rows.append("div").classed("quality-plan-build-machine", true)
+        machine.append("strong").text((line) => {
+          const building = line.configuration.building
+          const machineName = building === null ? "Hand crafting" : formatEquipmentName(building.name)
+          const quality =
+            line.configuration.machineQuality.key === "normal" ? "" : `${line.configuration.machineQuality.name} `
+          return `${specification.format.count(line.machineCount)} × ${quality}${machineName}`
+        })
+        machine.append("span").text((line) => ` — ${qualityOperationLabel(line)}`)
+        const equipment = rows.append("div").classed("quality-plan-build-equipment", true)
+        equipment.each(function (line) {
+          renderQualityEquipment(select<HTMLDivElement, QualityBuildLine>(this), line.configuration)
+        })
+      }
+
+      const routing = card.append("section").classed("quality-plan-routing quality-plan-primary-section", true)
+      routing.append("h4").text("Routing")
+      const routingLines = [
+        `Keep ${tier} ${plan.item.name}.`,
+        `Recycle lower-quality products automatically${plan.recyclerRecipe === null ? " where a real recycler route exists" : ""}.`,
+      ]
+      if (plan.surplusOutputs.length > 0) routingLines.push("Store or route the unavoidable outputs listed in details.")
+      routing
+        .append("div")
+        .classed("quality-plan-lines", true)
+        .selectAll("div")
+        .data(routingLines)
+        .join("div")
+        .text((line: string) => line)
+
+      const advanced = card.append("details").classed("quality-plan-advanced", true)
+      advanced.append("summary").text("Quality math and full operation rates")
+      const advancedBody = advanced.append("div").classed("quality-plan-advanced-body", true)
+      const meta = advancedBody.append("div").classed("quality-plan-meta", true)
+      meta
+        .append("span")
+        .text(`Objective: ${plan.objective === "configured" ? "practical configured policy" : plan.objective}`)
+      meta.append("span").text("Automatic tier policy")
+      renderMetricGrid(advancedBody, qualityPlanDiagnosticMetrics(specification, plan))
+
+      const operationTable = advancedBody.append("table").classed("quality-plan-operations", true)
+      const header = operationTable.append("thead").append("tr")
+      for (const label of [
+        "Operation",
+        "Input quality",
+        `Rate/${specification.format.rateName}`,
+        "Machines",
+        "Power",
+        "Equipment",
+      ]) {
+        header.append("th").text(label)
+      }
+      const rows = operationTable
+        .append("tbody")
+        .selectAll<HTMLTableRowElement, QualityOperationRate>("tr")
+        .data(plan.operations)
+        .join("tr")
+      rows.append("td").text((operation: QualityOperationRate) => qualityOperationLabel(operation))
+      rows
+        .append("td")
+        .text(
+          (operation: QualityOperationRate) =>
+            QUALITY_TIERS[operation.qualityLevel] ?? `Quality ${operation.qualityLevel}`,
+        )
+      rows
+        .append("td")
+        .classed("numeric", true)
+        .text((operation: QualityOperationRate) => specification.format.rate(operation.rate))
+      rows
+        .append("td")
+        .classed("numeric", true)
+        .text((operation: QualityOperationRate) => specification.format.count(operation.machineCount))
+      rows
+        .append("td")
+        .classed("numeric", true)
+        .text((operation: QualityOperationRate) => {
+          const represented = powerRepresentation(operation.power)
+          return `${specification.format.count(represented.power)} ${represented.suffix}`
+        })
+      const equipment = rows
+        .append("td")
+        .append("div")
+        .classed("quality-plan-build-equipment quality-plan-operation-equipment", true)
+      equipment
+        .append("span")
+        .classed("quality-plan-operation-machine", true)
+        .text((operation: QualityOperationRate) => {
+          const building = operation.configuration.building
+          const quality =
+            operation.configuration.machineQuality.key === "normal"
+              ? ""
+              : `${operation.configuration.machineQuality.name} `
+          return `${quality}${building === null ? "Hand crafting" : formatEquipmentName(building.name)}`
+        })
+      equipment.each(function (operation) {
+        renderQualityEquipment(select(this), operation.configuration)
+      })
+
+      if (plan.surplusOutputs.length > 0) {
+        const surplus = advancedBody.append("div").classed("quality-plan-surplus", true)
+        surplus.append("h4").text("Unavoidable outputs")
+        surplus
+          .append("div")
+          .classed("quality-plan-lines", true)
+          .selectAll("div")
+          .data(formatQualifiedAmounts(specification, plan.surplusOutputs))
+          .join("div")
+          .text((line: string) => line)
+      }
+
+      advancedBody
+        .append("div")
+        .classed("quality-plan-notes", true)
+        .selectAll("div")
+        .data(plan.warnings)
+        .join("div")
+        .text((warning: string) => warning)
+    })
+}
+
 function renderFactorySummary(specification: FactorySpecification, totals: Totals): void {
   const summary = getFactorySummary(specification, totals)
   const root = select<HTMLElement, unknown>("#factory_summary").property("hidden", false)
@@ -969,10 +1441,14 @@ function renderFactorySummary(specification: FactorySpecification, totals: Total
   }
   for (const target of summary.planning.qualityTargets) {
     warnings.push(
-      `${target.tier} ${target.item.name}: ${formatCanadianNumber((target.probability.toFloat() * 100).toFixed(3))}% yield; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} total production required.`,
+      `${target.tier} ${target.item.name}: ${formatCanadianNumber((target.probability.toFloat() * 100).toFixed(3))}% first-pass chance; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} direct crafts if lower-quality outputs are not reused.`,
     )
   }
-  if (summary.qualityRecipeCount > 0 && summary.planning.qualityTargets.length === 0) {
+  if (
+    summary.qualityRecipeCount > 0 &&
+    summary.planning.qualityTargets.length === 0 &&
+    summary.planning.qualityPlans.length === 0
+  ) {
     warnings.push("Quality modules selected; choose a target quality to include its yield.")
   }
   const expired = summary.planning.freshness.filter((row) => row.expired)
@@ -998,6 +1474,8 @@ function renderFactorySummary(specification: FactorySpecification, totals: Total
     .join("div")
     .classed("factory-summary-warning", true)
     .text((warning: string) => warning)
+
+  renderQualityPlans(root, specification, summary.planning.qualityPlans)
 }
 
 function getErrorCode(error: unknown): string | null {
@@ -1044,8 +1522,17 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
   if (belt === null) throw new Error("Belt data is not initialized")
 
   select("#calculation_error").property("hidden", true)
-  select("table#totals").property("hidden", false)
   renderFactorySummary(spec, totals)
+  getDisplayGroups(totals)
+  const table = select<HTMLTableElement, unknown>("table#totals")
+  const showFactoryTable = displayGroups.some((group) => group.rows.length > 0)
+  table.property("hidden", !showFactoryTable)
+  if (!showFactoryTable) {
+    table.selectAll("thead th").remove()
+    table.selectAll("tbody").remove()
+    return
+  }
+
   const showLocations = spec.selectedPlanets.size > 1
   const showSurplus = totals.surplus.size > 0
   const headers: Header[] = [
@@ -1062,7 +1549,6 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
   ]
   const totalCols = headers.reduce((sum, header) => sum + header.colspan, 0)
 
-  const table = select<HTMLTableElement, unknown>("table#totals")
   table.classed("nosurplus", totals.surplus.size === 0)
 
   const headerRow = table
@@ -1087,7 +1573,6 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
     cell.append("span").text(header.text)
   })
 
-  getDisplayGroups(totals)
   const rowGroup = table
     .selectAll<HTMLTableSectionElement, DisplayGroup>("tbody")
     .data(displayGroups)

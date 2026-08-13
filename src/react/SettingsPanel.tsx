@@ -315,6 +315,53 @@ export function SettingsPanel({ commands, snapshot }: SettingsPanelProps) {
             </td>
           </tr>
 
+          <tr className="setting-row" hidden={!snapshot.settings.equipmentQualityAvailable}>
+            <td className="setting-label top">Quality factory</td>
+            <td>
+              <span className="quality-planner-settings">
+                <label>
+                  <span>Quality module</span>
+                  <span id="quality_planner_module" />
+                </label>
+                <label>
+                  <span>Quality module quality</span>
+                  <span id="quality_planner_module_quality" />
+                </label>
+                <label>
+                  <span>Productivity module</span>
+                  <span id="quality_planner_productivity_module" />
+                </label>
+                <label>
+                  <span>Productivity module quality</span>
+                  <span id="quality_planner_productivity_module_quality" />
+                </label>
+              </span>
+              <div className="setting-help">
+                Quality-producing stages and recyclers use the quality selection. Guaranteed target-quality crafting
+                uses the productivity selection where compatible.
+              </div>
+              <details className="quality-planner-advanced">
+                <summary>Advanced priority</summary>
+                <label>
+                  <span>Prefer</span>
+                  <select
+                    id="quality_planner_objective"
+                    value={snapshot.settings.qualityPlannerObjective}
+                    onChange={onPlanningChange}
+                  >
+                    <option value="practical">Practical factory (recommended)</option>
+                    <option value="materials">Fewer raw resources</option>
+                    <option value="machines">Fewer machines</option>
+                    <option value="power">Lower power</option>
+                  </select>
+                </label>
+                <div className="setting-help">
+                  Used as a route tiebreaker after meeting the target and preferring local resources.
+                </div>
+              </details>
+            </td>
+          </tr>
+
           <tr className="setting-row">
             <td className="setting-label">Default module (all eligible slots)</td>
             <td>

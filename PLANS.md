@@ -1,5 +1,115 @@
 # Execution Plans
 
+## Completed plan: remove undeployed quality modes
+
+### Goal
+
+Remove the undeployed target-loop and Full Fulgora modes, their URL state, and code made unreachable by their removal while preserving automatic planet quality planning and legacy direct quality links.
+
+### Constraints
+
+- Preserve exact `Rational` automatic Nauvis/Vulcanus flows, generated recycler recipes, and qualityless-fluid boundaries.
+- Preserve old direct quality links; reject the undeployed target-loop, Full Fulgora, objective, and excess-policy suffixes.
+- Keep the global Quality factory objective and gear settings used by automatic planet plans.
+- Preserve unrelated working-tree changes and the React/store/imperative-renderer ownership boundaries.
+
+### Done when
+
+- Target-loop and Full Fulgora can no longer be selected, decoded, or executed.
+- Legacy-only target state, planners, result fields, labels, graph kinds, math helpers, and tests are removed.
+- Automatic Nauvis/Vulcanus plans and legacy direct quality links retain focused behavioral coverage.
+- Formatting, focused checks, browser workflows, and the release gate pass.
+
+### Steps
+
+1. [x] Inventory target-loop and Full Fulgora state, execution, presentation, tests, and documentation.
+2. [x] Remove the legacy modes and simplify target/URL contracts.
+3. [x] Prune newly unreachable quality helpers, fields, labels, tests, and architecture entries.
+4. [x] Update documentation and changelog copy.
+5. [x] Run focused validation, browser workflows, and the release gate; review the final diff.
+
+## Completed plan: recursive Nauvis quality factories
+
+### Goal
+
+Make automatic Nauvis quality targets recursively produce quality-qualified intermediates with the configured quality-factory gear, and omit the ordinary Factory table and header when the quality plan is the complete result.
+
+### Constraints
+
+- Preserve exact `Rational` quality flows, generated recycler recipes, and Factorio quality/fluid boundaries.
+- Preserve the curated Vulcanus route and legacy direct quality URL behavior.
+- Keep Normal targets on the fast scalar solver and retain the ordinary table for mixed Normal and quality targets.
+- Keep result visibility in the imperative renderer; do not add a second React/store state source.
+
+### Done when
+
+- Nauvis → Late Space Age → 60 Legendary Advanced circuits/min expands copper cable, plastic, and electronic circuits into quality-planned operations instead of listing them as external Normal feed.
+- Pre-Legendary eligible stages use the configured quality module profile, while guaranteed Legendary crafting uses the configured productivity profile.
+- A quality-only calculation shows its complete quality card without an empty ordinary table or table header; mixed calculations retain the table.
+- Exact scenarios, UI/E2E behavior, runtime datasets, solver benchmarks, build budgets, and the release gate pass.
+
+### Steps
+
+1. [x] Add the reported Nauvis quality regression and conditional table/header behavior coverage.
+2. [x] Generalize the recursive practical quality graph from the curated Vulcanus implementation to selected planets.
+3. [x] Route new automatic Nauvis targets through the recursive graph while preserving legacy direct quality behavior.
+4. [x] Hide the ordinary Factory table and its header only when no scalar rows remain.
+5. [x] Update architecture and player documentation, format, run focused checks and the release gate, then review the final diff.
+
+## Completed plan: progression and Full Legendary presets
+
+### Goal
+
+Keep progression presets focused on research-era factory defaults, preserve the player's location, and provide a separate Full Legendary action for intentionally upgrading all target and equipment quality.
+
+### Constraints
+
+- Fresh plans default to Nauvis, while presets preserve explicit single- and multi-location selections.
+- Progression presets may set the available quality ceiling but do not upgrade target or equipment quality.
+- Full Legendary changes quality only; it preserves progression, location, machine/module types, and beacon layout.
+- Existing shared links remain backward-compatible and serialize the resulting state through established URL fields.
+
+### Steps
+
+1. [x] Slim progression presets to Early game, Pre-rocket, Early Space Age, and Late Space Age.
+2. [x] Remove preset-owned locations and make Late Space Age use express belts.
+3. [x] Add the Full Legendary quality action at the factory boundary and expose it through the typed UI command.
+4. [x] Add focused mechanic, rendered UI, URL, and browser coverage.
+5. [x] Format, run focused validation and the release gate, then review the final diff.
+
+## Completed plan: Vulcanus-first practical quality planning
+
+### Goal
+
+Turn quality planning into a planet-aware Factorio build workflow: a player chooses Vulcanus, a quality target, and available quality gear; the calculator selects the practical lava-to-solid quality chain, recycles failures, and reports what to build.
+
+### Constraints
+
+- Preserve the exact `Rational` quality-flow engine and legacy direct quality URL semantics.
+- Model Vulcanus from local source boundaries (`lava`, `calcite`, and other native resources), not synthetic external Normal plates.
+- Apply quality at the first solid-producing stage, productivity to qualityless-fluid production and guaranteed Legendary crafting where legal, and quality to recyclers.
+- Keep Factory rows compact and move Markov/LP diagnostics behind collapsed details.
+
+### Steps
+
+1. [x] Add a persisted global practical-quality profile and automatic quality-target strategy while retaining direct quality links.
+2. [x] Implement a curated Vulcanus quality graph from lava/molten metal through quality solids, downstream crafting, and real recycler disposal.
+3. [x] Replace per-target strategy/objective/excess controls with the single quality choice and global quality-gear settings.
+4. [x] Reframe quality results as grouped build/feed/keep/recycle stages with collapsed calculation details.
+5. [x] Update help, architecture, URL/state, and regression coverage for the Vulcanus workflow and direct-link compatibility.
+6. [x] Run available validation, review the diff, and produce updated repository, patch, checksums, and handoff artifacts.
+
+### Decision log
+
+- New non-Normal targets use an explicit persisted `auto` strategy; old URLs without a strategy remain direct and byte-compatible.
+- Vulcanus automatic planning uses curated local casting routes before generic producers, so iron/copper/steel/gears/cable start at molten-metal casting with quality modules.
+- Practical mode configures quality below Legendary, quality in recyclers, productivity for fluid-output and guaranteed Legendary stages, and reports unavoidable imports rather than hiding them.
+- Target rows expose player intent only; automatic planning policy remains in the shared Quality factory settings.
+- A single explicitly selected planet overrides a target recipe’s historical location pin in automatic mode, so a Vulcanus plan can replace ordinary iron smelting with casting iron.
+- Quality stages and recyclers use the global quality-factory module profile; guaranteed-quality stages prefer configured productivity defaults or the best compatible productivity module, using the existing default module quality rather than assuming equally upgraded productivity gear.
+- Automatic quality targets hide the manual recipe selector because the planet profile owns route selection; direct quality targets keep the existing selector.
+- Primary results group local sources, fluid production, quality production, guaranteed-quality crafting, and recycling; exact tier rates remain available in collapsed details.
+
 Use an execution plan for changes that span multiple modules, alter architecture or persisted behavior, or require more than one validation loop. Keep it current while work is active.
 
 ## Completed plan: Canadian number and tooltip polish
@@ -281,3 +391,36 @@ List observable completion criteria, including tests and release checks.
 ### Decision log
 
 Record only decisions that a later agent would otherwise have to rediscover: alternatives rejected, compatibility tradeoffs, and unresolved follow-ups.
+
+## Completed plan: explicit quality-factory productivity modules
+
+### Goal
+
+Let players independently choose the productivity module and module quality used by automatic quality factories, with Productivity Module 3 at Legendary quality as the fresh default.
+
+### Context and constraints
+
+- Keep quality-producing modules and guaranteed-quality productivity modules as separate persisted settings.
+- Preserve the imperative Settings mount-point ownership and automatic best-compatible option.
+- Do not couple automatic quality factories back to the ordinary factory's default and secondary module settings.
+- Leave the existing interactive and read-only icon renderers separate.
+
+### Done when
+
+- Settings exposes explicit quality and productivity module/quality pairs.
+- Quality plans use the selected productivity module where compatible and fall back predictably when automatic selection is chosen.
+- The new choices survive shared URLs and reloads.
+- Focused planner, URL, and browser tests plus the release gate pass.
+
+### Steps
+
+1. [x] Trace existing module selection, settings rendering, URL persistence, and quality-plan rendering.
+2. [x] Add dedicated productivity module state, defaults, and planner policy.
+3. [x] Add persisted Settings controls and clarify player-facing labels.
+4. [x] Add focused planner, URL, and browser coverage.
+5. [x] Format, run focused validation and the release gate, then review the final diff.
+
+### Decision log
+
+- Keep `Best compatible productivity module` as the null/automatic choice, but use Productivity Module 3 at Legendary quality for fresh state.
+- Do not extract a shared equipment-icon component yet: the basic calculator owns an interactive D3 data join while the quality plan renders static evidence, and their shared sprite/badge primitives already prevent visual drift.

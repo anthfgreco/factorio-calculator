@@ -1,19 +1,24 @@
 import type { DisplayFormat, DisplayRate } from "../math.js"
+import type { QualityPlannerObjective, QualityStrategy } from "../quality/contracts.js"
 
 export type CalculatorTab = "totals" | "graph" | "settings" | "resources" | "debug" | "help"
 export type FactoryDensity = "comfortable" | "compact"
-export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age" | "megabase"
+export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age"
+export type QualityPreset = "full-legendary"
 
 const PROGRESSION_PRESET_VALUES: ReadonlySet<string> = new Set([
   "early",
   "pre-rocket",
   "first-planets",
   "late-space-age",
-  "megabase",
 ])
 
 export function isProgressionPreset(value: string): value is ProgressionPreset {
   return PROGRESSION_PRESET_VALUES.has(value)
+}
+
+export function isQualityPreset(value: string): value is QualityPreset {
+  return value === "full-legendary"
 }
 export type CalculationStatus = "loading" | "ready" | "error"
 
@@ -33,6 +38,7 @@ export interface TargetSnapshot {
   readonly buildings: string
   readonly rate: string
   readonly qualityLevel: number
+  readonly qualityStrategy: QualityStrategy
 }
 
 export interface CalculatorSettingsSnapshot {
@@ -47,6 +53,7 @@ export interface CalculatorSettingsSnapshot {
   readonly freshnessDelayMinutes: string
   readonly maxQualityLevel: number
   readonly equipmentQualityAvailable: boolean
+  readonly qualityPlannerObjective: QualityPlannerObjective
   readonly visualizationType: string
   readonly visualizationRender: string
   readonly visualizationDirection: string
@@ -72,6 +79,7 @@ export interface CalculatorCommands {
   openVisualization(): void
   copyShareLink(): Promise<void>
   applyProgressionPreset(value: ProgressionPreset): void
+  applyQualityPreset(value: QualityPreset): void
   setFactoryDensity(value: FactoryDensity): void
   setTitle(value: string): void
   setRatePrecision(value: number): void

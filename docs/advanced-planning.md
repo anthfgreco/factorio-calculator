@@ -12,11 +12,23 @@ Tower electricity remains a conservative active-load figure because the official
 
 ## Quality targets
 
-A production target can select an exact quality tier. The calculator applies Factorio's direct quality probability chain to the configured quality modules and scales the production chain to the expected throughput required for that tier. It reports the exact-tier yield and output at every other quality tier as one combined byproduct value.
+A newly selected non-Normal production target enters automatic planet-aware quality planning. The normal target row exposes only output, quality, and rate. Planet availability and the shared **Settings → Quality factory** profile supply the remaining intent.
 
-Machines, modules, and beacons also have their own quality. Factory-row equipment pickers expose the unlocked tiers without adding another table column. Machine quality changes crafting speed, module quality scales beneficial effects while preserving penalties, mining-drill quality reduces resource drain without increasing yield, and beacon quality changes distribution effectivity and beacon power. Settings supplies Normal-quality defaults for new rows unless a shared link specifies otherwise.
+The practical planner recursively expands the active planet's usable recipes until it reaches local resources, qualityless fluids, or explicit imports. On Nauvis, quality-qualified intermediates such as copper cable, plastic, and electronic circuits remain inside the exact graph instead of returning to the scalar solver as Normal feed. Eligible crafts below the requested tier receive the selected quality module profile; requested-tier crafts use the selected Quality factory productivity module and quality.
 
-This is an expected-value direct-production model. It does not yet optimize arbitrary recycler/upcycling loops or represent every intermediate item as a separately balanced `(item, quality)` solver node.
+Vulcanus uses the same graph with a curated policy. It treats lava, calcite, coal, tungsten ore, and explicit imports as the external boundary instead of pretending Normal iron or copper plates appear for free. Curated metal routes prefer lava → molten iron/copper → foundry casting. The first solid-output stage and every recycler receive the selected quality module profile. Once solid ingredients match each locally required quality, guaranteed-quality crafting uses the selected productivity profile. Electronics prefer the electromagnetic plant unless the player explicitly overrides the machine.
+
+The practical graph is lazy and target-driven. Solid commodities are identified by `(item, quality)`, fluids are shared qualityless commodities, solid-to-fluid recipes erase quality, and a recipe with only fluid ingredients begins solid output rolls at Normal. Lower target qualities pass through their real generated recycler recipes. Surplus byproducts are recursively recycled where a valid route exists; irreducible outputs remain visible instead of disappearing through a free sink. Inputs unavailable from the active planet are listed as imports.
+
+The quality calculation is an exact absorbing linear flow composed inside the existing simplex. Each craft and recycler operation uses exact `Rational` transition coefficients; expected steady-state rates require neither floating-point iteration nor Monte Carlo simulation. The result leads with local feed, imports, machine stages, module loadouts, recycling, power, and routing. First-pass probability, tier rates, and full operation detail remain behind the **Quality math and full operation rates** disclosure. A quality-only calculation omits the ordinary scalar Factory table and header; mixed Normal and quality targets retain it for the Normal portion.
+
+The global Advanced priority is a route tiebreaker after meeting the target and preferring local resources. **Practical** is the default. It does not silently search every community-discovered chest, belt, underground-belt, or productivity-research upcycling loop. The current curated profile favors direct foundry casting routes and predictable generated recycler behavior.
+
+Machines, modules, and beacons retain their existing quality controls. Machine quality changes crafting speed, module quality scales beneficial effects while preserving penalties, mining-drill quality reduces resource drain without increasing yield, and beacon quality changes distribution effectivity and beacon power. Speed modules transmitted by beacons also apply their negative quality effect. Quality-factory stages use separate quality and productivity module selections; either selector can use its best-compatible automatic option.
+
+Every quality result is an expected long-run rate. A plan requesting one Legendary item per hour may produce nothing for several hours and then several close together. Monte Carlo simulation would answer time-to-first-item or buffer reliability; it is intentionally separate from deterministic throughput.
+
+Legacy one-pass links retain their direct reciprocal-probability behavior. Separate automatic quality targets do not yet share higher-quality intermediate pools.
 
 ## Locations and transport
 
@@ -50,7 +62,7 @@ Solid-item rows report belt equivalents, inventory-stack flow, buffer slots, and
 
 ## Technology progression
 
-Progression presets set the quality ceiling and belt-stack research level. Exact technology gating is not exposed because the bundled datasets do not contain the prerequisite metadata needed to enforce it honestly.
+Progression presets set mining productivity, belt and stacking research, the quality ceiling, and automatic machine preferences. They preserve the selected location and do not upgrade target or equipment quality. **Full Legendary** is a separate quality-only action that upgrades all targets and equipment while preserving the factory's progression and layout choices. Exact technology gating is not exposed because the bundled datasets do not contain the prerequisite metadata needed to enforce it honestly.
 
 ## Performance
 

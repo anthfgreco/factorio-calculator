@@ -1,7 +1,8 @@
 import { one, Rational, zero } from "./math.js"
-import { type Building, type Module, type ModuleSpec, normalQuality, type Planet, RocketSilo } from "./models.js"
+import { type Building, type Module, ModuleSpec, type Planet, RocketSilo } from "./models.js"
 import { DisabledRecipe, Item, Recipe } from "./recipes.js"
 import type { Totals } from "./solver.js"
+import { qualityTransitionProbability } from "./quality/math.js"
 import { QUALITY_TIERS } from "./planning/contracts.js"
 import type {
   AsteroidConstraintRow,
@@ -52,40 +53,25 @@ function getModuleSpecWithoutMutation(specification: PlanningSpecification, reci
   return specification.spec?.get(recipe) ?? null
 }
 
-function getQualityChanceFromModules(
-  modules: readonly (Module | null)[] | null,
-  qualities: readonly import("./models.js").Quality[] | null,
-): Rational {
-  let quality = zero
-  for (const [index, module] of (modules ?? []).entries()) {
-    if (module) quality = quality.add(module.qualityFor(qualities?.[index] ?? normalQuality))
-  }
-  return Rational.max(zero, Rational.min(one, quality))
-}
-
 export function qualityProbability(chance: Rational, targetLevel: number, maxLevel: number): Rational {
   if (targetLevel <= 0) return one
-  if (targetLevel > maxLevel || chance.less(zero) || chance.isZero()) return zero
-
-  const tenPercent = Rational.from_floats(1, 10)
-  const ninetyPercent = Rational.from_floats(9, 10)
-  if (targetLevel === maxLevel) {
-    return chance.mul(tenPercent.pow(targetLevel - 1))
-  }
-  return chance.mul(ninetyPercent).mul(tenPercent.pow(targetLevel - 1))
+  return qualityTransitionProbability(chance, 0, targetLevel, maxLevel)
 }
 
 export function getRecipeQualityChance(specification: PlanningSpecification, recipe: Recipe): Rational {
+  if (!recipe.allow_quality) return zero
   const building = specification.getBuilding(recipe)
-  const moduleSpec = getModuleSpecWithoutMutation(specification, recipe)
-  let modules = moduleSpec?.building === building ? moduleSpec.modules : null
-  let qualities = moduleSpec?.building === building ? moduleSpec.moduleQualities : null
-  if (modules === null && building !== null && building !== undefined && building.moduleSlots > 0) {
-    const defaultModule = specification.getDefaultModule(recipe, building)
-    modules = Array.from({ length: building.moduleSlots }, () => defaultModule)
-    qualities = Array.from({ length: building.moduleSlots }, () => specification.defaultModuleQuality ?? normalQuality)
-  }
-  return getQualityChanceFromModules(modules, qualities)
+  if (building === null || building.moduleSlots <= 0) return zero
+
+  const configured = getModuleSpecWithoutMutation(specification, recipe)
+  if (configured?.building === building) return configured.qualityEffect()
+
+  // Preserve the non-mutating planning boundary while still applying default
+  // beaconed speed-module penalties to recipes whose ModuleSpec has not yet
+  // been materialized by the Factory table.
+  const defaults = new ModuleSpec(recipe, specification)
+  defaults.setBuilding(building, specification)
+  return defaults.qualityEffect()
 }
 
 function chooseQualityModule(
@@ -390,7 +376,7 @@ export function getLogistics(item: Item, rate: Rational, specification: Planning
 export function getQualityTargetReport(specification: PlanningSpecification): QualityTargetRow[] {
   const rows: QualityTargetRow[] = []
   for (const target of specification.buildTargets ?? []) {
-    if (!target.qualityLevel) continue
+    if (!target.qualityLevel || target.qualityStrategy !== "direct") continue
     const recipe =
       target.recipe ?? specification.getRecipes(target.item).find((candidate) => candidate instanceof Recipe)
     if (!recipe) continue
@@ -411,6 +397,7 @@ export function getQualityTargetReport(specification: PlanningSpecification): Qu
       requested,
       totalProduction,
       otherQualityByproduct: totalProduction.sub(requested),
+      strategy: "direct",
     })
   }
   return rows
@@ -505,5 +492,6 @@ export function getPlanningSummary(specification: PlanningSpecification, totals:
     freshness: getFreshnessReport(specification, totals),
     asteroidConstraints: getAsteroidConstraintReport(specification, totals),
     qualityTargets: getQualityTargetReport(specification),
+    qualityPlans: specification.qualityPlans,
   }
 }

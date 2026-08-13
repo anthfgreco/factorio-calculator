@@ -17,7 +17,7 @@ The highest-value remaining work is not a framework rewrite. It is extending the
 
 - Added real plant growth durations and agricultural-tower sizing around 47 practical plots, including seed flows.
 - Added spoil-time metadata, configurable elapsed delay, remaining freshness, and freshness-adjusted agricultural science throughput.
-- Added exact target-quality tiers using direct quality probabilities and non-target-quality byproduct reporting.
+- Replaced routine quality-method controls with automatic planet-aware targets, a shared quality-gear profile, and a practical Vulcanus network from lava/calcite through quality casting, electromagnetic production, real recycling, imports, machinery, power, and collapsed exact diagnostics.
 - Added explicit recipe location pinning, deterministic automatic assignment, cross-location transport flows, and location-aware accounting.
 - Added configurable pumpjack/resource yield for basic fluids and asteroid collection capacity diagnostics.
 - Included configured beacon-equivalent electricity, surface-aware pollution, exact harvest-plus-tower spores, and Aquilo production heat.
@@ -29,9 +29,9 @@ The highest-value remaining work is not a framework rewrite. It is extending the
 
 ## Remaining priority 0 work
 
-### Generalized quality and recycling optimization
+### Shared multi-target quality and disposal optimization
 
-The current exact-quality target mode correctly scales direct production by the configured quality probability and reports all non-target output together. A future solver can promote materials to `(item, quality)` nodes to optimize recycler/upcycling loops, mixed-quality ingredients, and reusable byproducts by tier.
+Recursive selected-planet quality graphs, the curated Vulcanus profile, and real recycler disposal are implemented. The next useful extension is one combined network for multiple quality targets, shared higher-quality intermediates, broader route search, upstream per-tier equipment optimization, and disposal outputs that can re-enter the primary solve instead of being handled in a counted post-pass.
 
 ### Capacity-aware interplanetary optimization
 
