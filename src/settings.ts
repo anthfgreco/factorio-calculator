@@ -274,19 +274,6 @@ export function renderRecipeSettings(specification: FactorySpecification): void 
     .text("Reset recipe changes")
     .on("click", () => resetRecipeChanges(specification))
 
-  const categoryNav = root.append("nav").classed("recipe-category-nav", true).attr("aria-label", "Recipe categories")
-  categoryNav.append("span").text("Jump to")
-  categoryNav
-    .selectAll<HTMLAnchorElement, RecipeSettingsGroup>("a")
-    .data(productionGroups)
-    .join("a")
-    .attr("href", (entry: RecipeSettingsGroup) => `#${recipeCategoryId(entry.category)}`)
-    .text((entry: RecipeSettingsGroup) => entry.name)
-    .on("click", function (_event: Event, entry: RecipeSettingsGroup) {
-      const category = document.getElementById(recipeCategoryId(entry.category)) as HTMLDetailsElement | null
-      if (category !== null) category.open = true
-    })
-
   root.append("div").attr("id", "recipe_settings_help").classed("recipe-settings-help", true)
   root.append("div").classed("recipe-settings-summary", true).attr("aria-live", "polite")
 
@@ -966,6 +953,8 @@ function renderRecipeProductivityResearch(settings: SettingsMap) {
     .attr("min", 0)
     .attr("max", 300)
     .attr("step", (entry: RecipeProductivityResearch) => recipeProductivityPercentPerLevel(entry))
+    .attr("data-research-key", (entry: RecipeProductivityResearch) => entry.key)
+    .attr("data-percent-per-level", (entry: RecipeProductivityResearch) => recipeProductivityPercentPerLevel(entry))
     .attr("aria-label", (entry: RecipeProductivityResearch) => `${entry.name} bonus percentage`)
     .property(
       "value",
@@ -1410,13 +1399,6 @@ export function ensureDeferredResourcesRendered(): void {
   }
 }
 
-// debug
-
-function renderDebugCheckbox(settings: SettingsMap) {
-  spec.debug = settings.has("debug")
-  select("#render_debug").property("checked", spec.debug)
-}
-
 function renderPlanningSettings(settings: SettingsMap) {
   spec.beltStackSize = Rational.from_string(settings.get("bstack") ?? "1")
   const serializedStackPolicy = settings.get("bstackmode")
@@ -1513,6 +1495,5 @@ export function renderSettings(settings: SettingsMap) {
   renderTargets(settings)
   renderModules(settings)
   renderEquipmentQualityOverrides(settings)
-  renderDebugCheckbox(settings)
   renderTab(settings)
 }

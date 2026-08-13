@@ -150,7 +150,7 @@ test("Settings navigation, recipe management, and beacon controls preserve the d
   assert.ok(!panel.includes("Back to top"))
   assert.ok(settings.includes('text("Changed only")'))
   assert.ok(settings.includes('text("Reset recipe changes")'))
-  assert.ok(settings.includes('classed("recipe-category-nav", true)'))
+  assert.ok(!settings.includes('classed("recipe-category-nav", true)'))
   assert.ok(settings.includes('"details.recipe-settings-category"'))
   assert.ok(settings.includes('"Orange: enabled · Dimmed: disabled · Click to toggle"'))
   assert.ok(!results.includes('.text("+ Beacon")'))
@@ -174,7 +174,6 @@ test("Settings navigation, recipe management, and beacon controls preserve the d
   const beaconStyle = styles.slice(beaconStyleStart, styles.indexOf("}", beaconStyleStart))
   assert.ok(beaconStyle.includes("padding: 0"))
   assert.ok(beaconStyle.includes("border: 0"))
-  assert.ok(shell.includes('new URLSearchParams(window.location.search).has("debug")'))
 })
 
 test("player-facing copy excludes implementation terminology", async () => {

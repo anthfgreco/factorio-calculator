@@ -176,10 +176,6 @@ export class QualityGraph {
       ignore: new Set(),
       buildTargets: [{ item: output, recipe: null, changedBuilding: false }],
       priority,
-      lastPartial: null,
-      lastTableau: null,
-      lastMetadata: null,
-      lastSolution: null,
       getRecipes(item: SolverItem): SolverRecipe[] {
         if (!(item instanceof QualityGraphItem)) throw new Error("Unknown quality graph item")
         return item.recipes.filter((recipe) => viableRecipes.has(recipe))

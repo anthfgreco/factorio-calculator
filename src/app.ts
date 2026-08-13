@@ -1,7 +1,6 @@
-import { select, type BaseType, type Selection } from "d3"
+import { select } from "d3"
 import { bindCalculatorSpecification } from "./application/store.js"
 import { parseCalculatorData } from "./data.js"
-import { formatCanadianNumber, Matrix } from "./math.js"
 import type { FactorySpecification, FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"
 import {
@@ -17,7 +16,7 @@ import {
   getRecipeProductivityResearch,
 } from "./models.js"
 import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
-import { Item, Recipe, getItems, getRecipes } from "./recipes.js"
+import { Item, getItems, getRecipes } from "./recipes.js"
 import type { Totals } from "./solver.js"
 import { displayCalculationError, displayItems, resetDisplay } from "./results.js"
 import { ensureDeferredResourcesRendered, ensureDeferredSettingsRendered, renderSettings } from "./settings.js"
@@ -41,98 +40,6 @@ import {
   loadSettings,
   syncUrlHash,
 } from "./url-state.js"
-
-// -----------------------------------------------------------------------------
-// Debug output
-// -----------------------------------------------------------------------------
-
-interface DebugMetadata {
-  readonly items: readonly Item[]
-  readonly targets: readonly { readonly item: Item; readonly recipe: Recipe }[]
-  readonly recipes: readonly Recipe[]
-}
-
-function isDebugMetadata(value: unknown): value is DebugMetadata {
-  if (typeof value !== "object" || value === null) return false
-  const candidate = value as Record<string, unknown>
-  return (
-    Array.isArray(candidate.items) &&
-    candidate.items.every((item) => item instanceof Item) &&
-    Array.isArray(candidate.targets) &&
-    candidate.targets.every(
-      (target) =>
-        typeof target === "object" &&
-        target !== null &&
-        (target as { item?: unknown }).item instanceof Item &&
-        (target as { recipe?: unknown }).recipe instanceof Recipe,
-    ) &&
-    Array.isArray(candidate.recipes) &&
-    candidate.recipes.every((recipe) => recipe instanceof Recipe)
-  )
-}
-
-function renderMatrix<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
-  d: Selection<GElement, TDatum, PElement, PDatum>,
-  A: Matrix,
-  m: DebugMetadata,
-): void {
-  let table = d.append("table").attr("border", 1)
-  let header = table.append("tr")
-  header.append("th")
-  for (let item of m.items) {
-    let th = header.append("th")
-    th.append("span").text("s")
-    th.append(() => item.icon.make(32)).classed("item-icon", true)
-  }
-  for (let t of m.targets) {
-    let th = header.append("th")
-    th.append(() => t.item.icon.make(32))
-    th.append("span").text("\u21d0")
-    th.append(() => t.recipe.icon.make(32))
-  }
-  header.append("th").text("tax")
-  for (let recipe of m.recipes) {
-    header
-      .append("th")
-      .append(() => recipe.icon.make(32))
-      .classed("item-icon", true)
-  }
-  header.append("th").text("answer")
-  header.append("th").text("C")
-  for (let r = 0; r < A.rows; r++) {
-    let row = table.append("tr")
-    let label = row.append("td")
-    const recipe = m.recipes[r]
-    if (recipe !== undefined) {
-      label.append(() => recipe.icon.make(32)).classed("item-icon", true)
-    } else if (r === A.rows - 2) {
-      label.append("span").text("tax")
-    } else {
-      label.append("span").text("answer")
-    }
-    for (let c = 0; c < A.cols; c++) {
-      let x = A.index(r, c)
-      row.append("td").classed("right-align", true).append("tt").text(formatCanadianNumber(x.toString()))
-    }
-  }
-}
-
-export function renderDebug(): void {
-  let debugTab = select("#debug_tab")
-
-  let lastTableau = select("#debug_tableau")
-  lastTableau.selectChildren().remove()
-  let lastSolution = select("#debug_solution")
-  lastSolution.selectChildren().remove()
-
-  if (spec.lastTableau === null || spec.lastSolution === null || !isDebugMetadata(spec.lastMetadata)) {
-    select("#debug_message").text("No tableau required.")
-  } else {
-    select("#debug_message").text("Displaying previous tableau.")
-    renderMatrix(lastTableau, spec.lastTableau, spec.lastMetadata)
-    renderMatrix(lastSolution, spec.lastSolution, spec.lastMetadata)
-  }
-}
 
 // -----------------------------------------------------------------------------
 // Deferred visualization runtime
@@ -216,10 +123,6 @@ export const browserFactoryView: FactoryViewPort = {
 
   persistUrlState() {
     syncUrlHash(formatSettings())
-  },
-
-  renderDebug() {
-    renderDebug()
   },
 }
 

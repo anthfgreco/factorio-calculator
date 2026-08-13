@@ -1,4 +1,4 @@
-import type { Matrix, Rational } from "../math.js"
+import type { Rational } from "../math.js"
 
 /**
  * A normalized item amount used by recipes and solver graph edges.
@@ -64,10 +64,6 @@ export interface SolverSpec {
   ignore: Set<SolverItem>
   buildTargets: SolverTarget[]
   priority: Iterable<Iterable<SolverPriorityEntry>>
-  lastPartial: unknown
-  lastTableau: Matrix | null
-  lastMetadata: unknown
-  lastSolution: Matrix | null
   getRecipes(item: SolverItem): SolverRecipe[]
   getRecipeGraph(items: Map<SolverItem, Rational>): Set<SolverRecipe>
   getProdEffect(recipe: SolverRecipe): Rational

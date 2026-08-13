@@ -70,15 +70,28 @@ export type { ProgressionPreset } from "./application/contracts.js"
 
 type PresetDefinition = {
   miningProductivity: number
+  recipeProductivityLevel: number
   belt: string
   beltStackSize: number
   maxQualityLevel: number
   defaultMachines: string[]
 }
 
+const RECIPE_PRODUCTIVITY_RESEARCH_KEYS = [
+  "asteroid-productivity",
+  "low-density-structure-productivity",
+  "plastic-bar-productivity",
+  "processing-unit-productivity",
+  "rocket-fuel-productivity",
+  "rocket-part-productivity",
+  "scrap-recycling-productivity",
+  "steel-plate-productivity",
+] as const
+
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   early: {
     miningProductivity: 0,
+    recipeProductivityLevel: 0,
     belt: "transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 0,
@@ -86,6 +99,7 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   },
   "pre-rocket": {
     miningProductivity: 20,
+    recipeProductivityLevel: 0,
     belt: "fast-transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 2,
@@ -93,6 +107,7 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   },
   "first-planets": {
     miningProductivity: 30,
+    recipeProductivityLevel: 0,
     belt: "express-transport-belt",
     beltStackSize: 1,
     maxQualityLevel: 2,
@@ -100,6 +115,7 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   },
   "late-space-age": {
     miningProductivity: 100,
+    recipeProductivityLevel: 10,
     belt: "express-transport-belt",
     beltStackSize: 4,
     maxQualityLevel: 4,
@@ -169,12 +185,28 @@ function syncPresetControls(): void {
     const building = getBoundDatum(input)
     input.checked = building instanceof Building && spec.isAutomaticBuildingEnabled(building)
   })
+
+  document
+    .querySelectorAll<HTMLInputElement>("#recipe_productivity_settings input[data-research-key]")
+    .forEach((input) => {
+      const researchKey = input.dataset.researchKey
+      if (researchKey === undefined) return
+      const percentPerLevel = Number(input.dataset.percentPerLevel)
+      if (!Number.isFinite(percentPerLevel)) return
+      input.value = String(spec.getRecipeProductivityLevel(researchKey) * percentPerLevel)
+    })
 }
 
 export function applyProgressionPresetValue(value: ProgressionPreset): void {
   const preset = PROGRESSION_PRESETS[value]
 
   spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
+  spec.recipeProductivityLevels.clear()
+  for (const researchKey of RECIPE_PRODUCTIVITY_RESEARCH_KEYS) {
+    if (spec.recipeProductivityResearch.has(researchKey)) {
+      spec.setRecipeProductivityLevel(researchKey, preset.recipeProductivityLevel)
+    }
+  }
   let belt = getByKey(spec.belts, preset.belt)
   if (belt !== null) spec.belt = belt
   spec.beltStackSize = Rational.from_float(preset.beltStackSize)
@@ -335,14 +367,7 @@ export const DEFAULT_TAB: CalculatorTab = "totals"
 export let currentTab: CalculatorTab = DEFAULT_TAB
 
 function isCalculatorTab(value: string): value is CalculatorTab {
-  return (
-    value === "totals" ||
-    value === "graph" ||
-    value === "settings" ||
-    value === "resources" ||
-    value === "debug" ||
-    value === "help"
-  )
+  return value === "totals" || value === "graph" || value === "settings" || value === "resources" || value === "help"
 }
 
 let onDeferredTabOpened: (tabName: string) => void = () => undefined
@@ -477,17 +502,6 @@ export function changeVisualizationDirection(value: string): void {
 export function changeVisDir(event: Event): void {
   const input = getEventControl(event)
   if (input !== null) changeVisualizationDirection(input.value)
-}
-
-export function setDebugEnabled(enabled: boolean): void {
-  spec.debug = enabled
-  spec.display()
-}
-
-// debug events
-export function toggleDebug(event: Event): void {
-  const input = getEventInput(event)
-  if (input !== null) setDebugEnabled(input.checked)
 }
 
 // -----------------------------------------------------------------------------

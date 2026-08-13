@@ -22,7 +22,6 @@ import {
   factoryDensity,
   setCalculatorTitle,
   setCountPrecision,
-  setDebugEnabled,
   setDisplayFormat,
   setFactoryDensity,
   setMiningProductivityPercent,
@@ -61,7 +60,6 @@ const INITIAL_SNAPSHOT: CalculatorSnapshot = {
     visualizationType: "sankey",
     visualizationRender: "zoom",
     visualizationDirection: "right",
-    debugEnabled: false,
   },
 }
 
@@ -127,7 +125,6 @@ function createSnapshot(
       visualizationType: visualizerType,
       visualizationRender: visualizerRender,
       visualizationDirection: visualizerDirection,
-      debugEnabled: specification.debug,
     },
   }
 }
@@ -206,9 +203,6 @@ export class BrowserCalculatorStore implements CalculatorStore {
     },
     setVisualizationDirection: (value: string) => {
       changeVisualizationDirection(value)
-    },
-    setDebugEnabled: (enabled: boolean) => {
-      setDebugEnabled(enabled)
     },
     recalculate: () => {
       this.specification.updateSolution()

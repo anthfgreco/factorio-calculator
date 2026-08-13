@@ -1,5 +1,27 @@
 # Execution Plans
 
+## Completed plan: preset productivity and settings cleanup
+
+### Goal
+
+Make every progression preset set a complete, stage-appropriate productivity profile, and remove the broken Recipe Settings jump navigation plus the entire Debug UI/runtime feature.
+
+### Constraints
+
+- Base preset productivity on Factorio Space Age research progression; recipe productivity remains exact +10% research levels.
+- Keep Full Legendary quality-only and preserve player-selected locations and explicit equipment choices.
+- Keep preset-applied productivity visible immediately and persisted through the existing URL fields.
+- Remove debug-only tableau retention without changing simplex behavior or calculation results.
+
+### Steps
+
+1. [x] Trace preset, productivity, Recipe Settings, and Debug ownership and research current Space Age values.
+2. [x] Add complete productivity profiles and immediate control synchronization for every progression preset.
+3. [x] Remove Recipe Settings jump navigation and its unused styles.
+4. [x] Remove the Debug tab, command/state, URL output, renderer, and solver-only tableau snapshots.
+5. [x] Update focused browser/UI/core coverage and the 2026-08-13 changelog.
+6. [x] Format, run focused validation and the release gate, then review the final diff.
+
 ## Completed plan: remove undeployed quality modes
 
 ### Goal

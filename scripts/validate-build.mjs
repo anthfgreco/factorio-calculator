@@ -58,13 +58,19 @@ for (const requiredText of [
   "factory_density_comfortable",
   "factory_density_compact",
   "copy_share_link",
-  "debug_button",
 ]) {
   if (!calculatorBundle.includes(requiredText)) {
     throw new Error(`Built calculator bundle is missing ${JSON.stringify(requiredText)}`)
   }
 }
-for (const removedText of ["factory-view-toolbar", "Table density", "Recent changes:", "Machine equivalents"]) {
+for (const removedText of [
+  "factory-view-toolbar",
+  "Table density",
+  "Recent changes:",
+  "Machine equivalents",
+  "debug_button",
+  "debug_tab",
+]) {
   if (calculatorBundle.includes(removedText)) {
     throw new Error(`Built calculator bundle still contains ${JSON.stringify(removedText)}`)
   }

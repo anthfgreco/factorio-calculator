@@ -41,7 +41,6 @@ const snapshot = {
     visualizationType: "sankey",
     visualizationRender: "zoom",
     visualizationDirection: "right",
-    debugEnabled: false,
   },
 }
 

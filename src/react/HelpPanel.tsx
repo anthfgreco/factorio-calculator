@@ -87,6 +87,11 @@ export function HelpPanel() {
                 Results now lead with feed, machines, module loadouts, recycling, imports, and power; detailed quality
                 math is collapsed, and quality-only plans omit the ordinary Factory table and header.
               </li>
+              <li>
+                Progression presets now set every productivity research value, with Late Space Age using +100% across
+                mining and all eight recipe technologies; Recipe Settings no longer includes the broken jump links or
+                Debug page.
+              </li>
             </ChangelogEntry>
 
             <ChangelogEntry date="2026-08-12" title="Machine, Module & Beacon Quality Support">

@@ -1,4 +1,4 @@
-import { Formatter, half, Matrix, one, Rational, zero } from "./math.js"
+import { Formatter, half, one, Rational, zero } from "./math.js"
 import {
   Belt,
   Building,
@@ -141,7 +141,6 @@ export interface FactoryViewPort {
   renderSolution(specification: FactorySpecification, totals: Totals): void
   renderCalculationError(specification: FactorySpecification, error: unknown): void
   persistUrlState(): void
-  renderDebug(): void
 }
 
 // -----------------------------------------------------------------------------
@@ -434,12 +433,7 @@ export class FactorySpecification {
   readonly format = new Formatter()
   lastTotals: Totals | null = null
   lastError: unknown = null
-  lastPartial: unknown = null
-  lastTableau: Matrix | null = null
-  lastMetadata: unknown = null
-  lastSolution: Matrix | null = null
   readonly qualityPlans: QualityTargetPlan[] = []
-  debug = false
   private readonly stateListeners = new Set<() => void>()
   private stateRevision = 0
 
@@ -1242,30 +1236,6 @@ export class FactorySpecification {
       ignore: new Set<SolverItem>(this.ignore),
       buildTargets: targets,
       priority: this.priority,
-      get lastPartial() {
-        return owner.lastPartial
-      },
-      set lastPartial(value: unknown) {
-        owner.lastPartial = value
-      },
-      get lastTableau() {
-        return owner.lastTableau
-      },
-      set lastTableau(value: Matrix | null) {
-        owner.lastTableau = value
-      },
-      get lastMetadata() {
-        return owner.lastMetadata
-      },
-      set lastMetadata(value: unknown) {
-        owner.lastMetadata = value
-      },
-      get lastSolution() {
-        return owner.lastSolution
-      },
-      set lastSolution(value: Matrix | null) {
-        owner.lastSolution = value
-      },
       getRecipes(item: SolverItem): SolverRecipe[] {
         if (!(item instanceof Item)) throw new Error("Solver received an unknown item model")
         return [...owner.getRecipes(item)]
@@ -1378,9 +1348,6 @@ export class FactorySpecification {
       this.lastError = error
       this.view?.renderCalculationError(this, error)
       this.persistUrlState()
-      if (this.debug) {
-        this.view?.renderDebug()
-      }
       this.notifyStateChanged()
     }
   }
@@ -1405,9 +1372,6 @@ export class FactorySpecification {
     }
     this.persistUrlState()
 
-    if (this.debug) {
-      this.view?.renderDebug()
-    }
     this.notifyStateChanged()
   }
 }

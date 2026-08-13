@@ -412,10 +412,6 @@ export function formatSettings(
     settings += "&priority=" + priority.join(";")
   }
 
-  if (spec.debug) {
-    settings += "&debug=1"
-  }
-
   return compressCalculatorSettings(settings, {
     encode: (binary) => window.btoa(binary),
     decode: (encoded) => window.atob(encoded),

@@ -348,12 +348,7 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
   let cyclic = getCycleRecipes(spec, recipes)
   let partialSolution = recursiveSolve(spec, cyclic, fullOutputs)
   let solution = partialSolution.recipeRates
-  spec.lastPartial = partialSolution
-
   if (partialSolution.remaining.size === 0) {
-    spec.lastTableau = null
-    spec.lastMetadata = null
-    spec.lastSolution = null
     solution.set(new OutputRecipe(outputs), one)
     return new Totals(spec, outputs, solution, new Map(), new Map())
   }
@@ -495,8 +490,6 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
     tableau.setIndex(requireMapValue(recipeRows, recipe, "priority recipe row"), columns - 1, priorityCost)
   }
 
-  spec.lastTableau = tableau.copy()
-  spec.lastMetadata = { items, recipes: recipeArray, targets: partialSolution.targets }
   try {
     simplex(tableau)
   } catch {
@@ -505,8 +498,6 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
       "This combination of recipes and resource priorities cannot produce every requested output.",
     )
   }
-  spec.lastSolution = tableau
-
   for (let [row, recipe] of recipeArray.entries()) {
     let rate = tableau.index(tableau.rows - 1, taxColumn + row + 1)
     if (zero.less(rate)) {

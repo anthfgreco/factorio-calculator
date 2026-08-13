@@ -793,14 +793,6 @@ table#settings {
 .settings-label-column {
   width: 190px;
 }
-.recipe-category-nav a {
-  color: var(--muted);
-  text-decoration: none;
-}
-.recipe-category-nav a:hover,
-.recipe-category-nav a:focus-visible {
-  color: var(--bright);
-}
 #settings_data,
 #settings_display,
 #settings_factory,
@@ -1747,20 +1739,6 @@ svg.sankey g.edgePathHighlight path.highlighter {
 .reset-recipe-changes:disabled {
   cursor: not-allowed;
   opacity: 0.45;
-}
-
-.recipe-category-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.65rem;
-  margin: 0.4rem 0 0.55rem;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.recipe-category-nav > span {
-  color: var(--foreground);
-  font-weight: 600;
 }
 
 .recipe-settings-category {

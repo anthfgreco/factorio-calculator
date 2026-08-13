@@ -28,7 +28,6 @@ export function CalculatorShell({ commands, snapshot }: CalculatorShellProps) {
       <SettingsPanel commands={commands} snapshot={snapshot} />
       <ResourcesPanel />
       <HelpPanel />
-      <DebugPanel commands={commands} snapshot={snapshot} />
       <footer id="footer">
         <a href="https://github.com/anthfgreco/factorio-calculator">Source on GitHub</a>
       </footer>
@@ -68,9 +67,6 @@ function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
 }
 
 function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
-  const showDebug =
-    import.meta.env?.DEV === true ||
-    (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("debug"))
   return (
     <div className="planner-toolbar">
       <div id="location_toolbar" className="location-toolbar" hidden>
@@ -111,16 +107,6 @@ function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
         >
           Copy plan link
         </button>
-        {showDebug ? (
-          <button
-            id="debug_button"
-            className={`ui planner-action toolbar-tab-button ${snapshot.activeTab === "debug" ? "active" : ""}`}
-            type="button"
-            onClick={() => commands.selectTab("debug")}
-          >
-            Debug
-          </button>
-        ) : null}
       </div>
     </div>
   )
@@ -316,26 +302,6 @@ function ResourcesPanel() {
         Drag resources between tiers to choose what your factory should conserve. Higher tiers are preferred.
       </p>
       <div id="resource_settings" />
-    </div>
-  )
-}
-
-function DebugPanel({ commands, snapshot }: CalculatorShellProps) {
-  return (
-    <div id="debug_tab" className="tab">
-      <div id="debug_message" />
-      <label htmlFor="render_debug">Render debug tab:</label>{" "}
-      <input
-        id="render_debug"
-        type="checkbox"
-        checked={snapshot.settings.debugEnabled}
-        onChange={(event: ChangeEvent<HTMLInputElement>) => commands.setDebugEnabled(event.currentTarget.checked)}
-      />
-      <br />
-      Last tableau:
-      <div id="debug_tableau" />
-      Last solution:
-      <div id="debug_solution" />
     </div>
   )
 }

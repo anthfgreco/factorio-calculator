@@ -63,6 +63,8 @@ test("presets preserve location and Full Legendary upgrades quality only", async
   await expect(nauvis).not.toHaveClass(/selected/)
 
   await page.getByRole("button", { name: "Settings" }).click()
+  await expect(page.locator(".recipe-category-nav")).toHaveCount(0)
+  await expect(page.getByText("Jump to", { exact: true })).toHaveCount(0)
   const preset = page.getByRole("combobox", { name: "Preset" })
   await expect(preset).toHaveValue("")
   await expect(preset.locator("option:checked")).toHaveText("Custom")
@@ -77,6 +79,18 @@ test("presets preserve location and Full Legendary upgrades quality only", async
     await expect(page.locator(`#belt_selector input[value="${expected.belt}"]`)).toBeChecked()
     await expect(page.locator("#belt_stack_size")).toHaveValue(expected.stack)
     await expect(page.locator("#max_quality")).toHaveValue(expected.quality)
+    for (const researchName of [
+      "Asteroid productivity",
+      "Low density structure productivity",
+      "Plastic bar productivity",
+      "Processing unit productivity",
+      "Rocket fuel productivity",
+      "Rocket part productivity",
+      "Scrap recycling productivity",
+      "Steel plate productivity",
+    ]) {
+      await expect(page.getByRole("spinbutton", { name: `${researchName} bonus percentage` })).toHaveValue("0")
+    }
     await expect(vulcanus).toHaveClass(/selected/)
     await expect(nauvis).not.toHaveClass(/selected/)
   }
@@ -91,6 +105,18 @@ test("presets preserve location and Full Legendary upgrades quality only", async
   await expect(page.locator('#belt_selector input[value="express-transport-belt"]')).toBeChecked()
   await expect(page.locator("#belt_stack_size")).toHaveValue("4")
   await expect(page.locator("#max_quality")).toHaveValue("4")
+  for (const researchName of [
+    "Asteroid productivity",
+    "Low density structure productivity",
+    "Plastic bar productivity",
+    "Processing unit productivity",
+    "Rocket fuel productivity",
+    "Rocket part productivity",
+    "Scrap recycling productivity",
+    "Steel plate productivity",
+  ]) {
+    await expect(page.getByRole("spinbutton", { name: `${researchName} bonus percentage` })).toHaveValue("100")
+  }
   await expect(page.getByRole("combobox", { name: "Default machine quality" })).toHaveValue("rare")
   await expect(page.getByRole("combobox", { name: "Default module quality" })).toHaveValue("rare")
   await expect(page.getByRole("combobox", { name: "Default beacon quality" })).toHaveValue("rare")
@@ -103,6 +129,7 @@ test("presets preserve location and Full Legendary upgrades quality only", async
   await expect(page.getByRole("combobox", { name: "Default machine quality" })).toHaveValue("legendary")
   await expect(page.getByRole("combobox", { name: "Default module quality" })).toHaveValue("legendary")
   await expect(page.getByRole("combobox", { name: "Default beacon quality" })).toHaveValue("legendary")
+  await expect(page.getByRole("spinbutton", { name: "Steel plate productivity bonus percentage" })).toHaveValue("100")
   await expect(page.getByRole("combobox", { name: "Quality factory quality module quality" })).toHaveValue("legendary")
   await expect(page.getByRole("combobox", { name: "Quality factory productivity module quality" })).toHaveValue(
     "legendary",
@@ -122,6 +149,14 @@ test("presets preserve location and Full Legendary upgrades quality only", async
   await expect(page.getByRole("combobox", { name: "Default beacon quality" })).toHaveValue("legendary")
 
   expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
+test("removed debug query, hash, and tab have no UI or runtime path", async ({ page }) => {
+  await page.goto("/calc.html?debug#debug=1&tab=debug")
+
+  await expect(page.getByRole("button", { name: "Debug", exact: true })).toHaveCount(0)
+  await expect(page.locator("#debug_tab")).toHaveCount(0)
+  await expect(page.locator("#totals_button")).toHaveClass(/active/)
 })
 
 test("Full Legendary calculates the default Advanced circuit target on Nauvis", async ({ page }) => {

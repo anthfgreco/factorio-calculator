@@ -1,7 +1,7 @@
 import type { DisplayFormat, DisplayRate } from "../math.js"
 import type { QualityPlannerObjective, QualityStrategy } from "../quality/contracts.js"
 
-export type CalculatorTab = "totals" | "graph" | "settings" | "resources" | "debug" | "help"
+export type CalculatorTab = "totals" | "graph" | "settings" | "resources" | "help"
 export type FactoryDensity = "comfortable" | "compact"
 export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age"
 export type QualityPreset = "full-legendary"
@@ -57,7 +57,6 @@ export interface CalculatorSettingsSnapshot {
   readonly visualizationType: string
   readonly visualizationRender: string
   readonly visualizationDirection: string
-  readonly debugEnabled: boolean
 }
 
 export interface CalculatorSnapshot {
@@ -90,7 +89,6 @@ export interface CalculatorCommands {
   setVisualizationType(value: string): void
   setVisualizationRender(value: string): void
   setVisualizationDirection(value: string): void
-  setDebugEnabled(enabled: boolean): void
   recalculate(): void
 }
 
