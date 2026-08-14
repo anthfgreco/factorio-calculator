@@ -1,5 +1,33 @@
 # Execution Plans
 
+## Completed plan: shared quality icons
+
+### Goal
+
+Render item and equipment quality with one imperative icon primitive, including consistent sizing, badge placement, tooltips, and accessible names, and use it in quality-plan material lines.
+
+### Constraints
+
+- Preserve the React shell and imperative renderer ownership boundary.
+- Keep rates, labels, dropdown interactions, and item-specific tooltip content in their existing owners.
+- Hide Normal badges while retaining the quality tier in qualified-item accessible names.
+- Preserve existing machine/module quality selection and URL behavior.
+
+### Done when
+
+- Items, machines, and modules use `makeQualityIcon()` wherever a quality overlay is rendered.
+- Quality-plan feed, import, and surplus lines show item icons with quality badges and separately rendered rates.
+- Existing equipment interactions pass alongside focused accessibility and Normal-badge browser coverage.
+
+### Steps
+
+1. [x] Map the existing item, machine, module, and quality-plan material renderers.
+2. [x] Add the shared primitive and positioning styles.
+3. [x] Migrate callers and add focused browser coverage.
+4. [x] Format, run UI/E2E checks and the release gate, then review the diff.
+
+The full Chromium suite and production build budgets pass. Compile-based lanes remain blocked by the pre-existing `exactOptionalPropertyTypes` error in `src/quality/practical.ts` where `curatedProducers` is explicitly passed as `undefined`.
+
 ## Completed plan: Fulgora scrap-root quality factories
 
 ### Goal

@@ -24,7 +24,15 @@ import {
   type RocketLaunchStats,
   type Quality,
 } from "./models.js"
-import { addInputs, closeDropdowns, Icon, makeDropdown, makePopover, type IconObject } from "./presentation.js"
+import {
+  addInputs,
+  closeDropdowns,
+  Icon,
+  makeDropdown,
+  makePopover,
+  makeQualityIcon,
+  type IconObject,
+} from "./presentation.js"
 import { DisabledRecipe, getRecipeSelectorGroups, Item, Recipe, type RecipeSelectorGroup } from "./recipes.js"
 import { refreshRecipeSettings } from "./settings.js"
 import { toggleIgnoreHandler, usesLegacyCalculation } from "./state.js"
@@ -214,7 +222,8 @@ function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: reado
     .attr("aria-label", `Choose a machine for ${row.recipe.name}`)
   const dropdown = makeDropdown(root).classed("machine-dropdown", true)
   const quality = spec.getMachineQuality(row.recipe)
-  if (row.building.supportsEquipmentQuality() && spec.getAvailableQualities().length > 1) {
+  const hasQualityChoices = row.building.supportsEquipmentQuality() && spec.getAvailableQualities().length > 1
+  if (hasQualityChoices) {
     dropdown
       .append("div")
       .classed("equipment-quality-strip", true)
@@ -238,11 +247,6 @@ function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: reado
           spec.updateSolution()
         }, 0)
       })
-    root
-      .append(() => quality.icon.make(16, true))
-      .classed("equipment-quality-badge", true)
-      .attr("data-quality", quality.key)
-      .attr("title", `${quality.name} machine quality`)
   }
   const choices = dropdown
     .selectAll<HTMLDivElement, MachineOption>("div.machine-option")
@@ -258,9 +262,13 @@ function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: reado
     },
   )
   labels.append(function (option: MachineOption) {
-    const icon = option.displayBuilding.icon.make(32, true)
-    icon.removeAttribute("title")
-    return icon
+    const iconQuality = hasQualityChoices && option.building === override ? quality : null
+    const machineName = formatEquipmentName(option.displayBuilding.name)
+    return makeQualityIcon(option.displayBuilding.icon, iconQuality, {
+      label: iconQuality === null ? machineName : `${iconQuality.name} ${machineName}`,
+      tooltip: null,
+      badgeTitle: `${quality.name} machine quality`,
+    })
   })
   labels
     .append("span")
@@ -935,14 +943,43 @@ function qualifiedAmountKey(entry: Pick<QualifiedItemAmount, "item" | "qualityLe
   return `${entry.item.key}@q${entry.qualityLevel}`
 }
 
-function formatQualifiedAmounts(
+function qualifiedAmountLabel(entry: QualifiedItemAmount): string {
+  const quality =
+    entry.item.phase === "solid" ? `${QUALITY_TIERS[entry.qualityLevel] ?? `Quality ${entry.qualityLevel}`} ` : ""
+  return `${quality}${entry.item.name}`
+}
+
+function qualifiedAmountQuality(specification: FactorySpecification, entry: QualifiedItemAmount): Quality | null {
+  if (entry.item.phase !== "solid") return null
+  const quality = specification.qualityTiers[entry.qualityLevel]
+  if (quality === undefined) throw new Error(`Missing quality tier ${entry.qualityLevel}`)
+  return quality
+}
+
+function renderQualifiedAmounts<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
+  container: Selection<GElement, TDatum, PElement, PDatum>,
   specification: FactorySpecification,
   amounts: readonly QualifiedItemAmount[],
-): string[] {
-  return amounts.map((entry) => {
-    const quality =
-      entry.item.phase === "solid" ? `${QUALITY_TIERS[entry.qualityLevel] ?? `Quality ${entry.qualityLevel}`} ` : ""
-    return `${specification.format.rate(entry.amount)}/${specification.format.rateName} ${quality}${entry.item.name}`
+  emptyText?: string,
+): void {
+  if (amounts.length === 0) {
+    if (emptyText !== undefined) container.append("div").text(emptyText)
+    return
+  }
+  const lines = container
+    .selectAll<HTMLDivElement, QualifiedItemAmount>("div.quality-plan-material-line")
+    .data(amounts)
+    .join("div")
+    .classed("quality-plan-material-line", true)
+  lines.each(function (entry) {
+    const line = select(this)
+    const quality = qualifiedAmountQuality(specification, entry)
+    const label = qualifiedAmountLabel(entry)
+    line.append(() => makeQualityIcon(entry.item.icon, quality, { label }))
+    line
+      .append("span")
+      .classed("quality-plan-material-rate", true)
+      .text(`${specification.format.rate(entry.amount)}/${specification.format.rateName}`)
   })
 }
 
@@ -1100,22 +1137,18 @@ function renderQualityEquipment<GElement extends BaseType, Datum, PElement exten
   if (directModules.length === 0) {
     container.append("span").classed("quality-plan-equipment-empty", true).text("No direct modules")
   } else {
-    const slots = container
+    container
       .append("span")
       .classed("quality-plan-equipment-slots", true)
-      .selectAll<HTMLSpanElement, (typeof directModules)[number]>("span")
+      .selectAll<HTMLSpanElement, (typeof directModules)[number]>("span.quality-icon")
       .data(directModules)
-      .join("span")
+      .join((enter) =>
+        enter.append(({ module, quality }) => {
+          const label = `${quality.name} ${formatEquipmentName(module.name)}`
+          return makeQualityIcon(module.icon, quality, { label })
+        }),
+      )
       .classed("quality-plan-equipment-icon", true)
-      .attr("role", "img")
-      .attr("aria-label", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
-      .attr("title", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
-    slots.append(({ module }) => module.icon.make(32, true))
-    slots
-      .append(({ quality }) => quality.icon.make(16, true))
-      .classed("equipment-quality-badge", true)
-      .attr("data-quality", ({ quality }) => quality.key)
-      .attr("title", ({ quality }) => `${quality.name} quality`)
   }
 
   if (!configuration.beaconCount.isZero() && beaconModules.length > 0) {
@@ -1123,22 +1156,18 @@ function renderQualityEquipment<GElement extends BaseType, Datum, PElement exten
       .append("span")
       .classed("quality-plan-beacon-label", true)
       .text(`${configuration.beaconCount.toDecimal()} × ${configuration.beaconQuality.name} beacon`)
-    const slots = container
+    container
       .append("span")
       .classed("quality-plan-equipment-slots", true)
-      .selectAll<HTMLSpanElement, (typeof beaconModules)[number]>("span")
+      .selectAll<HTMLSpanElement, (typeof beaconModules)[number]>("span.quality-icon")
       .data(beaconModules)
-      .join("span")
+      .join((enter) =>
+        enter.append(({ module, quality }) => {
+          const label = `${quality.name} ${formatEquipmentName(module.name)}`
+          return makeQualityIcon(module.icon, quality, { label })
+        }),
+      )
       .classed("quality-plan-equipment-icon", true)
-      .attr("role", "img")
-      .attr("aria-label", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
-      .attr("title", ({ module, quality }) => `${quality.name} ${formatEquipmentName(module.name)}`)
-    slots.append(({ module }) => module.icon.make(32, true))
-    slots
-      .append(({ quality }) => quality.icon.make(16, true))
-      .classed("equipment-quality-badge", true)
-      .attr("data-quality", ({ quality }) => quality.key)
-      .attr("title", ({ quality }) => `${quality.name} quality`)
   }
 }
 
@@ -1204,29 +1233,22 @@ function renderQualityPlans<PElement extends BaseType, PDatum>(
       const localFeed = subtractQualifiedAmounts(allFresh, plan.importedInputs)
       const feed = card.append("section").classed("quality-plan-material quality-plan-primary-section", true)
       feed.append("h4").text("Feed")
-      feed
-        .append("div")
-        .classed("quality-plan-lines", true)
-        .selectAll("div")
-        .data(
-          formatQualifiedAmounts(specification, localFeed).length === 0
-            ? ["No local raw inputs"]
-            : formatQualifiedAmounts(specification, localFeed),
-        )
-        .join("div")
-        .text((line: string) => line)
+      renderQualifiedAmounts(
+        feed.append("div").classed("quality-plan-lines", true),
+        specification,
+        localFeed,
+        "No local raw inputs",
+      )
 
       if (plan.importedInputs.length > 0) {
         const planetName = specification.planets?.get(plan.planetKey)?.name ?? plan.planetKey
         const imports = card.append("section").classed("quality-plan-imports quality-plan-primary-section", true)
         imports.append("h4").text(`Bring to ${planetName}`)
-        imports
-          .append("div")
-          .classed("quality-plan-lines", true)
-          .selectAll("div")
-          .data(formatQualifiedAmounts(specification, plan.importedInputs))
-          .join("div")
-          .text((line: string) => line)
+        renderQualifiedAmounts(
+          imports.append("div").classed("quality-plan-lines", true),
+          specification,
+          plan.importedInputs,
+        )
       }
 
       const build = card.append("section").classed("quality-plan-build quality-plan-primary-section", true)
@@ -1351,13 +1373,11 @@ function renderQualityPlans<PElement extends BaseType, PDatum>(
       if (plan.surplusOutputs.length > 0) {
         const surplus = advancedBody.append("div").classed("quality-plan-surplus", true)
         surplus.append("h4").text("Unavoidable outputs")
-        surplus
-          .append("div")
-          .classed("quality-plan-lines", true)
-          .selectAll("div")
-          .data(formatQualifiedAmounts(specification, plan.surplusOutputs))
-          .join("div")
-          .text((line: string) => line)
+        renderQualifiedAmounts(
+          surplus.append("div").classed("quality-plan-lines", true),
+          specification,
+          plan.surplusOutputs,
+        )
       }
 
       advancedBody
@@ -1715,13 +1735,16 @@ export function displayItems(spec: FactorySpecification, totals: Totals): void {
     })
     .on("click", (event: Event, row: DisplayRow) => toggleIgnoreHandler(event, { item: requireRowItem(row) }))
   const itemIcon = itemToggle.select<HTMLSpanElement>("span.item-icon")
-  itemIcon.selectAll("img").remove()
+  itemIcon.selectAll("*").remove()
   itemIcon
     .append((row: DisplayRow) => {
       const item = requireRowItem(row)
       const icon = new ItemIcon(item)
       icon.setText(spec.ignore.has(item) ? "Imported." : "Produced in this plan.")
-      return icon.icon.make(32)
+      return makeQualityIcon(icon.icon, null, {
+        label: item.name,
+        tooltip: () => icon.renderTooltip(),
+      })
     })
     .classed("ignore", (row: DisplayRow) => spec.ignore.has(requireRowItem(row)))
   itemToggle.select<HTMLSpanElement>("span.item-name").text((row: DisplayRow) => requireRowItem(row).name)

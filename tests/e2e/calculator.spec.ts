@@ -196,6 +196,11 @@ test("Nauvis Legendary quality plans replace the ordinary table until a Normal t
   await expect(qualityPlan.locator(".quality-plan-title-main")).toHaveText("Legendary Advanced circuit")
   expect(await page.evaluate(() => window.spec.getQualityGraphOptimizer() !== null)).toBe(true)
   const feed = qualityPlan.locator(":scope > .quality-plan-material")
+  const normalMaterialIcon = feed.locator('.quality-icon[data-quality="normal"]').first()
+  await expect(normalMaterialIcon).toBeVisible()
+  await expect(normalMaterialIcon).toHaveAttribute("aria-label", /^Normal /)
+  await expect(normalMaterialIcon.locator(".equipment-quality-badge")).toHaveCount(0)
+  await expect(feed.locator(".quality-plan-material-rate").first()).toContainText("/m")
   await expect(feed).not.toContainText("Copper cable")
   await expect(feed).not.toContainText("Plastic bar")
   await expect(feed).not.toContainText("Electronic circuit")
@@ -308,6 +313,10 @@ test("equipment quality stays compact and round-trips through the URL", async ({
     "title",
     "Legendary machine quality",
   )
+  await expect(circuitRow.locator('.machine-selector .quality-icon[data-quality="legendary"]')).toHaveAttribute(
+    "aria-label",
+    "Legendary Assembling Machine 3",
+  )
   await expect(circuitRow.locator("tt.building-count")).toHaveAttribute(
     "data-tooltip",
     /^Legendary Assembling Machine 3\nEffective crafting speed/,
@@ -343,6 +352,10 @@ test("equipment quality stays compact and round-trips through the URL", async ({
   await expect(oreModuleBadges.first()).toHaveAttribute("title", "Rare quality")
   await expect(oreModuleBadges.last()).toHaveAttribute("title", "Rare quality")
   await expect(oreModuleBadges.first()).toHaveAttribute("src", "images/pixel.gif")
+  await expect(oreRow.locator('.module-cell .quality-icon[data-quality="rare"]').first()).toHaveAttribute(
+    "aria-label",
+    "Rare Speed module",
+  )
   await expect(oreRow.locator("tt.building-count")).toHaveAttribute("data-tooltip", /Resource drain/)
   await expect(oreRow.locator("tt.building-count")).toHaveAttribute("data-tooltip", /Expected patch yield/)
 

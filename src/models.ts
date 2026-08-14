@@ -1,7 +1,7 @@
 import { create, select, type BaseType, type Selection } from "d3"
 import { sorted, type CalculatorData, type SurfaceCondition as SurfaceConditionData } from "./data.js"
 import { formatCanadianNumber, Formatter, half, one, powerRepresentation, Rational, zero } from "./math.js"
-import { addInputs, closeDropdowns, Icon, makeDropdown, sprites } from "./presentation.js"
+import { addInputs, closeDropdowns, Icon, makeDropdown, makeQualityIcon, sprites } from "./presentation.js"
 import type { Item, Recipe } from "./recipes.js"
 
 // -----------------------------------------------------------------------------
@@ -1053,7 +1053,7 @@ export function moduleDropdown<GElement extends Element, TDatum, PElement extend
 
 function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCell[]): void {
   const selector = select(element)
-  let moduleDropdownSpan = selector
+  const moduleDropdownSpan = selector
     .selectAll<HTMLSpanElement, ModuleDropdownCell>("span.module-wrapper")
     .data(data)
     .join((enter) => {
@@ -1063,18 +1063,7 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
       })
       return wrappers
     })
-  let moduleDropdown = moduleDropdownSpan.selectAll<HTMLDivElement, ModuleDropdownCell>("div.dropdown")
-  moduleDropdownSpan
-    .selectAll<HTMLImageElement, ModuleDropdownCell>("img.equipment-quality-badge")
-    .data((cell) => (cell.qualityOptions && cell.qualityOptions.length > 1 && cell.selectedQuality ? [cell] : []))
-    .join((enter) => enter.append((cell) => (cell.selectedQuality?.() ?? normalQuality).icon.make(16, true)))
-    .classed("equipment-quality-badge", true)
-    .attr("data-quality", (cell) => cell.selectedQuality?.().key ?? normalQuality.key)
-    .attr("title", (cell) => `${cell.selectedQuality?.().name ?? normalQuality.name} quality`)
-    .each(function (cell) {
-      const icon = (cell.selectedQuality?.() ?? normalQuality).icon.make(16, true)
-      this.style.cssText = icon.style.cssText
-    })
+  const moduleDropdown = moduleDropdownSpan.selectAll<HTMLDivElement, ModuleDropdownCell>("div.dropdown")
   moduleDropdown
     .selectAll<HTMLDivElement, ModuleDropdownCell>("div.equipment-quality-strip")
     .data((cell) =>
@@ -1120,7 +1109,7 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
           .attr("data-tooltip", (option) => option.tooltip?.() ?? null)
       }
     })
-  moduleDropdown
+  const moduleInputs = moduleDropdown
     .selectAll<HTMLDivElement, readonly ModuleDropdownOption[]>("div.moduleRow")
     .data<readonly ModuleDropdownOption[]>((cell) => cell.inputRows)
     .join("div")
@@ -1139,26 +1128,29 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
           (option) => option.checked(),
           (option) => option.choose(),
         )
-        label.append(function (this: Element, option: ModuleDropdownOption) {
-          if (option.module === null) {
-            const sprite = sprites.get("slot_icon_module")
-            if (sprite === undefined) {
-              throw new Error("Missing slot_icon_module sprite")
-            }
-            return sprite.icon.make(32, true)
-          }
-          return option.module.icon.make(32, true)
-        })
+        label.append("span").classed("module-option-icon", true)
         return inputs
       },
-      (update) => {
-        update.attr("data-tooltip", (option) => option.tooltip?.() ?? null)
-        update
-          .selectAll<HTMLInputElement, ModuleDropdownOption>("input")
-          .property("checked", (option: ModuleDropdownOption) => option.checked())
-        return update
-      },
+      (update) => update,
     )
+  moduleInputs.attr("data-tooltip", (option) => option.tooltip?.() ?? null)
+  moduleInputs
+    .selectAll<HTMLInputElement, ModuleDropdownOption>("input")
+    .property("checked", (option: ModuleDropdownOption) => option.checked())
+  moduleInputs.select<HTMLSpanElement>("span.module-option-icon").each(function (option: ModuleDropdownOption) {
+    const wrapper = this.closest<HTMLSpanElement>("span.module-wrapper")
+    if (wrapper === null) throw new Error("Module option is missing its wrapper")
+    const cell = select<HTMLSpanElement, ModuleDropdownCell>(wrapper).datum()
+    const quality =
+      option.checked() && cell.qualityOptions && cell.qualityOptions.length > 1
+        ? (cell.selectedQuality?.() ?? normalQuality)
+        : null
+    const baseIcon = option.module?.icon ?? sprites.get("slot_icon_module")?.icon
+    if (baseIcon === undefined) throw new Error("Missing slot_icon_module sprite")
+    const moduleName = option.module?.name ?? "Empty module slot"
+    const label = quality === null ? moduleName : `${quality.name} ${moduleName}`
+    this.replaceChildren(makeQualityIcon(baseIcon, quality, { label, tooltip: null }))
+  })
 }
 
 const MIN_SPEED_EFFECT = Rational.from_floats(1, 5) // 20%

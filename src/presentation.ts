@@ -203,6 +203,49 @@ export class Icon {
   }
 }
 
+export interface QualityIconTier {
+  readonly key: string
+  readonly name: string
+  readonly icon: Icon
+}
+
+export interface QualityIconOptions {
+  readonly label: string
+  readonly tooltip?: string | (() => HTMLElement) | null
+  readonly badgeTitle?: string
+}
+
+export function makeQualityIcon(
+  baseIcon: Icon,
+  quality: QualityIconTier | null,
+  options: QualityIconOptions,
+): HTMLSpanElement {
+  const wrapper = create("span")
+    .classed("quality-icon", true)
+    .attr("role", "img")
+    .attr("aria-label", options.label)
+    .attr("data-quality", quality?.key ?? null)
+  wrapper.append(() => baseIcon.make(32, true)).attr("aria-hidden", "true")
+
+  if (quality !== null && quality.key !== "normal") {
+    wrapper
+      .append(() => quality.icon.make(16, true))
+      .classed("equipment-quality-badge", true)
+      .attr("data-quality", quality.key)
+      .attr("title", options.badgeTitle ?? `${quality.name} quality`)
+      .attr("aria-hidden", "true")
+  }
+
+  const node = requireNode(wrapper.node(), "quality icon")
+  const tooltip = options.tooltip === undefined ? options.label : options.tooltip
+  if (typeof tooltip === "string") {
+    wrapper.attr("data-tooltip", tooltip)
+  } else if (tooltip !== null) {
+    new Tooltip(node, tooltip)
+  }
+  return node
+}
+
 export function makeEmptyIcon(size?: number): HTMLImageElement {
   let img = create("img")
     .classed("icon", true)
