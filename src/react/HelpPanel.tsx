@@ -43,6 +43,7 @@ export function HelpPanel() {
               ["Treat an ingredient as externally supplied", "Click its icon in the Factory table"],
               ["Restore an imported ingredient to the production chain", "Click the icon again"],
               ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
+              ["Copy a module and its quality between slots", "Hover a module or module choice and press Q"],
               ["Change belt stacking for one item", "Use the stacking selector beside its belt count"],
               ["Plan a quality factory", "Set the output quality and production planet"],
               ["Choose available quality gear", "Settings → Quality factory"],
@@ -74,6 +75,13 @@ export function HelpPanel() {
         <details id="help-changelog" className="help-section help-changelog" open>
           <summary>Changelog</summary>
           <div className="changelog-timeline">
+            <ChangelogEntry date="2026-08-15" title="Q-Key Module Pipette">
+              <li>
+                Hover a module slot or picker choice and press Q to copy that module and quality, then click compatible
+                machine or beacon slots to place it repeatedly.
+              </li>
+            </ChangelogEntry>
+
             <ChangelogEntry date="2026-08-13" title="Practical Quality Factories & Presets">
               <li>
                 Added recursive exact quality factories for Nauvis intermediates and a curated Vulcanus route from lava

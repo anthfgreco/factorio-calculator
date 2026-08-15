@@ -1,5 +1,43 @@
 # Execution Plans
 
+## Completed plan: Q-key module pipette
+
+### Goal
+
+Let players use Factorio's Q-key muscle memory to copy an equipped module and its quality, then paint that selection into compatible machine or beacon module slots without reopening pickers.
+
+### Context and constraints
+
+- Module and beacon slots remain owned by the imperative `models.ts` / `results.ts` renderer; React mount points and application state remain unchanged.
+- The pipette selection is transient cursor state and must not be serialized. Applied module choices continue through the existing exact recalculation and URL persistence path.
+- Ordinary click, Enter/Space dropdown access, first-slot propagation, accessibility, and mobile layout must remain intact when the pipette is inactive.
+- Q must remain available for text entry and modified browser shortcuts; Escape or Q away from a populated module clears the pipette.
+
+### Done when
+
+- Hovering or focusing a populated module slot and pressing Q picks up the exact module and quality.
+- Clicking compatible machine or beacon slots applies one sampled module at a time and keeps the pipette active for repeated placement.
+- Visible and live-region feedback explains the held module and how to clear it; incompatible placement is non-destructive.
+- Focused browser coverage, formatting, static/UI/E2E checks, and the release gate are run and reported accurately.
+
+### Steps
+
+1. [x] Characterize module/dropdown ownership and current keyboard behavior.
+2. [x] Add the transient module-pipette controller and slot adapters.
+3. [x] Add browser coverage for sampling, painting, clearing, and URL persistence.
+4. [x] Format, validate, review the diff, and complete this plan.
+
+The focused and full Chromium workflows pass (13/13), as do the production build and deferred-module/build budgets. `check:quick`, compile-backed UI tests, and the release gate remain blocked by the pre-existing `exactOptionalPropertyTypes` error in `src/quality/practical.ts` where `curatedProducers` is explicitly passed as `undefined`.
+
+### Follow-up refinement
+
+1. [x] Trace the fixed status chip, slot highlighting, and duplicate nested tooltip.
+2. [x] Replace the visible status chip with a Factorio-style module ghost that follows the pointer.
+3. [x] Keep one module tooltip while preserving Q-key discoverability and the screen-reader announcement.
+4. [x] Run visual QA, focused/full browser coverage, build budgets, and final diff checks.
+
+The follow-up visually matches the cursor-held interaction: a translucent qualified module icon tracks the pointer without persistent mode chrome. Playwright visual inspection confirmed one empty-slot tooltip, and the full 13-test Chromium suite plus production build budgets pass. The release gate remains blocked only by the same pre-existing `src/quality/practical.ts` type error recorded above.
+
 ## Completed plan: shared quality icons
 
 ### Goal

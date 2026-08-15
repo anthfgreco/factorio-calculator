@@ -1024,19 +1024,198 @@ export class Module {
 }
 
 export interface ModuleDropdownOption {
-  readonly cell: { readonly name: string }
+  readonly cell: ModuleDropdownCell
   readonly module: Module | null
   checked(): boolean
   choose(): void
   tooltip?(): string | null
 }
 
+export interface ModulePipetteSelection {
+  readonly module: Module
+  readonly quality: Quality
+}
+
 export interface ModuleDropdownCell {
+  readonly name: string
   readonly inputRows: readonly (readonly ModuleDropdownOption[])[]
   readonly qualityOptions?: readonly Quality[]
   selectedQuality?(): Quality
   chooseQuality?(quality: Quality): void
   keepOpenAfterQualitySelection?(): boolean
+  pipetteLabel?(): string
+  applyPipetteSelection?(selection: ModulePipetteSelection): "applied" | "incompatible"
+}
+
+let modulePipetteSelection: ModulePipetteSelection | null = null
+let modulePipettePointerTarget: Element | null = null
+let modulePipetteStatus: HTMLElement | null = null
+let modulePipetteGhost: HTMLElement | null = null
+let modulePipetteInitialized = false
+
+function qualifiedModuleName(selection: ModulePipetteSelection): string {
+  return selection.quality === normalQuality
+    ? selection.module.name
+    : `${selection.quality.name} ${selection.module.name}`
+}
+
+function selectedPipetteSelection(cell: ModuleDropdownCell): ModulePipetteSelection | null {
+  for (const row of cell.inputRows) {
+    for (const option of row) {
+      if (option.checked() && option.module !== null) {
+        return {
+          module: option.module,
+          quality: cell.selectedQuality?.() ?? currentSpecification().defaultModuleQuality ?? normalQuality,
+        }
+      }
+    }
+  }
+  return null
+}
+
+function moduleOptionTooltip(option: ModuleDropdownOption): string | null {
+  const tooltip = option.tooltip?.() ?? null
+  if (!option.checked()) return tooltip
+  const shortcut = option.module === null ? "Press Q to clear the pipette" : "Press Q to pick up"
+  return tooltip === null ? shortcut : `${tooltip}\n${shortcut}`
+}
+
+function getModuleDropdownCell(element: Element): ModuleDropdownCell | null {
+  const wrapper = element.closest("span.module-wrapper")
+  return wrapper === null ? null : select<Element, ModuleDropdownCell>(wrapper).datum()
+}
+
+function getPipetteSource(element: Element | null): ModulePipetteSelection | null {
+  if (element === null) return null
+  const optionElement = element.closest("span.input")
+  if (optionElement !== null) {
+    const option = select<Element, ModuleDropdownOption>(optionElement).datum()
+    if (option.module === null) return null
+    return {
+      module: option.module,
+      quality: option.cell.selectedQuality?.() ?? currentSpecification().defaultModuleQuality ?? normalQuality,
+    }
+  }
+  const cell = getModuleDropdownCell(element)
+  return cell === null ? null : selectedPipetteSelection(cell)
+}
+
+function renderModulePipetteStatus(message: string | null = null): void {
+  document.body.classList.toggle("module-pipette-active", modulePipetteSelection !== null)
+  if (modulePipetteSelection === null) {
+    if (modulePipetteStatus !== null) modulePipetteStatus.textContent = "Module pipette cleared."
+    if (modulePipetteGhost !== null) modulePipetteGhost.hidden = true
+    return
+  }
+
+  const selection = modulePipetteSelection
+  const name = qualifiedModuleName(selection)
+  const instruction = message ?? "Click compatible module slots to apply. Press Q or Esc to clear."
+  if (modulePipetteStatus !== null) modulePipetteStatus.textContent = `Pipette: ${name}. ${instruction}`
+  if (modulePipetteGhost === null) return
+  modulePipetteGhost.hidden = false
+  modulePipetteGhost.classList.toggle("incompatible", message !== null)
+  modulePipetteGhost.replaceChildren(
+    makeQualityIcon(selection.module.icon, selection.quality, { label: name, tooltip: null }),
+  )
+}
+
+export function clearModulePipette(): void {
+  modulePipetteSelection = null
+  renderModulePipetteStatus()
+}
+
+function isTextEntry(element: Element | null): boolean {
+  return (
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement ||
+    (element instanceof HTMLElement && element.isContentEditable)
+  )
+}
+
+function handleModulePipettePointer(event: PointerEvent): void {
+  modulePipettePointerTarget = event.target instanceof Element ? event.target : null
+  if (modulePipetteGhost === null) return
+  const gap = 12
+  const ghostSize = 40
+  const left = event.clientX + gap + ghostSize <= window.innerWidth ? event.clientX + gap : event.clientX - ghostSize
+  const top = event.clientY + gap + ghostSize <= window.innerHeight ? event.clientY + gap : event.clientY - ghostSize
+  modulePipetteGhost.style.left = `${Math.max(4, left)}px`
+  modulePipetteGhost.style.top = `${Math.max(4, top)}px`
+}
+
+function handleModulePipetteKeydown(event: KeyboardEvent): void {
+  if (event.key === "Tab") {
+    modulePipettePointerTarget = null
+    return
+  }
+  if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+  if (event.key === "Escape" && modulePipetteSelection !== null) {
+    clearModulePipette()
+    return
+  }
+  if (event.key.toLowerCase() !== "q" || isTextEntry(document.activeElement)) return
+
+  const sourceElement =
+    modulePipettePointerTarget ?? (document.activeElement instanceof Element ? document.activeElement : null)
+  modulePipetteSelection = getPipetteSource(sourceElement)
+  event.preventDefault()
+  closeDropdowns()
+  renderModulePipetteStatus()
+}
+
+function handleModulePipetteClick(event: MouseEvent): void {
+  if (modulePipetteSelection === null || event.button !== 0 || !(event.target instanceof Element)) return
+  const trigger = event.target.closest("span.module-wrapper > .dropdownWrapper")
+  if (trigger === null) return
+  const cell = getModuleDropdownCell(trigger)
+  if (cell?.applyPipetteSelection === undefined) return
+
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  const result = cell.applyPipetteSelection(modulePipetteSelection)
+  renderModulePipetteStatus(
+    result === "incompatible" ? `${qualifiedModuleName(modulePipetteSelection)} cannot be used in that slot.` : null,
+  )
+}
+
+export function initializeModulePipette(): void {
+  if (modulePipetteInitialized) return
+  modulePipetteInitialized = true
+  const status = document.createElement("div")
+  status.id = "module_pipette_status"
+  status.className = "module-pipette-status"
+  status.setAttribute("role", "status")
+  status.setAttribute("aria-live", "polite")
+  document.body.append(status)
+  modulePipetteStatus = status
+  const ghost = document.createElement("div")
+  ghost.id = "module_pipette_ghost"
+  ghost.className = "module-pipette-ghost"
+  ghost.setAttribute("aria-hidden", "true")
+  ghost.hidden = true
+  document.body.append(ghost)
+  modulePipetteGhost = ghost
+  document.addEventListener("pointerover", handleModulePipettePointer)
+  document.addEventListener("pointermove", handleModulePipettePointer)
+  document.addEventListener("keydown", handleModulePipetteKeydown)
+  document.addEventListener("click", handleModulePipetteClick, true)
+}
+
+export function disposeModulePipette(): void {
+  if (!modulePipetteInitialized) return
+  modulePipetteInitialized = false
+  document.removeEventListener("pointerover", handleModulePipettePointer)
+  document.removeEventListener("pointermove", handleModulePipettePointer)
+  document.removeEventListener("keydown", handleModulePipetteKeydown)
+  document.removeEventListener("click", handleModulePipetteClick, true)
+  modulePipetteStatus?.remove()
+  modulePipetteGhost?.remove()
+  modulePipetteStatus = null
+  modulePipetteGhost = null
+  modulePipettePointerTarget = null
+  clearModulePipette()
 }
 
 export function moduleDropdown<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
@@ -1063,6 +1242,18 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
       })
       return wrappers
     })
+  moduleDropdownSpan
+    .select<HTMLDivElement>("div.dropdownWrapper")
+    .attr("aria-keyshortcuts", "Q")
+    .attr("data-module-pipette-target", (cell) => (cell.applyPipetteSelection === undefined ? null : "true"))
+    .attr("aria-label", (cell) => {
+      const label = cell.pipetteLabel?.() ?? "Module selector"
+      const selection = selectedPipetteSelection(cell)
+      return selection === null
+        ? `${label}. Press Q to clear the module pipette.`
+        : `${label}: ${qualifiedModuleName(selection)}. Press Q to pick it up.`
+    })
+    .attr("data-tooltip", null)
   const moduleDropdown = moduleDropdownSpan.selectAll<HTMLDivElement, ModuleDropdownCell>("div.dropdown")
   moduleDropdown
     .selectAll<HTMLDivElement, ModuleDropdownCell>("div.equipment-quality-strip")
@@ -1106,7 +1297,7 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
       if (dropdown !== null) {
         select(dropdown)
           .selectAll<HTMLElement, ModuleDropdownOption>("span.input")
-          .attr("data-tooltip", (option) => option.tooltip?.() ?? null)
+          .attr("data-tooltip", moduleOptionTooltip)
       }
     })
   const moduleInputs = moduleDropdown
@@ -1118,10 +1309,7 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
     .data<ModuleDropdownOption>((options) => options)
     .join(
       (enter) => {
-        const inputs = enter
-          .append("span")
-          .classed("input", true)
-          .attr("data-tooltip", (option) => option.tooltip?.() ?? null)
+        const inputs = enter.append("span").classed("input", true).attr("data-tooltip", moduleOptionTooltip)
         const label = addInputs(
           inputs,
           (option) => option.cell.name,
@@ -1133,7 +1321,7 @@ function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCel
       },
       (update) => update,
     )
-  moduleInputs.attr("data-tooltip", (option) => option.tooltip?.() ?? null)
+  moduleInputs.attr("data-tooltip", moduleOptionTooltip)
   moduleInputs
     .selectAll<HTMLInputElement, ModuleDropdownOption>("input")
     .property("checked", (option: ModuleDropdownOption) => option.checked())

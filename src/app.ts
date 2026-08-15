@@ -5,6 +5,7 @@ import type { FactorySpecification, FactoryViewPort } from "./factory.js"
 import { configureFactoryView, resetSpec, spec } from "./factory.js"
 import {
   configureModelRuntime,
+  disposeModulePipette,
   getBelts,
   getBeaconPower,
   getBuildings,
@@ -14,6 +15,7 @@ import {
   getQualities,
   getPlanets,
   getRecipeProductivityResearch,
+  initializeModulePipette,
 } from "./models.js"
 import { getSprites, initializeTooltips, reapTooltips } from "./presentation.js"
 import { Item, getItems, getRecipes } from "./recipes.js"
@@ -289,6 +291,7 @@ export function init(): void {
   initialized = true
   initializeFactoryDensity()
   initializeTooltips()
+  initializeModulePipette()
   configureFactoryView(browserFactoryView)
   configureDatasetChangeHandler(changeMod)
   configureDeferredTabHandler((tabName) => {
@@ -318,4 +321,5 @@ export function dispose(): void {
   loadGeneration++
   window.removeEventListener("hashchange", handleUrlHashChange)
   window.removeEventListener("popstate", handleUrlHashChange)
+  disposeModulePipette()
 }

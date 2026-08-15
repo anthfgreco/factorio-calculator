@@ -327,11 +327,11 @@ test("equipment quality stays compact and round-trips through the URL", async ({
   const targetModuleQualityStrip = page.locator(".tippy-dropdown-menu.open > .equipment-quality-strip")
   await targetModuleQualityStrip.getByRole("button", { name: "Epic quality" }).click()
   await expect(targetModuleQualityStrip).toBeVisible()
-  const emptyModuleOption = page.locator('.tippy-dropdown-menu.open span.input[data-tooltip="Empty Module Slot"]')
+  const emptyModuleOption = page.locator('.tippy-dropdown-menu.open span.input[data-tooltip^="Empty Module Slot"]')
   await emptyModuleOption.hover()
   const visibleTextTooltip = page.locator('.tippy-box[data-theme~="factorio"] .tippy-content:visible')
   await expect(visibleTextTooltip).toHaveCount(1)
-  await expect(visibleTextTooltip).toHaveText("Empty Module Slot")
+  await expect(visibleTextTooltip).toHaveText("Empty Module Slot\nPress Q to clear the pipette")
   await page.keyboard.press("Escape")
 
   const oreRow = page.locator("tr.display-row").filter({ has: page.locator(".item-name", { hasText: "Iron ore" }) })
@@ -411,6 +411,90 @@ test("equipment quality stays compact and round-trips through the URL", async ({
     "aria-label",
     "Legendary beacon quality",
   )
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
+test("Q samples a module and its quality for repeated slot placement", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await page.goto("/calc.html")
+
+  const oreRow = page.locator("tr.display-row").filter({ has: page.locator(".item-name", { hasText: "Iron ore" }) })
+  const sourceSlot = oreRow.locator(".module-cell .module-wrapper").first()
+  await sourceSlot.hover()
+  const visibleTextTooltip = page.locator('.tippy-box[data-theme~="factorio"] .tippy-content:visible')
+  await expect(visibleTextTooltip).toHaveCount(1)
+  await expect(visibleTextTooltip).toContainText("Press Q")
+  await sourceSlot.locator(".dropdownWrapper").click()
+  await page
+    .locator(".tippy-dropdown-menu.open > .equipment-quality-strip")
+    .getByRole("button", { name: "Rare quality" })
+    .click()
+  await page
+    .locator('.tippy-dropdown-menu.open span.input[data-tooltip^="Rare Speed Module"]')
+    .first()
+    .locator("img")
+    .click()
+  await expect(sourceSlot.locator(".dropdownWrapper")).toHaveAttribute("aria-keyshortcuts", "Q")
+
+  await sourceSlot.hover()
+  await page.keyboard.press("q")
+  const pipette = page.locator("#module_pipette_status")
+  await expect(pipette).toContainText("Pipette: Rare Speed module")
+  const ghost = page.locator("#module_pipette_ghost")
+  await expect(ghost).toBeVisible()
+  await expect(ghost.locator('.quality-icon[data-quality="rare"]')).toHaveAttribute("aria-label", "Rare Speed module")
+  await expect(page.locator("body")).toHaveClass(/module-pipette-active/)
+  await page.mouse.move(24, 24)
+  await expect.poll(() => ghost.evaluate((element) => Number.parseFloat(element.style.left))).toBe(36)
+  await expect.poll(() => ghost.evaluate((element) => Number.parseFloat(element.style.top))).toBe(36)
+
+  const circuitRow = page
+    .locator("tr.display-row")
+    .filter({ has: page.locator(".item-name", { hasText: "Advanced circuit" }) })
+  await circuitRow.locator(".machine-selector .dropdownWrapper").click()
+  await page
+    .locator(".machine-dropdown.open .machine-option")
+    .filter({ hasText: /^Assembling machine 3/ })
+    .click()
+  const circuitSlots = circuitRow.locator(".module-cell .module-wrapper")
+  await expect(circuitSlots).toHaveCount(4)
+  await circuitSlots.nth(1).click()
+  await expect(page.locator(".tippy-dropdown-menu.open")).toHaveCount(0)
+  await expect(circuitSlots.nth(1).locator('.quality-icon[data-quality="rare"]')).toHaveAttribute(
+    "aria-label",
+    "Rare Speed module",
+  )
+  await expect(circuitSlots.first().locator('.quality-icon[data-quality="rare"]')).toHaveCount(0)
+  await expect(ghost).toBeVisible()
+
+  await circuitSlots.nth(2).click()
+  await expect(circuitSlots.nth(2).locator('.quality-icon[data-quality="rare"]')).toHaveAttribute(
+    "aria-label",
+    "Rare Speed module",
+  )
+  const pipetteHash = new URL(page.url()).hash
+  await page.reload()
+  await expect.poll(() => new URL(page.url()).hash).toBe(pipetteHash)
+  const reloadedCircuitRow = page
+    .locator("tr.display-row")
+    .filter({ has: page.locator(".item-name", { hasText: "Advanced circuit" }) })
+  await expect(
+    reloadedCircuitRow.locator(".module-cell .module-wrapper").nth(1).locator('.quality-icon[data-quality="rare"]'),
+  ).toHaveAttribute("aria-label", "Rare Speed module")
+  await expect(ghost).toBeHidden()
+
+  await reloadedCircuitRow.locator(".module-cell .module-wrapper").nth(1).hover()
+  await page.keyboard.press("q")
+  await expect(ghost).toBeVisible()
+  await page.getByRole("button", { name: "Settings" }).hover()
+  await page.keyboard.press("q")
+  await expect(ghost).toBeHidden()
+  await expect(pipette).toHaveText("Module pipette cleared.")
+  await expect(page.locator("body")).not.toHaveClass(/module-pipette-active/)
+
+  await page.getByRole("button", { name: "Help" }).click()
+  await expect(page.getByRole("cell", { name: "Hover a module or module choice and press Q" })).toBeVisible()
+
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 

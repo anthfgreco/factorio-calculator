@@ -11,11 +11,13 @@ import {
 import { formatCanadianNumber, one, powerRepresentation, Rational, zero } from "./math.js"
 import {
   Building,
+  clearModulePipette,
   getBeaconEffect,
   Miner,
   Module,
   type ModuleDropdownCell,
   type ModuleDropdownOption,
+  type ModulePipetteSelection,
   moduleDropdown,
   moduleRows,
   ModuleSpec,
@@ -452,6 +454,21 @@ class ModuleSlot implements ModuleDropdownCell {
     return this.moduleSpec.modules[this.index] === null
   }
 
+  pipetteLabel(): string {
+    return this.index === 0
+      ? "Module 1 — normal selection changes matching slots"
+      : `Module ${this.index + 1} — changes this slot`
+  }
+
+  applyPipetteSelection(selection: ModulePipetteSelection): "applied" | "incompatible" {
+    if (!selection.module.canUse(this.moduleSpec.recipe, this.moduleSpec.building)) return "incompatible"
+    let needsRecalculation = this.moduleSpec.setModule(this.index, selection.module)
+    needsRecalculation = this.moduleSpec.setModuleQuality(this.index, selection.quality) || needsRecalculation
+    if (needsRecalculation || spec.isFactoryTarget(this.moduleSpec.recipe)) spec.updateSolution()
+    else spec.display()
+    return "applied"
+  }
+
   chooseQuality(quality: Quality): void {
     const toUpdate = [this.index]
     if (this.index === 0) {
@@ -545,6 +562,26 @@ class BeaconCell implements ModuleDropdownCell {
   keepOpenAfterQualitySelection(): boolean {
     const moduleSpec = this.row.moduleSpec
     return moduleSpec !== null && moduleSpec.beaconModules[this.index] === null
+  }
+
+  pipetteLabel(): string {
+    return `Beacon module ${this.index + 1}`
+  }
+
+  applyPipetteSelection(selection: ModulePipetteSelection): "applied" | "incompatible" {
+    const moduleSpec = this.row.moduleSpec
+    if (
+      moduleSpec === null ||
+      !selection.module.canBeacon() ||
+      !selection.module.canUse(moduleSpec.recipe, moduleSpec.building)
+    ) {
+      return "incompatible"
+    }
+    moduleSpec.setBeaconModule(selection.module, this.index)
+    moduleSpec.setBeaconModuleQuality(selection.quality, this.index)
+    if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
+    else spec.display()
+    return "applied"
   }
 
   chooseQuality(quality: Quality): void {
@@ -649,6 +686,7 @@ class DisplayGroup {
 }
 
 export function resetDisplay(): void {
+  clearModulePipette()
   selectAll("table#totals > tbody").remove()
   displayGroups = []
 }
