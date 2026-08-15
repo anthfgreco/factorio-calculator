@@ -33,7 +33,7 @@ globalThis.document = {
 }
 
 const { changeFactoryDensity, initializeFactoryDensity, setFactoryDensity } = await import(
-  pathToFileURL(resolve(build, "state.js")).href
+  pathToFileURL(resolve(build, "main.js")).href
 )
 
 test("Factory table density restores and persists through the typed value API", () => {

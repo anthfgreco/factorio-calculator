@@ -27,7 +27,8 @@
     "exactOptionalPropertyTypes": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
-    "noImplicitReturns": true
+    "noImplicitReturns": true,
+    "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src/main.tsx", "src/vendor-sankey.js"]
 }

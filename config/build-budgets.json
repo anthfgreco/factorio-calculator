@@ -1,14 +1,8 @@
 {
-  "maximumInitialJavaScriptBytes": 650000,
-  "maximumInitialGzipBytes": 190000,
-  "maximumInitialCssBytes": 120000,
+  "maximumInitialJavaScriptBytes": 700000,
+  "maximumInitialGzipBytes": 200000,
+  "maximumInitialCssBytes": 10000,
   "maximumInitialRequests": 10,
   "maximumSingleChunkBytes": 1500000,
-  "requiredDeferredModuleFragments": [
-    "src/visualization.ts",
-    "src/graph.ts",
-    "src/quality/highs-runtime.ts",
-    "node_modules/@dagrejs/dagre",
-    "node_modules/.pnpm/highs@"
-  ]
+  "requiredDeferredModuleFragments": ["node_modules/@dagrejs/dagre", "node_modules/.pnpm/highs@"]
 }

@@ -10,7 +10,7 @@ if (!build) {
   throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test")
 }
 
-const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
+const load = (path) => import(pathToFileURL(resolve(build, "main.js")).href)
 
 const { DatasetValidationError, parseCalculatorData } = await load("data")
 const { Formatter, Matrix, formatCanadianNumber, powerRepresentation, Rational, one, zero } = await load("math")
@@ -19,7 +19,7 @@ const { itemMatchesSearch } = await load("data")
 const {
   ModuleSpec,
   configureModelRuntime,
-  getBeaconPower: getConfiguredBeaconPower,
+  getDatasetBeaconPower: getConfiguredBeaconPower,
   getBuildings,
   getModules,
   getPlanets,

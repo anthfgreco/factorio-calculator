@@ -67,26 +67,14 @@ pnpm zip                 # Package current working-tree files on Windows
 
 ## Architecture
 
-The codebase is organized around strict ownership boundaries rather than a framework-wide rewrite:
+The runtime is intentionally monolithic:
 
-- `src/application/` — typed snapshots, value commands, store lifecycle, and browser ports
-- `src/data.ts` — external dataset contracts, runtime validation, search, and location helpers
-- `src/math.ts` — exact rational/matrix arithmetic and formatting
-- `src/solver.ts`, `src/solver/` — exact solver implementation, structural contracts, and typed failures
-- `src/planning.ts`, `src/planning/` — deterministic Space Age planning reports and contracts
-- `src/quality/` — exact quality transitions, automatic selected-planet planning, real recycler disposal, and quality-qualified flow graphs
-- `src/factory.ts` — calculator facade, machine/location policy, solver adaptation, and renderer port
-- `src/models.ts`, `src/models/` — buildings, modules, belts, fuel, planets, item groups, and research factories
-- `src/recipes.ts` — item/recipe models and recipe policy
-- `src/state.ts` — value operations plus compatibility adapters for remaining imperative controls
-- `src/url/`, `src/url-state.ts` — pure fragment codec, injected history, and compatibility serialization
-- `src/results.ts`, `src/results/` — high-volume results renderer plus pure grouping/summary logic
-- `src/settings.ts`, `src/settings/`, `src/ui.ts` — dynamic settings and target rendering
-- `src/graph.ts`, `src/graph/`, `src/visualization.ts` — deferred graph/Sankey runtime
-- `src/main.tsx`, `src/react/` — React 19.2.8 shell subscribed through `useSyncExternalStore`
-- `src/app.ts` — browser composition and dataset bootstrap
+- `src/main.tsx` is the one authoritative runtime file. Its `// region …` markers preserve the calculation, domain, state, URL, renderer, React, and startup boundaries without a first-party import graph.
+- `src/vendor-sankey.js` is the only source-code exception: one locally patched third-party implementation retained separately for provenance.
+- Tests, scripts, generated datasets, documentation, and binary assets remain separate because they are not runtime modules.
+- `AGENTS.md` is the only agent instruction file and includes the region map, invariants, validation lanes, and review rules.
 
-Start with [AGENTS.md](AGENTS.md), [docs/architecture.md](docs/architecture.md), [docs/testing.md](docs/testing.md), and [docs/change-guide.md](docs/change-guide.md). Complex work is tracked in [PLANS.md](PLANS.md).
+Dagre and HiGHS remain dynamically imported so the default Factory view does not load optional layout or native optimization engines. Styles are embedded in `main.tsx`; `calc.html` loads one application entry point. See [docs/architecture.md](docs/architecture.md) and [docs/change-guide.md](docs/change-guide.md).
 
 ## GitHub Pages
 
@@ -136,4 +124,4 @@ The builder writes:
 - `public/images/sprite-sheet-<hash>.png` and lossless `.webp` runtime copies
 - `build-reports/space-age-2.1.13.json`
 
-Raw JSON is validated by `parseCalculatorData()` in `src/data.ts` before runtime objects are created. Do not manually treat generated JSON as the source of truth.
+Raw JSON is validated by `parseCalculatorData()` in the `data.ts` region of `src/main.tsx` before runtime objects are created. Do not manually treat generated JSON as the source of truth.

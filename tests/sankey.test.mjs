@@ -8,7 +8,7 @@ if (!build) {
   throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test")
 }
 
-const sankeyModule = await import(pathToFileURL(resolve(build, "vendor/d3-sankey/index.js")).href)
+const sankeyModule = await import(pathToFileURL(resolve(build, "vendor-sankey.js")).href)
 
 test("vendored Sankey helpers run without a browser d3 global", () => {
   const graph = sankeyModule.sankey()({

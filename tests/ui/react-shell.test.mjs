@@ -7,7 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
-const { CalculatorShell } = await import(pathToFileURL(resolve(build, "react/CalculatorShell.js")).href)
+const { CalculatorShell } = await import(pathToFileURL(resolve(build, "main.js")).href)
 
 const commands = new Proxy(
   {},

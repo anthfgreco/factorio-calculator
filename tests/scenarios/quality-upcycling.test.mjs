@@ -180,9 +180,7 @@ test("Fulgora Legendary Mech armor starts at quality scrap mining instead of imp
   )
   assert.ok(scrapRecycling.some((operation) => math.zero.less(operation.machineCount)))
   assert.ok(
-    plan.operations.some(
-      (operation) => operation.kind === "recycle" && operation.recipe.key !== "scrap-recycling",
-    ),
+    plan.operations.some((operation) => operation.kind === "recycle" && operation.recipe.key !== "scrap-recycling"),
     "Fulgora must reuse generated downstream recycler routes from scrap products",
   )
 })

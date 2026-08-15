@@ -29,7 +29,7 @@ pnpm check:quick
 
 Runs:
 
-- architecture allowlist and import-cycle validation
+- monolithic source/instruction layout and deferred-engine validation
 - explicit type-debt rejection
 - full globally strict TypeScript
 
@@ -101,7 +101,7 @@ pnpm build:site
 pnpm validate:build
 ```
 
-The Vite manifest and emitted Rollup module graph are checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred visualization modules. Required deferred modules must be present, reachable through the calculator's dynamic import graph, and absent from its static import closure.
+The Vite manifest and emitted Rollup module graph are checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred optional engines. Dagre and HiGHS must be present in dynamic chunks and absent from the calculator entry's static import closure.
 
 ## Release gate
 

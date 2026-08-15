@@ -24,7 +24,7 @@ export default defineConfig({
   },
 })
 
-// Emit Rollup's real module ownership so build budgets can prove visualization stays deferred.
+// Emit Rollup's real module ownership so build budgets can prove optional engines stay deferred.
 function moduleGraphManifest(): Plugin {
   let projectRoot = ""
 

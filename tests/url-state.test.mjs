@@ -19,7 +19,7 @@ const {
   serializeModuleQualitySettings,
   serializeModuleSettings,
   serializeRecipeProductivityLevels,
-} = await import(pathToFileURL(resolve(build, "url-state.js")).href)
+} = await import(pathToFileURL(resolve(build, "main.js")).href)
 
 function module(key) {
   return { shortName: () => key }
@@ -210,7 +210,7 @@ test("URL recipe productivity levels are stable and omit defaults or unknown res
 })
 
 const { compressCalculatorSettings, parseCalculatorFragment, parseSettingsParameters } = await import(
-  pathToFileURL(resolve(build, "url/codec.js")).href
+  pathToFileURL(resolve(build, "main.js")).href
 )
 const {
   formatBeltStackItemSettings,
@@ -218,8 +218,8 @@ const {
   parseBeltStackItemSettings,
   parseBeltStackSettingPolicy,
   parseTargetSetting,
-} = await import(pathToFileURL(resolve(build, "url/codec.js")).href)
-const { CalculatorUrlHistory } = await import(pathToFileURL(resolve(build, "url/history.js")).href)
+} = await import(pathToFileURL(resolve(build, "main.js")).href)
+const { CalculatorUrlHistory } = await import(pathToFileURL(resolve(build, "main.js")).href)
 
 const nodeBase64 = {
   encode: (binary) => Buffer.from(binary, "latin1").toString("base64"),

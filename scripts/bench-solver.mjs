@@ -24,7 +24,7 @@ await rm(outputDirectory, { recursive: true, force: true })
 
 try {
   await compileTypeScript({ root, outputDirectory })
-  const load = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
+  const load = (name) => import(pathToFileURL(resolve(outputDirectory, "main.js")).href)
   const { one } = await load("math")
   const { Ingredient, solve } = await load("solver")
 

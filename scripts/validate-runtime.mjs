@@ -10,7 +10,7 @@ await compileTypeScript({ root, outputDirectory })
 
 globalThis.window = {}
 
-const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, `${name}.js`)).href)
+const loadModule = (name) => import(pathToFileURL(resolve(outputDirectory, "main.js")).href)
 
 const { getItems, getRecipes } = await loadModule("recipes")
 const {

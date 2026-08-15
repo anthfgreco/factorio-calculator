@@ -5,7 +5,7 @@ import test from "node:test"
 
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
-const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
+const load = (path) => import(pathToFileURL(resolve(build, "main.js")).href)
 
 const { BrowserCalculatorStore } = await load("application/store")
 const { FactorySpecification } = await load("factory")

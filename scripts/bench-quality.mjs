@@ -30,9 +30,7 @@ try {
   const { setupSpaceAgeFactory } = await import(
     pathToFileURL(resolve(root, "tests/fixtures/factorio-runtime.mjs")).href
   )
-  const { loadHighsQualityOptimizer } = await import(
-    pathToFileURL(resolve(outputDirectory, "quality/highs-solver.js")).href
-  )
+  const { loadHighsQualityOptimizer } = await import(pathToFileURL(resolve(outputDirectory, "main.js")).href)
   const loadStarted = performance.now()
   const optimizer = await loadHighsQualityOptimizer()
   console.log(`HiGHS WASM initialization: ${(performance.now() - loadStarted).toFixed(2)} ms`)

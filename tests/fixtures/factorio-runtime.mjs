@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url"
 const root = resolve(import.meta.dirname, "../..")
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:core")
-const load = (path) => import(pathToFileURL(resolve(build, `${path}.js`)).href)
+const load = (path) => import(pathToFileURL(resolve(build, "main.js")).href)
 
 let parsedDataPromise = null
 
@@ -66,7 +66,7 @@ export async function setupSpaceAgeFactory() {
     fuel,
     itemGroups,
     productivity,
-    modules.models.getBeaconPower(data),
+    modules.models.getDatasetBeaconPower(data),
     qualities,
   )
   specification.setDefaultPriority()
