@@ -5019,6 +5019,16 @@ export interface QualityTierConfiguration {
   readonly powerEffect: Rational
 }
 
+export interface SelfRecyclingLegendaryMetrics {
+  readonly item: Item
+  readonly recyclerRecipe: Recipe
+  readonly outputPerSecondPerMachine: Rational
+  readonly sourceQualityChance: Rational
+  readonly recyclerQualityChance: Rational
+  readonly score: Rational
+  readonly legendaryPerMinutePerMachine: Rational
+}
+
 export interface QualityOperationRate {
   readonly recipe: Recipe
   readonly qualityLevel: number
@@ -5027,6 +5037,7 @@ export interface QualityOperationRate {
   readonly power: Rational
   readonly kind: "craft" | "recycle" | "source" | "dispose"
   readonly configuration: QualityTierConfiguration
+  readonly selfRecyclingLegendary?: SelfRecyclingLegendaryMetrics
 }
 
 export interface QualityTargetPlan {
@@ -5090,6 +5101,42 @@ export function qualityTransitionDistribution(
   return Array.from({ length: maxLevel + 1 }, (_, toLevel) =>
     qualityTransitionProbability(chance, fromLevel, toLevel, maxLevel),
   )
+}
+
+/**
+ * Eventual Legendary chance for an item that starts at Normal and is recycled
+ * into itself at exactly 25% until it reaches Legendary. This is the closed
+ * form of the same absorbing quality flow used by recyclerClosure().
+ */
+export function quarterSelfRecycleLegendaryProbability(
+  sourceQualityChance: Rational,
+  recyclerQualityChance: Rational,
+): Rational {
+  const source = Rational.max(zero, Rational.min(one, sourceQualityChance))
+  const recycler = Rational.max(zero, Rational.min(one, recyclerQualityChance))
+  const three = Rational.from_integer(3)
+  const ten = Rational.from_integer(10)
+  return source
+    .mul(three)
+    .add(recycler)
+    .mul(recycler.mul(ten).add(three).pow(3))
+    .div(Rational.from_integer(1000).mul(recycler.add(three).pow(4)))
+}
+
+/**
+ * Relative Legendary-throughput score for the same 25% self-recycling case.
+ * With a fixed recycler setup, higher is always better. Quality chances are
+ * fractions here; multiply the result by 100 to show the familiar percent-
+ * point score T × (Q% + R% / 3).
+ */
+export function quarterSelfRecycleLegendaryScore(
+  outputPerSecond: Rational,
+  sourceQualityChance: Rational,
+  recyclerQualityChance: Rational,
+): Rational {
+  const source = Rational.max(zero, Rational.min(one, sourceQualityChance))
+  const recycler = Rational.max(zero, Rational.min(one, recyclerQualityChance))
+  return outputPerSecond.mul(source.add(recycler.div(Rational.from_integer(3))))
 }
 
 /** Solve A x = b exactly. Throws for singular or underdetermined systems. */
@@ -6281,6 +6328,54 @@ export function operationCapacity(
   return { machineCount, power }
 }
 
+// ponytail: this shortcut is exact only for a single-item 25% self-recycle loop with uniform recycler quality;
+// keep recyclerClosure() authoritative for every ingredient-return or mixed-configuration route.
+function quarterSelfRecyclerForItem(specification: FactorySpecification, item: Item): Recipe | null {
+  const recycler = findRecyclerRecipe(specification, item)
+  if (recycler === null || recycler.ingredients.length !== 1 || recycler.products.length !== 1) return null
+  const ingredient = recycler.ingredients[0]
+  const product = recycler.products[0]
+  if (ingredient === undefined || product === undefined || ingredient.item !== item || product.item !== item) return null
+  return product.amount.mul(Rational.from_integer(4)).equal(ingredient.amount) ? recycler : null
+}
+
+function selfRecyclingLegendaryMetrics(
+  specification: FactorySpecification,
+  source: QualityOperationRate,
+  recyclerRecipe: Recipe,
+  recyclerConfiguration: QualityTierConfiguration,
+): SelfRecyclingLegendaryMetrics | null {
+  if (source.kind !== "source" || source.qualityLevel !== 0 || source.machineCount.isZero()) return null
+  if (!(source.configuration.building instanceof Miner)) return null
+  if (source.recipe.products.length !== 1) return null
+  const product = source.recipe.products[0]
+  if (product === undefined || !isQualifiedSolid(product.item)) return null
+  const quarterSelfRecycler = quarterSelfRecyclerForItem(specification, product.item)
+  if (quarterSelfRecycler === null || quarterSelfRecycler !== recyclerRecipe) return null
+
+  const outputPerCraft = addProductivity(source.recipe, product, source.configuration.productivity)
+  const outputPerSecondPerMachine = source.rate.mul(outputPerCraft).div(source.machineCount)
+  const probability = quarterSelfRecycleLegendaryProbability(
+    source.configuration.qualityChance,
+    recyclerConfiguration.qualityChance,
+  )
+  return {
+    item: product.item,
+    recyclerRecipe: quarterSelfRecycler,
+    outputPerSecondPerMachine,
+    sourceQualityChance: source.configuration.qualityChance,
+    recyclerQualityChance: recyclerConfiguration.qualityChance,
+    score: quarterSelfRecycleLegendaryScore(
+      outputPerSecondPerMachine,
+      source.configuration.qualityChance,
+      recyclerConfiguration.qualityChance,
+    ),
+    legendaryPerMinutePerMachine: outputPerSecondPerMachine
+      .mul(probability)
+      .mul(Rational.from_integer(60)),
+  }
+}
+
 export function recyclerClosure(
   graph: QualityGraph,
   target: Item,
@@ -7313,7 +7408,8 @@ export function planPracticalQualityTarget(options: {
     let kind: QualityOperationRate["kind"] = "craft"
     if (baseRecipe.isResource()) kind = "source"
     else if (baseRecipe.categories.has("recycling")) kind = "recycle"
-    operations.push({
+    const embedded = builder.embeddedRecyclers.get(solverRecipe)
+    const operation: QualityOperationRate = {
       recipe: baseRecipe,
       qualityLevel: quality,
       rate,
@@ -7321,7 +7417,22 @@ export function planPracticalQualityTarget(options: {
       power: capacity.power,
       kind,
       configuration,
-    })
+    }
+    const recyclerConfiguration = embedded?.configurations[0]
+    const hasUniformRecyclerQuality =
+      recyclerConfiguration !== undefined &&
+      embedded?.configurations.every((candidate) =>
+        candidate.qualityChance.equal(recyclerConfiguration.qualityChance),
+      ) === true
+    const selfRecyclingLegendary =
+      qualityLevel === 4 &&
+      specification.maxQualityLevel === 4 &&
+      embedded !== undefined &&
+      recyclerConfiguration !== undefined &&
+      hasUniformRecyclerQuality
+        ? selfRecyclingLegendaryMetrics(specification, operation, embedded.recipe, recyclerConfiguration)
+        : null
+    operations.push(selfRecyclingLegendary === null ? operation : { ...operation, selfRecyclingLegendary })
     if (kind === "source") {
       for (const product of solverRecipe.products) addSource(product.item, rate.mul(product.amount))
     } else if (kind === "recycle") {
@@ -7332,7 +7443,6 @@ export function planPracticalQualityTarget(options: {
     totalMachineCount = totalMachineCount.add(capacity.machineCount)
     totalPower = totalPower.add(capacity.power)
 
-    const embedded = builder.embeddedRecyclers.get(solverRecipe)
     if (embedded === undefined) continue
     for (let recyclerQuality = 0; recyclerQuality <= specification.maxQualityLevel; recyclerQuality++) {
       const recycleRate = rate.mul(solverRecipe.metadata.recycleRatesByQuality?.[recyclerQuality] ?? zero)
@@ -8979,7 +9089,7 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   },
 }
 
-export function applyProgressionPreset(specification: FactorySpecification, value: ProgressionPreset): void {
+function applyProgressionPresetValues(specification: FactorySpecification, value: ProgressionPreset): void {
   const preset = PROGRESSION_PRESETS[value]
   specification.miningProd = Rational.from_float(preset.miningProductivity / 100)
   specification.recipeProductivityLevels.clear()
@@ -9001,11 +9111,17 @@ export function applyProgressionPreset(specification: FactorySpecification, valu
       return building === undefined ? [] : [building]
     }),
   )
+}
+
+export function applyProgressionPreset(specification: FactorySpecification, value: ProgressionPreset): void {
+  applyProgressionPresetValues(specification, value)
   specification.updateSolution()
 }
 
 export function applyQualityPreset(specification: FactorySpecification, value: QualityPreset): void {
-  if (value === "full-legendary" && specification.applyFullLegendaryQuality()) specification.updateSolution()
+  if (value !== "full-legendary" || !specification.qualities.has("legendary")) return
+  applyProgressionPresetValues(specification, "late-space-age")
+  if (specification.applyFullLegendaryQuality()) specification.updateSolution()
 }
 
 function applyPlanningSetting(specification: FactorySpecification, input: PlanningSettingValue): void {
@@ -13719,6 +13835,29 @@ function QualityPlanView({
                       name={`${operation.kind}: ${operation.recipe.name}`}
                       size={24}
                     />
+                    {operation.selfRecyclingLegendary === undefined ? null : (
+                      <div style={{ ...UI.muted, marginTop: 3, fontSize: 11.5, lineHeight: 1.35 }}>
+                        <div>
+                          {formatCanadianNumber(
+                            operation.selfRecyclingLegendary.legendaryPerMinutePerMachine.toDecimal(3),
+                          )}
+                          {" Legendary/min per miner · score "}
+                          {formatCanadianNumber(
+                            operation.selfRecyclingLegendary.score
+                              .mul(Rational.from_integer(100))
+                              .toDecimal(1),
+                          )}
+                        </div>
+                        <div>
+                          {formatCanadianNumber(operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3))}
+                          {"/s × ("}
+                          {formatPercent(operation.selfRecyclingLegendary.sourceQualityChance, 3)}
+                          {" + "}
+                          {formatPercent(operation.selfRecyclingLegendary.recyclerQualityChance, 3)}
+                          {" / 3)"}
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td style={UI.td}>{qualityName(operation.qualityLevel)}</td>
                   <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.rate(operation.rate)}</td>
@@ -15435,6 +15574,14 @@ function HelpPanel() {
           Changelog
         </summary>
         <div style={{ display: "flex", flexDirection: "column" }}>
+          <ChangelogEntry date="2026-08-16" title="Vulcanus Quality Throughput">
+            <li>Added Vulcanus LDS and concrete quality shuffles to the practical Legendary planner.</li>
+            <li>Full Legendary now includes the Late Space Age research, belts, stacking, and machine baseline.</li>
+            <li>
+              Self-recycling mined resources now show expected Legendary/min per miner plus the
+              throughput × (mining quality + recycler quality / 3) comparison score.
+            </li>
+          </ChangelogEntry>
           <ChangelogEntry date="2026-08-15" title="Q-Key Module Pipette">
             <li>
               Hover a module slot or picker choice and press Q to copy that module and quality, then click compatible

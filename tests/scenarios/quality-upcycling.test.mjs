@@ -24,6 +24,22 @@ test("quality transitions are exact stochastic columns with Legendary absorbing"
   assert.equal(qualityMath.qualityTransitionProbability(chance, 0, 4, 4).toString(), "1/5000")
 })
 
+test("25% self-recycling resources expose the exact Legendary throughput shortcut", async () => {
+  const { math, qualityMath } = await setupSpaceAgeFactory()
+  const sourceQuality = math.Rational.from_floats(1, 5)
+  const recyclerQuality = math.Rational.from_floats(1, 5)
+  const outputPerSecond = math.Rational.from_floats(58, 10)
+
+  assert.equal(
+    qualityMath.quarterSelfRecycleLegendaryProbability(sourceQuality, recyclerQuality).toString(),
+    "125/131072",
+  )
+  assert.equal(
+    qualityMath.quarterSelfRecycleLegendaryScore(outputPerSecond, sourceQuality, recyclerQuality).toString(),
+    "116/75",
+  )
+})
+
 test("Nauvis Legendary advanced circuits recursively quality-plan every solid intermediate", async () => {
   const runtime = await setupSpaceAgeFactory()
   const { specification, math, items, recipes, planets, qualityHighs } = runtime
@@ -243,6 +259,14 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
       (entry) => entry.item.key === "calcite" && entry.qualityLevel === 4 && math.zero.less(entry.amount),
     ),
   )
+  const calciteMining = plan.operations.find(
+    (operation) => operation.kind === "source" && operation.recipe.key === "calcite",
+  )
+  assert.ok(calciteMining)
+  assert.equal(calciteMining.selfRecyclingLegendary?.item.key, "calcite")
+  assert.equal(calciteMining.selfRecyclingLegendary?.recyclerRecipe.key, "calcite-recycling")
+  assert.ok(math.zero.less(calciteMining.selfRecyclingLegendary?.legendaryPerMinutePerMachine ?? math.zero))
+  assert.ok(math.zero.less(calciteMining.selfRecyclingLegendary?.score ?? math.zero))
   assert.equal(plan.importedInputs.length, 0)
   assert.equal(
     plan.freshInputs.some((entry) => entry.item.key === "iron-plate"),

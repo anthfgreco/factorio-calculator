@@ -130,7 +130,7 @@ test("explicit equipment quality choices survive later default changes", async (
   assert.equal(moduleSpec.beaconQuality, rare)
 })
 
-test("Full Legendary upgrades every quality surface without changing factory progression", async () => {
+test("the low-level Full Legendary quality operation preserves factory progression", async () => {
   const { specification, recipes, planets, calculatorModules, math } = await setupSpaceAgeFactory()
   const rare = specification.qualities.get("rare")
   const legendary = specification.qualities.get("legendary")
@@ -209,4 +209,79 @@ test("Full Legendary upgrades every quality surface without changing factory pro
   assert.deepEqual(moduleSpec.modules, modulesBefore)
   assert.deepEqual(moduleSpec.beaconModules, beaconModulesBefore)
   assert.equal(moduleSpec.beaconCount.toString(), "6")
+})
+
+test("the Full Legendary preset applies Late Space Age progression before Legendary quality", async () => {
+  const { specification, recipes, planets, factory, math } = await setupSpaceAgeFactory()
+  const rare = specification.qualities.get("rare")
+  const legendary = specification.qualities.get("legendary")
+  const nauvis = planets.get("nauvis")
+  const fastBelt = specification.belts.get("fast-transport-belt")
+  const expressBelt = specification.belts.get("express-transport-belt")
+  const ore = recipes.get("iron-ore")
+  const electricDrill = specification.buildingKeys.get("electric-mining-drill")
+  const bigDrill = specification.buildingKeys.get("big-mining-drill")
+  assert.ok(rare)
+  assert.ok(legendary)
+  assert.ok(nauvis)
+  assert.ok(fastBelt)
+  assert.ok(expressBelt)
+  assert.ok(ore)
+  assert.ok(electricDrill)
+  assert.ok(bigDrill)
+
+  specification.selectOnePlanet(nauvis)
+  specification.belt = fastBelt
+  specification.beltStackSize = math.Rational.from_integer(3)
+  specification.miningProd = math.Rational.from_floats(7, 10)
+  for (const researchKey of specification.recipeProductivityResearch.keys()) {
+    specification.setRecipeProductivityLevel(researchKey, 3)
+  }
+  specification.setBuildingOverride(ore, electricDrill)
+  specification.setDefaultMachineQuality(rare)
+  specification.setDefaultModuleQuality(rare)
+  specification.setDefaultBeaconQuality(rare)
+  specification.qualityPlannerModuleQuality = rare
+  specification.qualityPlannerProductivityModuleQuality = rare
+
+  const targetRate = math.Rational.from_integer(17)
+  const target = {
+    qualityLevel: 0,
+    qualityStrategy: "direct",
+    getRate: () => targetRate,
+    setQuality(level) {
+      this.qualityLevel = Number(level)
+    },
+    setQualityStrategy(strategy, preservedRate) {
+      this.qualityStrategy = strategy
+      this.preservedRate = preservedRate
+    },
+  }
+  specification.buildTargets.push(target)
+
+  let solutionUpdates = 0
+  specification.updateSolution = () => {
+    solutionUpdates++
+  }
+  factory.applyQualityPreset(specification, "full-legendary")
+
+  assert.equal(solutionUpdates, 1)
+  assert.deepEqual([...specification.selectedPlanets], [nauvis])
+  assert.equal(specification.miningProd.toString(), "1")
+  for (const researchKey of specification.recipeProductivityResearch.keys()) {
+    assert.equal(specification.recipeProductivityLevels.get(researchKey), 10)
+  }
+  assert.equal(specification.belt, expressBelt)
+  assert.equal(specification.beltStackSize.toString(), "4")
+  assert.equal(specification.getBuildingOverride(ore), null)
+  assert.equal(specification.getAutomaticBuilding(ore), bigDrill)
+  assert.equal(specification.maxQualityLevel, 4)
+  assert.equal(specification.defaultMachineQuality, legendary)
+  assert.equal(specification.defaultModuleQuality, legendary)
+  assert.equal(specification.defaultBeaconQuality, legendary)
+  assert.equal(specification.qualityPlannerModuleQuality, legendary)
+  assert.equal(specification.qualityPlannerProductivityModuleQuality, legendary)
+  assert.equal(target.qualityLevel, 4)
+  assert.equal(target.qualityStrategy, "auto")
+  assert.equal(target.preservedRate, targetRate)
 })
