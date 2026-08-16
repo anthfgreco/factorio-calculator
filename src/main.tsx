@@ -1,659 +1,96 @@
-import * as d3sankey from "./vendor-sankey.js"
-import {
-  color,
-  create,
-  curveBasis,
-  line,
-  local,
-  select,
-  selectAll,
-  style,
-  type BaseType,
-  type Selection,
-  type ValueFn,
-} from "d3"
 import { deflateRaw, inflateRaw } from "pako"
-import {
-  Fragment,
-  useLayoutEffect,
-  useSyncExternalStore,
-  type ChangeEvent,
-  type FormEvent,
-  type ReactNode,
-} from "react"
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react"
 import { createRoot } from "react-dom/client"
-import tippy, { delegate, hideAll, type DelegateInstance, type Instance, type Props } from "tippy.js"
 
 declare global {
-  const spec: FactorySpecification
-
   interface Window {
     spec: FactorySpecification
   }
 }
 
-const CALCULATOR_CSS = String.raw`.dropdownWrapper{display:inline-block;}
-.tippy-dropdown-menu{border:2px solid var(--light);border-radius:5px;background-color:var(--dark);overflow:hidden;display:inline-block;vertical-align:middle;cursor:pointer;}
-.tippy-dropdown-menu.open{border-color:var(--accent);padding:0.4em;height:auto;width:auto;max-width:calc(100vw - 1rem);max-height:calc(100vh - 1rem);overflow:auto;cursor:default;}
-.tippy-dropdown-menu:hover{border-color:var(--accent);}
-.dropdownWrapper .spacer{display:none;}
-.dropdownWrapper.open .spacer{border:2px solid transparent;margin:2px;display:inline-block;vertical-align:middle;}
-.tippy-dropdown-menu br,.tippy-dropdown-menu hr{display:none;}
-.tippy-dropdown-menu.open br{display:inline;}
-.tippy-dropdown-menu.open hr{display:block;border-color:var(--accent);border-style:solid;}
-.tippy-dropdown-menu input[type="radio"]{display:none;}
-.tippy-dropdown-menu input[type="radio"] + label{border-radius:5px;display:none;margin:2px;}
-.tippy-dropdown-menu.open input[type="radio"] + label{display:inline-block;}
-.tippy-dropdown-menu input[type="radio"] + label:hover{background-color:var(--light);}
-.tippy-dropdown-menu input[type="radio"]:checked + label{display:inline-block;pointer-events:none;}
-.tippy-dropdown-menu.open input[type="radio"]:checked + label{background-color:var(--light);pointer-events:auto;}
-.tippy-box[data-theme~="factorio-dropdown"]{color:inherit;background:transparent;}
-.tippy-box[data-theme~="factorio-dropdown"]>.tippy-content{padding:0;}:root{--dark:#171717;--medium:#212427;--main:#272b30;--light:#3a3f44;--foreground:#c8c8c8;--accent:#ff7200;--bright:#f1fff2;}
-body{font-family:sans-serif;color:var(--foreground);background-color:var(--dark);}
-a{text-decoration:none;color:var(--accent);}
-a:active,a:hover{color:var(--bright);}
-input,select{color:var(--foreground);background-color:var(--light);padding:0.25em;border:1px solid var(--light);border-radius:0.4em;}
-input:focus,select:focus{border-color:var(--accent);outline:none;}
-.right-align{text-align:right;}
-button.ui{color:var(--accent);background:linear-gradient(to bottom,var(--light),var(--medium));border:2px outset var(--light);border-radius:0.4em;}
-button.ui:active{border-style:inset;}
-button.ui:focus{border-color:var(--accent);outline:none;}
-img.icon{display:inline-block;vertical-align:middle;}
-.ignore{opacity:0.3;}
-.tippy-box[data-theme~="factorio"]{color:var(--foreground);border:1px solid var(--bright);border-radius:4px;background-color:var(--dark);box-shadow:0 0.65rem 1.5rem rgba(0,0,0,0.55);font-size:0.9rem;}
-.tippy-box[data-theme~="factorio"]>.tippy-content{padding:0.45em 0.6em;text-align:left;white-space:pre-line;}
-.tippy-box[data-theme~="factorio"] .frame{text-align:left;}
-.tippy-box[data-theme~="factorio"] h3{margin:0;}
-.tippy-box[data-theme~="factorio"] h3:not(:last-child){margin-bottom:0.5em;}
-.tippy-box[data-theme~="factorio"] div.product{position:relative;display:inline-block;background-color:var(--light);margin-top:5px;}
-.tippy-box[data-theme~="factorio"] div.product span.count{position:absolute;right:1px;bottom:1px;font-size:12px;font-family:monospace;color:var(--bright);text-shadow:-1px -1px 0px var(--dark),-1px 1px 0px var(--dark),1px -1px 0px var(--dark),1px 1px 0px var(--dark);}
-.tippy-box[data-theme~="factorio"] img.ingredient{background-color:var(--light);}
-.tippy-box[data-theme~="factorio-menu"]{color:var(--foreground);border:0;background:transparent;box-shadow:none;}
-.tippy-box[data-theme~="factorio-menu"]>.tippy-content{padding:0;}
-.targetButton{height:2em;width:2em;padding:0;text-align:center;font-weight:bold;font-family:sans-serif;margin-right:0.5em;}
-ul#targets{list-style-type:none;margin-top:0;}
-ul#targets li{margin:0.25em;border-radius:0.5em;}
-label.selected{font-weight:bold;color:var(--bright);}
-.location-warning{max-width:46em;margin:0.5em 0 0.25em 2.5em;padding:0.5em 0.75em;border-left:3px solid var(--accent);background-color:var(--medium);}
-.location-warning-title{color:var(--bright);font-weight:bold;}
-.location-warning-message{margin-top:0.2em;}
-.location-warning button{margin-top:0.5em;}
-table#settings{border-collapse:collapse;}
-tr.setting-section td{padding-top:1em;padding-bottom:0.5em;}
-tr.setting-section td span{color:var(--accent);font-style:italic;}
-tr.setting-section td hr{display:block;border:1px solid var(--accent);}
-tr.setting-row td:first-child{padding-left:3em;}
-td.setting-label{text-align:right;}
-div#miner_settings,div#alt_recipe_settings{padding-left:3em;}
-.top,.top-icon{vertical-align:top;}
-.top-icon>div{height:40px;line-height:40px;}
-input.prec,input.mprod{width:4em;}
-#recipe_productivity_settings{display:grid;gap:0.25em;max-width:34em;}
-.recipe-productivity-setting{display:grid;grid-template-columns:24px minmax(15em,1fr) auto;align-items:center;gap:0.5em;}
-.recipe-productivity-icon{display:flex;}
-.recipe-productivity-percentage{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;width:4.5em;color:var(--foreground);background:var(--medium);border:1px solid var(--rule);border-radius:3px;}
-.recipe-productivity-percentage:focus-within{outline:2px solid var(--accent);outline-offset:2px;}
-.recipe-productivity-percentage input{min-width:0;width:100%;padding-right:0;background:transparent;border:0;appearance:textfield;}
-.recipe-productivity-percentage input:focus-visible{outline:none;}
-.recipe-productivity-percentage input::-webkit-inner-spin-button,.recipe-productivity-percentage input::-webkit-outer-spin-button{margin:0;appearance:none;}
-.recipe-productivity-percentage>span{padding:0 0.3em 0 0.1em;pointer-events:none;}
-.radio-setting input[type="radio"],.machine-setting input[type="checkbox"]{display:none;}
-.radio-setting input[type="radio"] + label,.machine-setting input[type="checkbox"] + label{cursor:pointer;background:var(--light);border-radius:4px;display:inline-block;margin:2px;padding:2px;}
-.radio-setting input[type="radio"] + label:hover,.machine-setting input[type="checkbox"] + label:hover{background:var(--bright);}
-.radio-setting input[type="radio"]:checked + label,.machine-setting input[type="checkbox"]:checked + label{background:var(--accent);}
-.toggle-list .toggle{cursor:pointer;display:inline-block;border-radius:4px;border:2px solid var(--light);margin:2px;padding:2px;background-color:var(--dark);}
-.toggle-list .toggle:hover{border-color:var(--bright);}
-.toggle-list .selected{border-color:var(--accent);}
-.toggle-list .selected:hover{}
-#resource_settings{border:2px solid var(--light);border-radius:5px;background-color:var(--dark);}
-#resource_settings .resource-tier{border:1px solid transparent;}
-#resource_settings .resource-tier.highlight{border-color:var(--accent);}
-#resource_settings .bookend{background-color:var(--light);}
-#resource_settings .bookend.highlight{background-color:var(--accent);}
-#resource_settings .bookend *{pointer-events:none;}
-#resource_settings .middle{height:10px;background-color:var(--light);}
-#resource_settings .middle.highlight{background-color:var(--accent);}
-#resource_settings .resource{display:inline-block;margin:3px;}
-#resource_settings img.icon{display:block;}
-#resource_settings.dragging .resource-tier>*{pointer-events:none;}
-table.resource{border-collapse:collapse;}
-table.resource td{text-align:right;}
-table.resource input[type="radio"]{display:none;}
-table.resource input[type="radio"] + label{cursor:pointer;fill:var(--light);}
-table.resource input[type="radio"] + label:hover{fill:var(--bright);}
-table.resource input[type="radio"]:checked + label{fill:var(--accent);}
-.planner-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:0.55em;margin:0.35em 0;}
-.location-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:0.4em;padding:0.25em 0.45em;border:1px solid var(--light);border-radius:0.3em;background:var(--main);}
-.location-toolbar[hidden]{display:none;}
-.location-toolbar-label{color:var(--bright);font-size:0.9em;font-weight:bold;}
-.location-toolbar-help{color:var(--foreground);font-size:0.75em;white-space:nowrap;}
-#planet_selector{display:flex;flex-wrap:wrap;}
-#planet_selector .location-toggle{display:inline-flex;align-items:center;gap:0.2em;margin:1px;padding:1px 3px;border-width:1px;color:var(--foreground);font:inherit;font-size:0.9em;}
-#planet_selector .location-toggle.selected{color:var(--bright);}
-#planet_selector .location-name{padding-right:0.2em;}
-.planner-actions{display:flex;flex-wrap:wrap;align-items:center;gap:0.45em;margin-left:auto;}
-.planner-action{cursor:pointer;padding:0.35em 0.7em;}
-.planner-action.active{color:var(--bright);border-color:var(--accent);}
-div.tabs{overflow:hidden;}
-div.tabs button.tab_button{color:var(--accent);background-color:inherit;border-top-left-radius:0.25em;border-top-right-radius:0.25em;float:left;border:none;outline:none;cursor:pointer;padding:0.5em;}
-div.tabs button.tab_button:hover{background-color:var(--medium);}
-div.tabs button.active,div.tabs button.active:hover{color:var(--bright);background-color:var(--main);}
-div.tab{display:none;padding:0.5em;background-color:var(--main);}
-#share_status{color:var(--bright);font-size:0.9em;}
-.factory-summary{display:flex;flex-wrap:wrap;gap:0.6em;margin-bottom:0.75em;}
-.factory-summary[hidden]{display:none;}
-.factory-summary-card{min-width:9em;padding:0.55em 0.7em;border:1px solid var(--light);border-radius:0.35em;background:var(--medium);}
-.factory-summary-value{color:var(--bright);font-family:monospace;font-size:1.05em;}
-.factory-summary-label{margin-top:0.15em;font-size:0.8em;}
-.factory-summary-warning{flex-basis:100%;padding:0.55em 0.7em;border-left:3px solid var(--accent);background:var(--medium);line-height:1.35;}
-.calculation-error{max-width:52em;margin-bottom:0.75em;padding:0.8em 1em;border:1px solid var(--accent);border-left-width:4px;border-radius:0.35em;background:var(--medium);}
-.calculation-error-title{color:var(--bright);font-weight:bold;}
-.calculation-error-message{margin-top:0.35em;font-family:monospace;}
-.calculation-error-guidance{margin-top:0.55em;line-height:1.35;}
-.factory-table-scroll{overflow-x:auto;}
-td.location-cell{max-width:11em;padding-right:0.75em;padding-left:0.75em;color:var(--bright);font-size:0.85em;white-space:nowrap;}
-td.location-cell.hide{display:none;}
-.factory-density-control{display:inline-flex;align-items:center;margin:0;padding:0;border:0;}
-.factory-density-label{margin-right:0.5em;color:var(--foreground);font-size:0.8em;}
-.factory-density-control input{position:absolute;opacity:0;pointer-events:none;}
-.factory-density-control label{cursor:pointer;padding:0.3em 0.55em;border:1px solid var(--light);background:var(--medium);font-size:0.8em;}
-.factory-density-control label:first-of-type{border-radius:0.35em 0 0 0.35em;}
-.factory-density-control label:last-of-type{border-left:0;border-radius:0 0.35em 0.35em 0;}
-.factory-density-control input:focus + label{outline:1px solid var(--accent);outline-offset:1px;}
-.factory-density-control input:checked + label{color:var(--bright);border-color:var(--accent);background:var(--light);}
-html[data-factory-density="compact"] #totals tr.display-row td,html[data-factory-density="compact"] #totals tr.factory-header th,html[data-factory-density="compact"] #totals tr.breakdown-row td{padding-top:2px;padding-bottom:2px;}
-html[data-factory-density="compact"] #totals tr.display-row td.pad,html[data-factory-density="compact"] #totals th.pad{padding-left:0.4em;}
-html[data-factory-density="compact"] #totals .pad-right{padding-right:0.4em;}
-html[data-factory-density="compact"] #totals td.location-cell{padding-right:0.4em;padding-left:0.4em;}
-html[data-factory-density="compact"] #totals span.beacon-container{padding:0.2em;}
-html[data-factory-density="compact"] #totals details.recipe-selector{margin-right:0.1em;}
-div.graph{}
-div.graph_setting{display:inline-block;vertical-align:middle;margin-left:1em;margin-right:1em;}
-#graph_type input[type="radio"]{display:none;}
-#graph_type input[type="radio"] + label:hover{color:var(--bright);}
-#graph_type input[type="radio"]:checked + label{color:var(--accent);}
-#graph_type input[type="radio"]:checked + label:hover{color:var(--accent);}
-g.node rect{stroke-width:1px;}
-g.overlay{cursor:pointer;}
-g.node .colon{stroke:none;fill:var(--foreground);}
-rect.nodeHighlight{stroke:var(--accent);}
-g.edgePathHighlight .highlighter{stroke:var(--accent);}
-svg.sankey g.edgePathHighlight .highlighter{stroke-opacity:0.7;}
-g.edgePathHighlight rect.highlighter{fill-opacity:1;}
-g.fuel path,path.fuel{stroke-dasharray:10,5;}
-svg#graph{display:block;}
-svg#graph text,svg.test text{stroke:none;fill:var(--foreground);}
-#totals{border-collapse:collapse;}
-#totals.nosurplus .surplus{display:none;}
-.pad-right{padding-right:1em;}
-tr.display-row td.pad,th.pad{padding-left:1em;}
-tr.display-row .item-icon img{cursor:pointer;}
-tr.display-row td,tr.factory-header th,tr.breakdown-row td{padding-top:8px;padding-bottom:8px;}
-tbody.display-group>tr:first-child td{border-top:1px solid var(--light);}
-tbody.display-group.multi td.leftmost{border-left:1px solid var(--light);}
-tr.nobuilding td.building>*:not(.recipe-selector){display:none;}
-tr.nomodule td.module>*{display:none;}
-tr.noitem td.item>*{display:none;}
-td.belt-count-cell.hide{display:none;}
-span.beacon-container{background-color:var(--light);padding:0.5em;}
-svg.popout{color:var(--accent);width:16;height:16;}
-details.recipe-selector{display:inline-block;position:relative;margin-right:0.25em;vertical-align:middle;text-align:left;}
-details.recipe-selector>summary{display:inline-block;cursor:pointer;list-style:none;border:2px solid transparent;border-radius:4px;}
-details.recipe-selector>summary::-webkit-details-marker{display:none;}
-details.recipe-selector>summary:hover,details.recipe-selector[open]>summary{border-color:var(--accent);}
-.recipe-selector-menu{min-width:18em;max-width:28em;max-height:22em;overflow-y:auto;padding:0.5em;border:2px solid var(--accent);border-radius:5px;background:var(--dark);box-shadow:0 0.25em 0.75em rgba(0,0,0,0.45);}
-.recipe-selector-title{margin-bottom:0.35em;color:var(--bright);font-weight:bold;}
-.recipe-selector-group + .recipe-selector-group{margin-top:0.5em;padding-top:0.5em;border-top:1px solid var(--light);}
-.recipe-selector-group-title{margin:0.1em 0 0.25em 0.3em;color:var(--accent);font-size:0.85em;font-weight:bold;}
-.recipe-selector-option{display:flex;align-items:center;gap:0.4em;padding:0.2em 0.3em;border-radius:4px;cursor:pointer;white-space:nowrap;}
-.recipe-selector-option:hover{background:var(--light);}
-.recipe-selector-option.active{color:var(--bright);}
-.recipe-selector-option input{flex:0 0 auto;accent-color:var(--accent);}
-.recipe-selector-option span{overflow:hidden;text-overflow:ellipsis;}
-.breakdown-open .breakdown-arrow{transform:rotate(90deg);}
-.breakdown-arrow{color:var(--foreground);cursor:pointer;transition:transform 0.25s;}
-.breakdown-arrow:hover{color:var(--accent);}
-.breakdown{display:none;height:0;}
-.breakdown.breakdown-open{display:table-row;height:auto;transition:height 0.25s;}
-.breakdown table{border-collapse:collapse;border-left:solid 0.5em var(--medium);border-right:solid 0.5em var(--medium);background:var(--medium);border-radius:0.25em;}
-.usage-arrow{vertical-align:middle;rotate:180deg;}
-.breakdown-first-output td{border-top:1px solid var(--light);}
-.tippy-dropdown-menu .search{display:none;width:100%;padding-left:0.4em;margin-bottom:0.4em;}
-.tippy-dropdown-menu.open .search{display:block;}
-.tippy-dropdown-menu.open.itemDropdown{height:400px;width:380px;overflow-y:scroll;transition:height 0.3s;}
-.help-content{max-width:72em;margin:0 auto;padding:1em 1em 3em;}
-.help-section + .help-section{margin-top:2.2em;}
-.help-section h2{margin:0 0 0.65em;color:var(--bright);}
-.help-header h1{margin:0 0 0.2em;font-size:1.35em;}
-.help-meta{display:flex;flex-wrap:wrap;align-items:center;gap:0.5em;font-size:0.85em;color:var(--muted);margin-bottom:0.85em;}
-.meta-separator{opacity:0.5;}
-.help-section-title{font-size:0.88em;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--bright);padding-bottom:0.4em;border-bottom:1px solid var(--rule);margin-bottom:1em;}
-.help-steps{margin:0;padding-left:1.5em;line-height:1.65;}
-.help-table{width:100%;border-collapse:collapse;font-size:0.9em;}
-.help-table th,.help-table td{padding:0.5em 0.75em;text-align:left;vertical-align:top;border-bottom:1px solid rgba(255,255,255,0.05);}
-.help-table th{color:var(--bright);font-weight:600;}
-.help-table th:first-child,.help-table td:first-child{width:48%;}
-.help-changelog>summary{color:var(--bright);font-weight:600;cursor:pointer;}
-.help-changelog[open]>summary{margin-bottom:1em;}
-.changelog-timeline{display:flex;flex-direction:column;gap:1.25em;}
-.changelog-entry{display:grid;grid-template-columns:8em 1fr;column-gap:1.5em;padding-bottom:1.25em;border-bottom:1px solid rgba(255,255,255,0.05);}
-.changelog-entry:last-child{border-bottom:none;padding-bottom:0;}
-.changelog-meta time{color:var(--muted);font-family:monospace;font-size:0.85em;font-variant-numeric:tabular-nums;}
-.changelog-details h3{margin:0 0 0.4em;color:var(--bright);font-size:0.98em;}
-.changelog-details ul{margin:0;padding-left:1.2em;color:var(--foreground);font-size:0.88em;line-height:1.5;}
-.setting-help{margin-top:0.25em;font-size:0.9em;opacity:0.8;}
-.recipe-settings-browser{min-width:min(72em,80vw);}
-.recipe-settings-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:0.5em;margin-bottom:0.35em;}
-.recipe-settings-toolbar input[type="search"]{box-sizing:border-box;width:min(32em,100%);}
-.recipe-settings-unavailable{display:inline-flex;align-items:center;gap:0.3em;cursor:pointer;white-space:nowrap;}
-.recipe-settings-help{margin-top:0.35em;font-size:0.9em;opacity:0.8;}
-.recipe-settings-summary{min-height:1.2em;margin-top:0.15em;margin-bottom:0.5em;font-size:0.9em;opacity:0.8;}
-.recipe-settings-section{margin:0.5em 0;}
-.recipe-settings-section>h4,.recipe-settings-section>summary{margin:0.35em 0;color:var(--bright);font-weight:bold;}
-.recipe-settings-section>summary{cursor:pointer;user-select:none;}
-.recipe-settings-category{margin:0.45em 0 0.7em;}
-.recipe-settings-category h5{margin:0 0 0.2em;color:var(--foreground);font-size:0.9em;font-weight:normal;opacity:0.85;}
-.recipe-settings-toggle-row{display:flex;flex-wrap:wrap;align-items:center;}
-button.recipe-setting-toggle{line-height:0;}
-button.recipe-setting-toggle.disabled-recipe{opacity:0.45;}
-button.recipe-setting-toggle.unavailable{cursor:not-allowed;border-color:var(--light);background-color:var(--dark);filter:grayscale(1);opacity:0.3;}
-button.recipe-setting-toggle.unavailable:hover{border-color:var(--light);}
-.recycling-recipes-body{margin:0.35em 0 0.75em 1em;}
-.disable-recycling-recipes{margin-bottom:0.35em;}
-.recipe-settings-empty{margin:0.5em 0;font-style:italic;opacity:0.8;}
-.disable-recycling-recipes:disabled{cursor:not-allowed;opacity:0.45;}
-tr.recipe-setting-section td{padding-top:2.25em;}:root{--dark:#111315;--dark-overlay:rgba(17,19,21,0.94);--medium:#1a1d20;--main:#202428;--light:#343a40;--rule:#454b51;--muted:#a7adb3;--foreground:#d1d5d8;--accent:#e97924;--bright:#f6f5f2;--danger:#f1a36c;}
-*{box-sizing:border-box;}
-html{color-scheme:dark;scrollbar-gutter:stable;}
-body{max-width:1680px;margin:0 auto;padding:0.75rem 1rem 2rem;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.42;background:var(--dark);font-variant-numeric:tabular-nums;}
-a{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:0.18em;}
-button,input,select{font:inherit;}
-input,select{border:1px solid var(--rule);border-radius:3px;background:var(--medium);}
-input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-button.ui{min-height:2rem;padding:0.3rem 0.65rem;color:var(--foreground);border:1px solid var(--rule);border-radius:3px;background:var(--medium);box-shadow:none;}
-button.ui:hover{color:var(--bright);border-color:var(--muted);background:var(--main);}
-button.ui:active{transform:translateY(1px);}
-ul#targets{margin:0 0 0.7rem;padding:0;}
-ul#targets li{margin:0.15rem 0;border-radius:2px;}
-.targetButton{margin-right:0.35rem;}
-.planner-toolbar{min-height:2.5rem;margin:0;padding:0.35rem 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);}
-.location-toolbar{padding:0;border:0;background:transparent;}
-.location-toolbar-content{display:grid;gap:0.1rem;}
-.location-toolbar-label,.progression-presets>label{color:var(--muted);font-size:0.78rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;}
-.location-toolbar-help{color:var(--muted);font-size:0.72rem;}
-#planet_selector .location-toggle{min-height:1.8rem;padding:1px 5px;border:1px solid transparent;border-radius:3px;background:transparent;}
-#planet_selector .location-toggle:hover{border-color:var(--rule);}
-#planet_selector .location-toggle.selected{border-color:var(--accent);background:rgba(233,121,36,0.09);}
-.progression-presets{display:inline-flex;align-items:center;gap:0.4rem;}
-.progression-presets select{min-height:1.9rem;padding:0.2rem 1.8rem 0.2rem 0.5rem;}
-.planner-actions{gap:0.3rem;}
-.planner-action{min-height:1.9rem;}
-.planner-action.active{color:var(--bright);border-color:var(--accent);background:rgba(233,121,36,0.08);}
-#share_status{color:var(--muted);font-size:0.78rem;}
-div.tabs{display:flex;gap:1.25rem;margin-top:0.65rem;border-bottom:1px solid var(--rule);position:sticky;top:0;z-index:8;background:var(--dark-overlay);backdrop-filter:blur(6px);}
-div.tabs button.tab_button{float:none;padding:0.55rem 0 0.45rem;color:var(--muted);border-bottom:2px solid transparent;border-radius:0;font-weight:600;}
-div.tabs button.tab_button:hover{color:var(--bright);background:transparent;}
-div.tabs button.active,div.tabs button.active:hover{color:var(--bright);border-bottom-color:var(--accent);background:transparent;}
-div.tab{padding:0.85rem 0;background:transparent;}
-.factory-density-label{color:var(--muted);}
-.factory-density-control label,.segmented-control label{color:var(--muted);border-color:var(--rule);background:transparent;}
-.factory-density-control input:checked + label,.segmented-control input:checked + label{color:var(--bright);border-color:var(--accent);background:rgba(233,121,36,0.08);}
-.factory-summary{display:grid;grid-template-columns:repeat(3,minmax(9rem,13rem));gap:0;margin:0.2rem 0 0.8rem;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);}
-.factory-summary-card{min-width:0;padding:0.55rem 0.8rem 0.55rem 0;border:0;border-radius:0;background:transparent;}
-.factory-summary-card + .factory-summary-card{padding-left:0.8rem;border-left:1px solid var(--rule);}
-.factory-summary-value{font-size:1.15rem;color:var(--bright);}
-.factory-summary-label{color:var(--muted);font-size:0.76rem;}
-.factory-summary-warning{grid-column:1 / -1;padding:0.45rem 0;color:var(--muted);border:0;border-top:1px solid var(--rule);background:transparent;}
-.quality-plan-list{display:grid;grid-column:1 / -1;flex:0 0 100%;gap:0.8rem;width:100%;margin:0.35rem 0 1rem;}
-.quality-plan{min-width:0;padding:0 0.8rem 0.8rem;border:1px solid var(--rule);border-radius:3px;background:color-mix(in srgb,var(--dark) 94%,var(--foreground));}
-.quality-plan-title{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:0.12rem 0.5rem;padding:0.75rem 0;color:var(--bright);cursor:pointer;list-style:none;}
-.quality-plan-title::-webkit-details-marker,.quality-plan-build-stage>summary::-webkit-details-marker,.quality-plan-advanced>summary::-webkit-details-marker{display:none;}
-.quality-plan-title::before,.quality-plan-build-stage>summary::before,.quality-plan-advanced>summary::before{content:"▸";display:inline-block;color:var(--muted);}
-.quality-plan[open]>.quality-plan-title::before,.quality-plan-build-stage[open]>summary::before,.quality-plan-advanced[open]>summary::before{content:"▾";}
-.quality-plan-title::before{grid-row:1 / span 2;grid-column:1;align-self:center;}
-.quality-plan-title-main{grid-column:2;min-width:0;font-size:1rem;font-weight:700;}
-.quality-plan-title-rate{grid-row:1 / span 2;grid-column:3;align-self:center;margin-left:0.5rem;font-family:var(--font-mono);font-size:0.95rem;font-weight:650;}
-.quality-plan-title-profile{grid-column:2;color:var(--muted);font-size:0.74rem;font-weight:500;}
-.quality-plan-meta{display:flex;flex-wrap:wrap;gap:0.3rem 1rem;padding:0.55rem 0;color:var(--muted);font-size:0.74rem;}
-.quality-plan-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5rem,1fr));border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);}
-.quality-plan-metric{min-width:0;padding:0.55rem 0.75rem 0.55rem 0;}
-.quality-plan-metric + .quality-plan-metric{padding-left:0.75rem;border-left:1px solid var(--rule);}
-.quality-plan-metric-value{color:var(--bright);font-family:var(--font-mono);font-size:0.98rem;}
-.quality-plan-metric-label{color:var(--muted);font-size:0.7rem;}
-.quality-plan-primary-section{padding:0.75rem 0 0;}
-.quality-plan-primary-section>h4,.quality-plan-surplus h4{margin:0 0 0.35rem;color:var(--muted);font-size:0.7rem;letter-spacing:0.05em;text-transform:uppercase;}
-.quality-plan-lines{display:grid;gap:0.18rem;font-family:var(--font-mono);font-size:0.79rem;}
-.quality-plan-material-line{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:0.5rem;}
-.quality-plan-material-rate{white-space:nowrap;}
-.quality-plan-imports{color:var(--foreground);}
-.quality-plan-build-stage{border-bottom:1px solid color-mix(in srgb,var(--rule) 65%,transparent);}
-.quality-plan-build-stage>summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:0.4rem;padding:0.45rem 0;color:var(--foreground);font-size:0.78rem;font-weight:650;cursor:pointer;list-style:none;}
-.quality-plan-build-stage-meta{color:var(--muted);font-family:var(--font-mono);font-size:0.7rem;font-weight:400;white-space:nowrap;}
-.quality-plan-build-line{display:grid;grid-template-columns:minmax(14rem,1fr) auto;gap:0.25rem 0.9rem;align-items:center;padding:0.35rem 0;}
-.quality-plan-build-machine{min-width:0;}
-.quality-plan-build-equipment{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:0.28rem;color:var(--muted);font-size:0.75rem;}
-.quality-plan-equipment-slots{display:inline-flex;gap:0.18rem;}
-.quality-plan-equipment-icon{display:inline-flex;}
-.quality-plan-equipment-empty,.quality-plan-beacon-label{white-space:nowrap;}
-.quality-plan-operation-equipment{min-width:12rem;justify-content:flex-start;}
-.quality-plan-operation-machine{white-space:nowrap;}
-.quality-plan-advanced{margin-top:0.85rem;border-top:1px solid var(--rule);}
-.quality-plan-advanced>summary{display:flex;align-items:center;gap:0.4rem;padding:0.65rem 0 0;color:var(--muted);cursor:pointer;font-size:0.78rem;font-weight:600;list-style:none;}
-.quality-plan-title:focus-visible,.quality-plan-build-stage>summary:focus-visible,.quality-plan-advanced>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-.quality-plan-advanced-body{padding-top:0.45rem;}
-.quality-plan-surplus{padding:0.7rem 0 0;}
-.quality-plan-operations{display:block;width:100%;margin-top:0.7rem;overflow-x:auto;border-collapse:collapse;}
-.quality-plan-operations thead,.quality-plan-operations tbody,.quality-plan-operations tr{width:100%;}
-.quality-plan-operations th,.quality-plan-operations td{padding:0.35rem 0.65rem 0.35rem 0;border-bottom:1px solid #30353a;text-align:left;white-space:nowrap;}
-.quality-plan-operations th{color:var(--muted);font-size:0.7rem;font-weight:600;}
-.quality-plan-operations .numeric{text-align:right;}
-.quality-plan-notes{display:grid;gap:0.2rem;padding:0.7rem 0 0;color:var(--muted);font-size:0.75rem;}
-@media (max-width:900px){.quality-plan-build-line{grid-template-columns:minmax(0,1fr);gap:0.1rem;}
-.quality-plan-build-equipment{justify-content:flex-start;}}
-.calculation-error{padding:0.65rem 0.8rem;border:1px solid var(--rule);border-left:3px solid var(--danger);border-radius:2px;background:transparent;}
-.factory-table-scroll{border-top:1px solid var(--rule);}
-#totals{width:100%;}
-#totals thead{position:sticky;top:0;z-index:4;background:var(--dark);}
-#totals tr.factory-header th{color:var(--muted);border-bottom:1px solid var(--rule);font-size:0.8rem;font-weight:600;letter-spacing:0.025em;text-align:right;white-space:nowrap;}
-#totals tr.factory-header th.align-left{text-align:left;}
-#totals tr.factory-header th.align-center{text-align:center;}
-#totals tr.factory-header th.align-right{text-align:right;}
-#totals tr.factory-header th:first-child{text-align:left;}
-#totals tbody.display-group>tr:first-child td{border-top:1px solid #30353a;}
-#totals tr.display-row:hover td{background:rgba(255,255,255,0.025);}
-#totals tr.launch-limited td:first-child{box-shadow:inset 2px 0 var(--danger);}
-#totals tr.launch-limited .item-state{color:var(--danger);}
-#totals td{white-space:nowrap;vertical-align:middle;}
-span.beacon-container{padding:0;border:0;border-radius:0;background:transparent;}
-.beacon-controls{display:inline-flex;align-items:center;}
-.module-wrapper,.machine-selector{position:relative;display:inline-block;}
-.quality-icon{position:relative;display:inline-flex;width:32px;height:32px;vertical-align:middle;}
-.equipment-quality-badge{position:absolute;right:-0.18rem;bottom:-0.18rem;z-index:2;filter:drop-shadow(0 1px 1px var(--dark));pointer-events:none;}
-.module-pipette-active .module-wrapper>.dropdownWrapper[data-module-pipette-target="true"]{cursor:copy;}
-.module-pipette-status{position:absolute;width:1px;height:1px;padding:0;border:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;}
-.module-pipette-ghost{position:fixed;top:1rem;left:1rem;z-index:10000;width:32px;height:32px;opacity:0.78;filter:drop-shadow(0 1px 2px #000);pointer-events:none;}
-.module-pipette-ghost[hidden]{display:none;}
-.module-pipette-ghost.incompatible{opacity:0.5;filter:grayscale(0.85) drop-shadow(0 0 2px var(--danger));}
-.equipment-quality-strip{display:none;}
-.tippy-dropdown-menu.open>.equipment-quality-strip{display:flex;gap:0.25rem;margin:0 0 0.35rem;padding:0 0 0.35rem;border-bottom:1px solid var(--rule);}
-.equipment-quality-strip button{display:inline-flex;width:2rem;height:2rem;align-items:center;justify-content:center;padding:0.25rem;border:1px solid var(--light);border-radius:0.25rem;background:var(--medium);cursor:pointer;}
-.equipment-quality-strip button:hover,.equipment-quality-strip button.selected{color:var(--bright);border-right-color:var(--accent);border-bottom-color:var(--accent);border-left-color:var(--accent);background:var(--light);}
-.beacon-quality-selector{display:inline-flex;margin-left:0.2rem;}
-.beacon-quality-selector[hidden]{display:none;}
-.beacon-quality-selector .dropdownWrapper{display:inline-flex;width:1.5rem;height:1.5rem;align-items:center;justify-content:center;border:1px solid var(--light);border-radius:0.2rem;background:var(--medium);cursor:pointer;}
-.beacon-quality-trigger{display:inline-flex;}
-.equipment-quality-defaults{display:flex;flex-wrap:wrap;gap:0.45rem 0.8rem;}
-.setting-row[hidden]{display:none;}
-.equipment-quality-defaults label{display:inline-flex;align-items:center;gap:0.3rem;color:var(--muted);font-size:0.78rem;}
-.quality-planner-settings{display:flex;flex-wrap:wrap;gap:0.45rem 0.8rem;align-items:end;}
-.quality-planner-settings label{display:grid;gap:0.2rem;color:var(--muted);font-size:0.78rem;}
-.quality-planner-settings select{min-width:9rem;}
-.quality-planner-advanced{margin-top:0.45rem;color:var(--muted);font-size:0.78rem;}
-.quality-planner-advanced>summary{width:fit-content;cursor:pointer;}
-.quality-planner-advanced>label{display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem;}
-.quality-planner-advanced select{min-width:13rem;}
-.equipment-quality-select{min-width:6.5rem;}
-.breakdown table{border:0;border-left:2px solid var(--rule);border-radius:0;background:transparent;}
-.breakdown-first-output td{border-top-color:var(--rule);}
-.recipe-selector-menu{border:1px solid var(--rule);border-top:2px solid var(--accent);border-radius:2px;box-shadow:0 0.65rem 1.5rem rgba(0,0,0,0.55);}
-.recipe-selector-group-title{color:var(--muted);text-transform:uppercase;letter-spacing:0.035em;}
-.visualization-toolbar{display:flex;flex-wrap:wrap;align-items:end;gap:0.7rem 1.1rem;padding:0.15rem 0 0.65rem;border-bottom:1px solid var(--rule);}
-.visualization-control{display:grid;gap:0.25rem;}
-.visualization-label{color:var(--muted);font-size:0.72rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;}
-.segmented-control{display:inline-flex;}
-.segmented-control input{position:absolute;opacity:0;pointer-events:none;}
-.segmented-control label{cursor:pointer;padding:0.28rem 0.55rem;border:1px solid var(--rule);font-size:0.8rem;}
-.segmented-control label + input + label{border-left:0;}
-.segmented-control label:first-of-type{border-radius:3px 0 0 3px;}
-.segmented-control label:last-of-type{border-radius:0 3px 3px 0;}
-.visualization-key{flex:1 1 26rem;margin:0 0 0.25rem auto;color:var(--muted);font-size:0.78rem;text-align:right;}
-#graph_container{margin-top:0.6rem;min-height:65vh;border:1px solid var(--rule);background:#15181a;}
-svg#graph{width:100%;min-height:65vh;}
-svg#graph text,svg.test text{fill:var(--foreground);}
-g.node rect{stroke:var(--rule);stroke-width:1px;}
-svg.sankey path.highlighter{stroke-opacity:0.48;}
-svg.sankey g.edge:hover path.highlighter,svg.sankey g.edgePathHighlight path.highlighter{stroke-opacity:0.9;}
-g.fuel path,path.fuel{stroke-dasharray:5 4;}
-rect.nodeHighlight{stroke:var(--accent);stroke-width:2px;}
-table#settings{width:min(65rem,100%);table-layout:fixed;}
-.settings-label-column{width:190px;}
-#settings_data,#settings_display,#settings_factory,#settings_research,#settings_recipes,.recipe-settings-category{scroll-margin-top:6rem;}
-tr.setting-section td{padding-top:1.5rem;}
-tr.setting-section td span{color:var(--bright);font-style:normal;font-weight:650;}
-tr.setting-section td hr{border:0;border-top:1px solid var(--rule);}
-tr.setting-row td{padding-top:0.28rem;padding-bottom:0.28rem;}
-tr.setting-row td:first-child{padding-left:0;}
-td.setting-label{padding-right:12px;color:var(--foreground);font-size:0.86rem;text-align:left;}
-tr.setting-row td:last-child{min-width:0;padding-left:12px;}
-#settings_recipes + tr td:last-child{width:calc(min(90vw,90rem) - 190px);}
-#resource_settings{border:1px solid var(--rule);border-radius:2px;background:transparent;}
-.help-content{max-width:68rem;padding:1rem 0 3rem;}
-.help-section + .help-section{margin-top:2rem;}
-.help-section h2{margin:0 0 0.4rem;font-size:1.15rem;color:var(--bright);}
-.help-header h1{font-size:1.3rem;letter-spacing:-0.01em;}
-.help-meta{font-size:0.8rem;color:var(--muted);margin-bottom:0.75rem;}
-.help-meta a{color:var(--accent);text-decoration:none;}
-.help-meta a:hover{text-decoration:underline;}
-.help-section-title{font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--bright);padding-bottom:0.35rem;border-bottom:1px solid var(--rule);margin-bottom:0.75rem;}
-.help-steps{font-size:0.86rem;color:var(--foreground);line-height:1.48;}
-.help-table{font-size:0.86rem;color:var(--foreground);}
-.help-table th,.help-table td{padding:0.45rem 0.65rem;border-bottom-color:var(--rule);}
-.help-table tbody tr:last-child td{border-bottom:none;}
-.help-changelog>summary{font-size:0.8rem;text-transform:uppercase;letter-spacing:0.08em;}
-.changelog-timeline{display:flex;flex-direction:column;}
-.changelog-entry{display:grid;grid-template-columns:7.5rem 1fr;column-gap:1.5rem;padding:0.75rem 0;border-bottom:1px solid var(--rule);}
-.changelog-entry:last-child{border-bottom:none;}
-.changelog-meta time{color:var(--muted);font-family:monospace;font-size:0.82rem;font-variant-numeric:tabular-nums;}
-.changelog-details h3{margin:0 0 0.3rem;font-size:0.92rem;color:var(--bright);}
-.changelog-details ul{margin:0;padding-left:1.1rem;color:var(--foreground);font-size:0.85rem;line-height:1.45;}
-#footer{margin-top:2rem;padding-top:0.8rem;border-top:1px solid var(--rule);color:var(--muted);font-size:0.78rem;}
-@media (max-width:760px){body{padding-inline:0.6rem;}
-.planner-actions{margin-left:0;}
-.progression-presets{order:3;width:100%;}
-.visualization-key{text-align:left;}
-.factory-summary{grid-template-columns:1fr;}
-.factory-summary-card + .factory-summary-card{padding-left:0;border-left:0;border-top:1px solid var(--rule);}
-.help-table th,.help-table td{padding-inline:0.4rem;}
-.changelog-entry{grid-template-columns:1fr;gap:0.3rem;}}
-table#settings{display:block;width:min(90rem,100%);table-layout:auto;}
-table#settings colgroup{display:none;}
-table#settings tbody{display:grid;grid-template-columns:repeat(2,minmax(0,15rem)) minmax(0,1fr);gap:0 1.5rem;width:100%;}
-tr.setting-section{display:table;grid-column:1 / -1;width:100%;max-width:65rem;}
-tr.setting-section.recipe-setting-section{max-width:90rem;}
-tr.setting-row{display:grid;grid-column:1 / 3;gap:0.35rem;width:100%;max-width:31.5rem;margin-bottom:1rem;}
-tr.setting-row.compact-setting-first{grid-column:1;}
-tr.setting-row.compact-setting-second{grid-column:2;}
-#settings_recipes + tr.setting-row{grid-column:1 / -1;max-width:none;}
-tr.setting-row td,tr.setting-row td:first-child,tr.setting-row td:last-child{display:block;width:100%;padding:0;}
-td.setting-label{color:var(--foreground);font-size:0.86rem;font-weight:500;line-height:1.3;text-align:left;}
-.top-icon>div{height:auto;line-height:inherit;}
-.recipe-settings-browser{width:min(90vw,90rem);}
-@media (max-width:760px){table#settings tbody{grid-template-columns:minmax(0,1fr);}
-tr.setting-row,tr.setting-row.compact-setting-first,tr.setting-row.compact-setting-second,#settings_recipes + tr.setting-row{grid-column:1;max-width:30rem;}
-.recipe-settings-browser{width:100%;}}
-.targets-panel{margin-bottom:0.4rem;}
-.targets-heading{margin-bottom:0.25rem;}
-#targets_title{color:var(--bright);font-size:0.78rem;font-weight:650;letter-spacing:0.04em;text-transform:uppercase;}
-ul#targets{margin-bottom:0.35rem;}
-.production-target-header,ul#targets li.production-target-row{display:grid;grid-template-columns:2rem 220px 110px 72px 88px 88px;align-items:center;gap:8px;width:max-content;max-width:100%;}
-.production-target-header{color:var(--muted);font-size:0.72rem;font-weight:600;text-align:left;}
-.production-target-header>:first-child{width:2rem;}
-ul#targets li.production-target-row{min-height:2rem;}
-.production-target-row .targetButton{margin-right:0;}
-.production-target-item{display:flex;min-width:0;align-items:center;gap:0.2rem;overflow:hidden;}
-.production-target-item>.dropdownWrapper{flex:1 1 auto;min-width:0;width:100%;}
-.production-target-item .itemDropdown{width:100%;}
-.production-target-item .target-item-name{max-width:none;}
-.production-target-settings{display:contents;}
-.target-setting-field{display:contents;}
-.target-quality-planning,.target-quality-planning .target-setting-field{display:contents;}
-.target-quality-planning select{width:100%;min-width:0;margin:0;}
-.target-belts-field{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0.25rem;}
-.target-belts-field .target-field-label{grid-column:1 / -1;}
-.target-belt-stack-height,.belt-stack-height{color:var(--muted);font-family:var(--font-mono);font-size:0.68rem;white-space:nowrap;}
-.target-field-label{display:none;}
-.production-target-row .target-quality,.production-target-row .target-machine-count,.production-target-row .target-rate,.production-target-row .target-belts{width:100%;min-width:0;margin:0;}
-.production-target-row .target-machine-count,.production-target-row .target-rate,.production-target-row .target-belts{text-align:right;}
-.production-target-row.planned-quality-target .target-machines-field,.production-target-row.planned-quality-target .target-belts-field{display:none;}
-.production-target-row.planned-quality-target .target-rate-field{display:grid;grid-column:5;grid-template-columns:minmax(0,1fr);align-items:center;}
-.production-target-row input.selected{color:var(--bright);font-weight:650;}
-.production-target-row .location-warning{grid-column:2 / -1;margin-left:0;}
-#plusButton{margin-top:0.2rem;}
-.add-target-button{min-height:1.8rem;margin-left:calc(2rem + 8px);padding-inline:0.6rem;color:var(--muted);}
-.planner-toolbar{border-top:0;padding-block:0.3rem;}
-.location-toolbar-label,.progression-presets>label{font-size:0.72rem;}
-#planet_selector .location-toggle{min-height:1.7rem;}
-div.tabs{align-items:flex-end;overflow:visible;}
-.tab-tools{display:flex;align-items:center;margin-left:auto;padding-bottom:0.28rem;}
-.tab-tools[hidden]{display:none;}
-.factory-density-label{margin-right:0.3rem;font-size:0.72rem;}
-.factory-density-control label{padding:0.2rem 0.38rem;border:0;border-bottom:1px solid transparent;border-radius:0;background:transparent;}
-.factory-density-control label:first-of-type,.factory-density-control label:last-of-type{border-radius:0;}
-.factory-density-control label:last-of-type{border-left:0;}
-.factory-density-control input:checked + label{color:var(--bright);border-color:var(--accent);background:transparent;}
-.factory-summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:1.8rem;margin:0.2rem 0 0.65rem;border:0;}
-.factory-summary-card{display:inline-flex;align-items:baseline;gap:0.42rem;min-width:0;padding:0;border:0;background:transparent;}
-.factory-summary-card + .factory-summary-card{padding-left:0;border-left:0;}
-.factory-summary-value{font-size:1.08rem;font-weight:650;}
-.factory-summary-label{margin:0;color:var(--muted);font-size:0.76rem;}
-.factory-summary-warning{flex-basis:100%;margin-top:-0.35rem;padding:0;color:var(--muted);border:0;background:transparent;font-size:0.78rem;}
-.factory-table-scroll{border-top:0;}
-#totals tr.factory-header th{padding-bottom:0.35rem;text-transform:none;}
-#totals tr.factory-header th:first-child{padding-left:1.35rem;}
-#totals tbody.display-group>tr:first-child td{border-top-color:#2b3034;}
-#totals tr.target-output>td:first-child{border-left:2px solid var(--accent);}
-#totals tr.imported-output .item-name{color:var(--muted);}
-td.item-identity{min-width:12rem;padding-right:1rem;}
-.item-import-toggle{display:grid;grid-template-columns:32px minmax(6rem,auto);grid-template-rows:auto auto;align-items:center;column-gap:0.45rem;width:100%;padding:0;color:var(--foreground);border:0;background:transparent;text-align:left;cursor:pointer;}
-.item-import-toggle:hover .item-name,.item-import-toggle:focus-visible .item-name{color:var(--bright);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:0.18em;}
-.item-import-toggle:focus-visible{outline:1px solid var(--accent);outline-offset:2px;}
-.item-import-toggle .item-icon{grid-row:1 / span 2;}
-.item-name{overflow:hidden;font-size:0.84rem;font-weight:550;line-height:1.15;text-overflow:ellipsis;white-space:nowrap;}
-.item-state{min-height:0.85rem;color:var(--accent);font-size:0.66rem;letter-spacing:0.035em;line-height:1;text-transform:uppercase;}
-.item-state:empty{display:none;}
-.imported-output .item-state{color:var(--muted);}
-.logistics-cell{min-width:9rem;white-space:nowrap;}
-.logistics-cell .belt-stack-policy{width:5.35rem;margin-left:0.35rem;padding:0.12rem 0.2rem;font-size:0.68rem;}
-.logistics-cell .belt-stack-height{margin-left:0.3rem;}
-.power-cell{min-width:6.4rem;vertical-align:middle;}
-.power-cell .fuel-icon{display:inline-flex;align-items:center;vertical-align:middle;margin-right:0.25rem;color:var(--muted);}
-.power-cell tt.power{vertical-align:middle;}
-#totals td.popout{vertical-align:middle;opacity:0.22;transition:opacity 100ms ease;}
-#totals tr:hover td.popout,#totals td.popout:focus-within{opacity:1;}
-.visualization-toolbar{align-items:end;padding-bottom:0.5rem;border-bottom:0;}
-.visualization-control{gap:0.15rem;}
-.segmented-control label{padding:0.22rem 0.42rem;border:0;border-bottom:1px solid transparent;border-radius:0;}
-.segmented-control label:first-of-type,.segmented-control label:last-of-type{border-radius:0;}
-.segmented-control label + input + label{border-left:0;}
-.segmented-control input:checked + label{border-color:var(--accent);background:transparent;}
-.visualization-meta{display:flex;flex:1 1 28rem;justify-content:flex-end;align-items:baseline;gap:0.8rem;margin-left:auto;text-align:right;}
-.visualization-summary{color:var(--foreground);font-size:0.78rem;white-space:nowrap;}
-.visualization-key{flex:0 1 auto;margin:0;color:var(--muted);font-size:0.74rem;text-align:right;}
-#graph_container{margin-top:0.35rem;border-color:#30353a;background:var(--dark);}
-svg.sankey path.highlighter{stroke-opacity:0.38;}
-svg.sankey g.edge:hover path.highlighter,svg.sankey g.edgePathHighlight path.highlighter{stroke-opacity:0.88;}
-.resources-intro{max-width:48rem;color:var(--muted);}
-@media (max-width:900px){div.tabs{gap:0.85rem;}
-.tab-tools{width:100%;margin-left:0;padding:0.25rem 0 0.35rem;}
-.factory-summary{align-items:flex-start;flex-direction:column;gap:0.25rem;}
-.factory-summary-card{width:auto;}
-.visualization-meta{justify-content:flex-start;text-align:left;}
-.visualization-key{text-align:left;}}
-.itemDropdown input[type="radio"] + label{align-items:center;gap:0.4rem;padding-right:0.45rem;}
-.itemDropdown input[type="radio"]:checked + label{display:inline-flex;}
-.target-item-name{max-width:13rem;overflow:hidden;color:var(--foreground);font-size:0.84rem;text-overflow:ellipsis;white-space:nowrap;}
-.itemDropdown.open input[type="radio"] + label{padding-right:2px;}
-.itemDropdown.open input[type="radio"] + label .target-item-name{display:none;}
-.itemDropdown.open input[type="radio"]:checked + label .target-item-name{display:inline;}
-#totals tr.factory-header th .header-icon{margin-right:0.3rem;opacity:0.82;}
-.tippy-dropdown-menu{border:1px solid var(--rule);border-radius:2px;background:transparent;}
-.tippy-dropdown-menu:hover{border-color:var(--muted);}
-.tippy-dropdown-menu.open{padding:0.35rem;border:1px solid var(--rule);border-top:2px solid var(--accent);border-radius:2px;background:var(--dark);box-shadow:0 0.65rem 1.5rem rgba(0,0,0,0.5);}
-.dropdownWrapper.open .spacer{border-width:1px;}
-.tippy-dropdown-menu.open hr{border:0;border-top:1px solid var(--rule);}
-.tippy-dropdown-menu input[type="radio"] + label{margin:1px;border-radius:2px;}
-.tippy-dropdown-menu input[type="radio"] + label:hover,.tippy-dropdown-menu.open input[type="radio"]:checked + label{background:var(--main);}
-#totals tr.factory-header th:first-child{text-align:left;}
-#totals td.building-icon{padding-right:0.15rem;text-align:right;}
-#totals td.building-icon + td.building{padding-left:0;text-align:left;}
-#totals td.building-icon span{margin-left:0.15rem;}
-#totals td.building-icon .machine-selector,#totals td.building-icon .machine-selector span{margin-left:0;}
-.machine-selector .machine-option-name{display:none;}
-.machine-selector .machine-dropdown.open{min-width:13rem;text-align:left;}
-.machine-selector .machine-dropdown.open .machine-option label{display:flex;align-items:center;gap:0.4rem;padding-right:0.5rem;}
-.machine-selector .machine-dropdown.open .machine-option-name{display:inline;color:var(--foreground);font-size:0.8rem;}
-.target-quality,.recipe-location-selector{margin:0 0.35rem;max-width:12rem;}
-.planning-details{width:min(38rem,100%);border:1px solid var(--rule);border-radius:2px;}
-.planning-details>summary{padding:0.42rem 0.55rem;color:var(--foreground);cursor:pointer;user-select:none;}
-.planning-details>summary:hover,.planning-details>summary:focus-visible{color:var(--bright);}
-.planning-details[open]>summary{border-bottom:1px solid var(--rule);}
-.planning-details-body{display:grid;gap:0.85rem;padding:0.65rem;}
-.planning-group + .planning-group{padding-top:0.7rem;border-top:1px solid var(--rule);}
-.planning-group h4{margin:0;color:var(--bright);font-size:0.84rem;}
-.planning-group p{margin:0.15rem 0 0.5rem;color:var(--muted);font-size:0.75rem;}
-.planning-grid{display:grid;grid-template-columns:repeat(2,minmax(9rem,1fr));gap:0.5rem 0.75rem;max-width:30rem;}
-.planning-field{display:grid;gap:0.18rem;min-width:0;}
-.planning-field>span:first-child{color:var(--muted);font-size:0.75rem;}
-.planning-field input{width:100%;min-width:0;}
-.planning-control{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:0.3rem;}
-.planning-control>span:last-child{color:var(--muted);font-size:0.78rem;}
-@media (max-width:760px){.planning-details{width:100%;}
-.planning-grid{grid-template-columns:1fr;}}
-.machine-option label span:last-child,.recipe-selector-option span:last-child{line-height:1.25;}
-.setting-help,.recipe-settings-help,.recipe-settings-summary{color:var(--muted);font-size:0.82rem;opacity:1;}
-.recipe-settings-browser{width:calc(min(90vw,90rem) - 202px);min-width:0;}
-.recipe-settings-toolbar{gap:0.45rem 0.75rem;}
-.recipe-settings-unavailable,.recipe-settings-changed{display:inline-flex;align-items:center;gap:0.3rem;color:var(--foreground);cursor:pointer;white-space:nowrap;}
-.reset-recipe-changes{margin-left:auto;}
-.reset-recipe-changes:disabled{cursor:not-allowed;opacity:0.45;}
-.recipe-settings-category{margin:0.35rem 0 0.55rem;}
-.recipe-settings-category>summary{width:max-content;margin-bottom:0.2rem;color:var(--foreground);cursor:pointer;font-size:0.82rem;user-select:none;}
-.recipe-settings-category>summary:hover,.recipe-settings-category>summary:focus-visible{color:var(--bright);}
-#totals_tab,#graph_tab{width:min(90rem,100%);}
-#help_tab,.help-content{width:min(65rem,100%);}
-@media (min-width:901px){.progression-presets{margin-left:0.35rem;padding-left:0.9rem;border-left:1px solid var(--rule);}}
-@media (max-width:760px){.production-target-header{display:none;}
-ul#targets li.production-target-row{grid-template-columns:2rem minmax(0,1fr);align-items:start;width:100%;}
-.production-target-item{grid-column:2;width:calc(100vw - 4rem);}
-.production-target-settings{display:grid;grid-column:2;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;width:calc(100vw - 4rem);min-width:0;max-width:100%;overflow:hidden;}
-.target-setting-field{display:grid;min-width:0;gap:0.2rem;}
-.target-quality-planning{display:grid;grid-column:1 / -1;grid-template-columns:minmax(0,1fr);gap:0.2rem;min-width:0;}
-.target-quality-planning .target-setting-field{display:grid;min-width:0;gap:0.2rem;}
-.production-target-row.planned-quality-target .target-rate-field{grid-column:auto;grid-template-columns:minmax(0,1fr);gap:0.2rem;}
-.target-field-label{display:block;color:var(--muted);font-size:0.68rem;font-weight:600;}
-.progression-presets{order:initial;}
-.settings-label-column{width:9rem;}
-.recipe-settings-browser{width:calc(100vw - 10.5rem);}
-.reset-recipe-changes{margin-left:0;}
-#totals tr.factory-header th:first-child,#totals tr.display-row>td:first-child,#totals td.item-identity{position:sticky;z-index:3;background:var(--dark);}
-#totals tr.factory-header th:first-child,#totals tr.display-row>td:first-child{left:0;}
-#totals td.item-identity{left:1.35rem;}
-#totals tr.display-row:hover>td:first-child,#totals tr.display-row:hover>td.item-identity{background:#171a1d;}}
-#settings_recipes + tr.setting-row .recipe-settings-browser{width:min(90vw,90rem);}
-@media (max-width:760px){#settings_recipes + tr.setting-row .recipe-settings-browser{width:100%;}}`
-
-function installCalculatorStyles(): void {
-  if (document.getElementById("calculator-styles") !== null) return
-  const styleElement = document.createElement("style")
-  styleElement.id = "calculator-styles"
-  styleElement.textContent = CALCULATOR_CSS
-  document.head.append(styleElement)
+// Inline styles own component layout. This tiny React-rendered stylesheet is
+// reserved for resets, pseudo states, density variables, and media queries.
+const BASE_CSS = String.raw`
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; margin: 0; }
+html { color-scheme: dark; scrollbar-gutter: stable; }
+body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.42; color: #c8c8c8; background: #171717; font-variant-numeric: tabular-nums; }
+button, input, select { font: inherit; }
+button:not(:disabled):hover { border-color: var(--accent) !important; }
+button:disabled { cursor: not-allowed !important; opacity: 0.5; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
-
-interface SankeyGraph<Node, Link> {
-  nodes: Node[]
-  links: Link[]
+a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.18em; }
+summary { list-style-position: outside; }
+[data-density="compact"] { --cell-padding: 1.5px 5px; --panel-padding: 6px; --layout-gap: 5px; }
+[data-density="comfortable"] { --cell-padding: 7px 6px; --panel-padding: 10px; --layout-gap: 9px; }
+.target-header, .target-grid { grid-template-columns: 32px 220px 110px 72px 88px 88px; }
+.target-grid > label > span:first-child, .target-output > span:first-child { display: none; }
+.planner-toolbar > label > span { font-size: 11.52px !important; text-transform: uppercase; letter-spacing: 0.04em; }
+.density-switch label { position: relative; display: inline-block; }
+.density-switch input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.density-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.density-switch input:checked + span { color: var(--bright); border-bottom-color: var(--accent); }
+.icon-choice:hover > span { background: var(--bright) !important; }
+.icon-choice > input:checked + span { background: var(--accent) !important; }
+.icon-choice > input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.factory-table tbody tr:hover > td { background: rgba(255,255,255,0.025); }
+.factory-table .target-output-row > td:first-child { border-left: 2px solid var(--accent); }
+.factory-table td, .factory-table th { white-space: nowrap; }
+.factory-table .item-name { white-space: nowrap; }
+.factory-table .belt-controls { flex-wrap: nowrap !important; }
+[data-density="compact"] .factory-table td.factory-modules,
+[data-density="compact"] .factory-table td.factory-beacons { padding-top: 4.65px !important; padding-bottom: 4.65px !important; }
+.compact-icon-select select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.icon-picker > summary { list-style: none; }
+.icon-picker > summary::-webkit-details-marker { display: none; }
+.icon-picker > summary:hover, .icon-picker[open] > summary { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.help-table th, .help-table td { border-bottom: 1px solid var(--rule); }
+.help-table tbody tr:last-child td { border-bottom: 0; }
+.settings-columns { align-items: start; }
+.recipe-tile[aria-pressed="false"] { filter: grayscale(1); opacity: 0.28; }
+@media (max-width: 900px) {
+  .planner-toolbar { align-items: flex-start !important; }
 }
-
-interface SankeyGenerator<Node, Link> {
-  (graph: SankeyGraph<Node, Link>): SankeyGraph<Node, Link>
-  update(graph: SankeyGraph<Node, Link>): SankeyGraph<Node, Link>
-  nodeWidth(value: number): SankeyGenerator<Node, Link>
-  nodePadding(value: number): SankeyGenerator<Node, Link>
-  nodeAlign(value: (node: Node, columns: number) => number): SankeyGenerator<Node, Link>
-  maxNodeHeight(value: number): SankeyGenerator<Node, Link>
-  linkLength(value: number): SankeyGenerator<Node, Link>
+@media (max-width: 760px) {
+  .calculator-app { padding: 0.6rem !important; }
+  .target-header { display: none !important; }
+  .target-grid { grid-template-columns: 32px minmax(0, calc(100% - 44.8px)) !important; align-items: start !important; width: 100% !important; margin-top: 5.7px !important; }
+  .target-grid > label > span:first-child { display: block; }
+  .target-output > span:first-child { display: none !important; }
+  .target-output { grid-column: 2; width: calc(100% - 3.2px) !important; }
+  .target-item-picker-panel { left: -40px !important; width: calc(100vw - 20px) !important; }
+  .target-quality { grid-column: 2; max-width: 192px; }
+  .target-machines { grid-column: 2; width: calc(50% - 4px); }
+  .target-rate { grid-column: 2; width: calc(50% - 4px); margin-left: calc(50% + 4px); margin-top: -53px; }
+  .target-belts { grid-column: 2; max-width: 135px; margin-top: -11px; }
+  .target-recipe, .target-strategy, .target-warning { grid-column: 1 / -1 !important; margin-left: 40px; }
+  .planner-toolbar { display: grid !important; justify-items: start; gap: 10.5px !important; }
+  .planner-toolbar > label { display: grid !important; grid-template-columns: auto 158px; align-items: center; gap: 8px; width: max-content !important; padding-left: 0 !important; border-left: 0 !important; }
+  .planner-toolbar > label select { width: 158px !important; }
+  .location-selector { grid-template-columns: minmax(0, 1fr) !important; }
+  .location-selector > * { grid-column: 1 !important; grid-row: auto !important; }
+  .planner-actions { margin-left: 0 !important; }
+  .tabs { flex-wrap: nowrap !important; gap: 13.6px !important; width: max-content; min-width: 100%; }
+  .factory-summary { align-items: flex-start !important; flex-direction: column; gap: 3px !important; }
+  .factory-summary-card { width: auto; }
+  .factory-table .factory-surplus { display: none; }
+  .factory-table th:first-child, .factory-table td:first-child,
+  .factory-table th:nth-child(2), .factory-table td:nth-child(2) { position: sticky; z-index: 2; background: var(--dark); }
+  .factory-table th:first-child, .factory-table td:first-child { left: 0; }
+  .factory-table th:nth-child(2), .factory-table td:nth-child(2) { left: 25px; }
+  .factory-table { font-size: 13px !important; }
+  .factory-table th:nth-child(2) { width: 165px !important; }
+  .factory-table th:nth-child(3) { width: 80px !important; }
+  .factory-table th:nth-child(4) { width: 105px !important; }
+  .factory-table .item-name { max-width: none; }
+  .settings-row { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+  .settings-columns { grid-template-columns: minmax(0, 1fr) !important; }
+  .changelog-entry { grid-template-columns: minmax(0, 1fr) !important; gap: 5px !important; }
 }
+`
 
 // region data.ts
 // Dataset contracts
@@ -2642,154 +2079,26 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
 // endregion solver.ts
 
 // region presentation.ts
-// Tooltips
-
-interface TooltipRegistryEntry {
-  readonly reference: Element
-  destroy(): void
-}
-
-let textTooltipDelegate: DelegateInstance | null = null
-const tooltipRegistry = new Set<TooltipRegistryEntry>()
-
-function formatTooltipText(value: string): string {
-  return value.replace(/\s*·\s*/g, "\n").replace(/\. (?=\S)/g, ".\n")
-}
-
-function tooltipProps(): Partial<Props> {
-  return {
-    appendTo: () => document.body,
-    arrow: false,
-    delay: [100, 0] as [number, number],
-    duration: [120, 80] as [number, number],
-    maxWidth: 420,
-    offset: [0, 4] as [number, number],
-    theme: "factorio",
-  }
-}
-
-export function initializeTooltips(): void {
-  if (textTooltipDelegate !== null) {
-    return
-  }
-  textTooltipDelegate = delegate(document.body, {
-    ...tooltipProps(),
-    target: "[data-tooltip]",
-    content: (reference) => formatTooltipText(reference.getAttribute("data-tooltip") ?? ""),
-    onTrigger(instance) {
-      instance.setContent(formatTooltipText(instance.reference.getAttribute("data-tooltip") ?? ""))
-    },
-  })
-}
-
-export function makePopover(reference: HTMLElement, content: string | Element, props: Partial<Props> = {}): Instance {
-  let { onShow, ...popoverProps } = props
-  let instance = tippy(reference, {
-    ...tooltipProps(),
-    content,
-    interactive: true,
-    trigger: "click",
-    ...popoverProps,
-    onShow(instance) {
-      hideAll({ exclude: instance })
-      return onShow?.(instance)
-    },
-  })
-  tooltipRegistry.add(instance)
-  return instance
-}
-
-export class Tooltip implements TooltipRegistryEntry {
-  private instance: Instance | null = null
-  private content: HTMLElement | null = null
-  private removed = false
-  private readonly activate: () => void
-
-  constructor(
-    readonly reference: HTMLElement,
-    private readonly callback: () => HTMLElement,
-    private readonly target: HTMLElement = reference,
-  ) {
-    this.activate = () => {
-      this.ensureInstance()?.show()
-    }
-    reference.addEventListener("pointerenter", this.activate)
-    reference.addEventListener("focus", this.activate)
-    reference.addEventListener("touchstart", this.activate, { passive: true })
-    tooltipRegistry.add(this)
-  }
-
-  private ensureInstance(): Instance | null {
-    if (this.removed) {
-      return null
-    }
-    if (this.instance !== null) {
-      return this.instance
-    }
-    this.reference.removeEventListener("pointerenter", this.activate)
-    this.reference.removeEventListener("focus", this.activate)
-    this.reference.removeEventListener("touchstart", this.activate)
-    this.instance = tippy(this.reference, {
-      ...tooltipProps(),
-      content: " ",
-      ...(this.target === this.reference ? {} : { getReferenceClientRect: () => this.target.getBoundingClientRect() }),
-      placement: "right-start",
-      onShow: (instance) => {
-        if (this.content === null) {
-          this.content = this.callback()
-          instance.setContent(this.content)
-        }
-      },
-    })
-    return this.instance
-  }
-
-  destroy(): void {
-    if (this.removed) {
-      return
-    }
-    this.removed = true
-    tooltipRegistry.delete(this)
-    this.reference.removeEventListener("pointerenter", this.activate)
-    this.reference.removeEventListener("focus", this.activate)
-    this.reference.removeEventListener("touchstart", this.activate)
-    this.instance?.destroy()
-    this.instance = null
-  }
-
-  remove(): void {
-    this.destroy()
-  }
-}
-
-export function reapTooltips(): void {
-  for (let instance of tooltipRegistry) {
-    if (!document.body.contains(instance.reference)) {
-      tooltipRegistry.delete(instance)
-      instance.destroy()
-    }
-  }
-}
-
-// Icons and sprite sheet
+// Sprite metadata is data. React owns rendering, focus, labels, and tooltips.
 
 export const PX_WIDTH = 32
 export const PX_HEIGHT = 32
 
-// An object representing an icon of an item, recipe, belt, building, or
-// whatever else.
-//
-// Args:
-//   obj: The object which this icon will represent. If it provides a
-//        renderTooltip() method, this will be used to make a tooltip on the
-//        icon available.
-//   name: The filename of the image to use. If not provided, defaults to
-//         obj.name.
 export interface IconObject {
   readonly name: string
   readonly icon_col: number
   readonly icon_row: number
-  renderTooltip?(): HTMLElement
+}
+
+export interface SpriteStyle {
+  readonly width: number
+  readonly height: number
+  readonly backgroundImage: string
+  readonly backgroundPosition: string
+  readonly backgroundRepeat: "no-repeat"
+  readonly backgroundSize: string
+  readonly display: "inline-block"
+  readonly flex: "0 0 auto"
 }
 
 export class Icon {
@@ -2801,101 +2110,25 @@ export class Icon {
   ) {
     this.name = name ?? obj.name
   }
-  // Creates a new <img> node.
-  //
-  // Args:
-  //   size: The width and height of the (square) image, in pixels. If null
-  //         or not given, the size will not be set in the markup (and should
-  //         probably be set in the style sheet).
-  //   suppressTooltip: If true, a tooltip will not be added to this image.
-  //   target: The reference node next to which any tooltip will be rendered.
-  //           If not provided, defaults to the image itself.
-  make(size = 32, suppressTooltip = false, target?: HTMLElement): HTMLImageElement {
-    let x = -this.obj.icon_col * PX_WIDTH
-    let y = -this.obj.icon_row * PX_HEIGHT
-    let img = select(makeEmptyIcon(size))
-      .classed("icon", true)
-      .style("background", "url(images/sprite-sheet-" + sheetHash + ".webp)")
-    if (size !== 32) {
-      let ratio = size / 32
-      x *= ratio
-      y *= ratio
-      let width = sheetWidth * ratio
-      let height = sheetHeight * ratio
-      img.style("background-size", `${width}px ${height}px`)
+
+  style(size = 32): SpriteStyle {
+    const ratio = size / PX_WIDTH
+    return {
+      width: size,
+      height: size,
+      backgroundImage: `url(images/sprite-sheet-${sheetHash}.webp)`,
+      backgroundPosition: `${-this.obj.icon_col * PX_WIDTH * ratio}px ${-this.obj.icon_row * PX_HEIGHT * ratio}px`,
+      backgroundRepeat: "no-repeat",
+      backgroundSize: `${sheetWidth * ratio}px ${sheetHeight * ratio}px`,
+      display: "inline-block",
+      flex: "0 0 auto",
     }
-    img.style("background-position", `${x}px ${y}px`)
-    if (!suppressTooltip) {
-      if (this.obj.renderTooltip) {
-        let self = this
-        const image = requirePresentationNode(img.node(), "icon image")
-        new Tooltip(image, () => self.obj.renderTooltip!(), target ?? image)
-      } else {
-        img.attr("data-tooltip", this.obj.name)
-      }
-    }
-    img.attr("alt", this.name)
-    return requirePresentationNode(img.node(), "icon image") as HTMLImageElement
   }
-}
-
-export interface QualityIconTier {
-  readonly key: string
-  readonly name: string
-  readonly icon: Icon
-}
-
-export interface QualityIconOptions {
-  readonly label: string
-  readonly tooltip?: string | (() => HTMLElement) | null
-  readonly badgeTitle?: string
-}
-
-export function makeQualityIcon(
-  baseIcon: Icon,
-  quality: QualityIconTier | null,
-  options: QualityIconOptions,
-): HTMLSpanElement {
-  const wrapper = create("span")
-    .classed("quality-icon", true)
-    .attr("role", "img")
-    .attr("aria-label", options.label)
-    .attr("data-quality", quality?.key ?? null)
-  wrapper.append(() => baseIcon.make(32, true)).attr("aria-hidden", "true")
-
-  if (quality !== null && quality.key !== "normal") {
-    wrapper
-      .append(() => quality.icon.make(16, true))
-      .classed("equipment-quality-badge", true)
-      .attr("data-quality", quality.key)
-      .attr("title", options.badgeTitle ?? `${quality.name} quality`)
-      .attr("aria-hidden", "true")
-  }
-
-  const node = requirePresentationNode(wrapper.node(), "quality icon")
-  const tooltip = options.tooltip === undefined ? options.label : options.tooltip
-  if (typeof tooltip === "string") {
-    wrapper.attr("data-tooltip", tooltip)
-  } else if (tooltip !== null) {
-    new Tooltip(node, tooltip)
-  }
-  return node
-}
-
-export function makeEmptyIcon(size?: number): HTMLImageElement {
-  let img = create("img")
-    .classed("icon", true)
-    // Chrome wants the <img> element to have a src attribute, or it will
-    // draw a border around it. Cram in this transparent 1x1 pixel image.
-    .attr("src", "images/pixel.gif")
-  if (size) {
-    img.attr("width", size).attr("height", size)
-  }
-  return requirePresentationNode(img.node(), "empty icon") as HTMLImageElement
 }
 
 export class Sprite implements IconObject {
   readonly icon: Icon
+
   constructor(
     readonly name: string,
     readonly icon_col: number,
@@ -2914,233 +2147,12 @@ export function getSprites(data: CalculatorData): void {
   sheetHash = data.sprites.hash
   sheetWidth = data.sprites.width
   sheetHeight = data.sprites.height
-  sprites = new Map<string, Sprite>()
-  for (const [name, d] of Object.entries(data.sprites.extra)) {
-    sprites.set(name, new Sprite(d.name, d.icon_col, d.icon_row))
-  }
-}
-
-// Dropdown primitives
-
-interface DropdownInstance extends TooltipRegistryEntry {
-  readonly state: { readonly isVisible: boolean }
-  show(): void
-  hide(): void
-}
-
-interface DropdownState {
-  readonly dropdownNode: HTMLElement
-  readonly instance: DropdownInstance
-  readonly spacerNode: HTMLElement
-  readonly wrapperNode: HTMLElement
-}
-
-type D3Selection = Selection<HTMLElement, unknown, null, undefined>
-type DropdownLifecycle = ((selection: D3Selection) => void) | null
-const dropdownLocal = local<DropdownState>()
-
-export function closeDropdowns(): void {
-  hideAll()
-}
-
-function toggleDropdown(this: HTMLElement): void {
-  const state = dropdownLocal.get(this)
-  if (state === undefined) return
-  const { instance } = state
-  if (instance.state.isVisible) {
-    instance.hide()
-  } else {
-    instance.show()
-  }
-}
-
-// Appends a dropdown to the selection, and returns a selection over the div
-// for the content of the dropdown.
-export function makeDropdown<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
-  selector: Selection<GElement, TDatum, PElement, PDatum>,
-  onOpen: DropdownLifecycle = null,
-  onClose: DropdownLifecycle = null,
-) {
-  let wrapper = selector
-    .append("div")
-    .classed("dropdownWrapper", true)
-    .attr("role", "button")
-    .attr("tabindex", 0)
-    .attr("aria-haspopup", "listbox")
-    .attr("aria-expanded", "false")
-  let dropdownInner = wrapper.append("div").classed("dropdown tippy-dropdown-menu", true)
-  let spacer = wrapper.append("div").classed("spacer", true)
-  const wrapperNode = requirePresentationNode(wrapper.node() as HTMLElement | null, "dropdown wrapper")
-  const dropdownNode = requirePresentationNode(dropdownInner.node() as HTMLElement | null, "dropdown content")
-  const spacerNode = requirePresentationNode(spacer.node() as HTMLElement | null, "dropdown spacer")
-  let escapeHandler: ((event: KeyboardEvent) => void) | null = null
-  let tippyInstance: Instance | null = null
-  let destroyed = false
-  const hiddenState = { isVisible: false }
-  const clearStableWrapperSize = (): void => {
-    wrapperNode.style.removeProperty("width")
-    wrapperNode.style.removeProperty("height")
-  }
-  const instance = {
-    reference: wrapperNode,
-    get state() {
-      return tippyInstance?.state ?? hiddenState
-    },
-    show() {
-      if (destroyed) {
-        return
-      }
-      const wrapperBounds = wrapperNode.getBoundingClientRect()
-      wrapperNode.style.width = `${wrapperBounds.width}px`
-      wrapperNode.style.height = `${wrapperBounds.height}px`
-      tippyInstance ??= tippy(wrapperNode, {
-        ...tooltipProps(),
-        animation: false,
-        arrow: false,
-        content: " ",
-        duration: 0,
-        hideOnClick: true,
-        interactive: true,
-        maxWidth: "none",
-        offset: [0, 4],
-        placement: "bottom-start",
-        theme: "factorio-dropdown",
-        trigger: "manual",
-        onShow(realInstance) {
-          hideAll({ exclude: realInstance })
-          let selected = dropdownNode.querySelector("input:checked + label")
-          if (selected instanceof HTMLElement) {
-            let bounds = selected.getBoundingClientRect()
-            spacer.style("width", `${bounds.width}px`).style("height", `${bounds.height}px`)
-          }
-          wrapperNode.classList.add("open")
-          dropdownNode.classList.add("open")
-          wrapper.attr("aria-expanded", "true")
-          realInstance.setContent(dropdownNode)
-        },
-        onMount() {
-          escapeHandler = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-              instance.hide()
-              wrapperNode.focus()
-            }
-          }
-          document.addEventListener("keydown", escapeHandler)
-          onOpen?.(select(dropdownNode))
-        },
-        onClickOutside(realInstance) {
-          realInstance.hide()
-        },
-        onHidden(realInstance) {
-          if (escapeHandler !== null) {
-            document.removeEventListener("keydown", escapeHandler)
-            escapeHandler = null
-          }
-          wrapperNode.insertBefore(dropdownNode, spacerNode)
-          realInstance.setContent(" ")
-          wrapperNode.classList.remove("open")
-          dropdownNode.classList.remove("open")
-          wrapper.attr("aria-expanded", "false")
-          clearStableWrapperSize()
-          onClose?.(select(dropdownNode))
-        },
-      })
-      tippyInstance.show()
-    },
-    hide() {
-      tippyInstance?.hide()
-    },
-    destroy() {
-      if (destroyed) {
-        return
-      }
-      destroyed = true
-      clearStableWrapperSize()
-      if (escapeHandler !== null) {
-        document.removeEventListener("keydown", escapeHandler)
-        escapeHandler = null
-      }
-      tippyInstance?.destroy()
-      tippyInstance = null
-    },
-  }
-  const dropdownState: DropdownState = { dropdownNode, instance, spacerNode, wrapperNode }
-  dropdownLocal.set(wrapperNode, dropdownState)
-  dropdownLocal.set(dropdownNode, dropdownState)
-  tooltipRegistry.add(instance)
-  wrapper
-    .on("click", function (this: Element) {
-      if (this instanceof HTMLElement) toggleDropdown.call(this)
-    })
-    .on("keydown", function (this: Element, event: KeyboardEvent) {
-      if (!(this instanceof HTMLElement)) return
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault()
-        toggleDropdown.call(this)
-      }
-    })
-  return dropdownInner
-}
-
-let inputId = 0
-let labelFor = 0
-
-// Appends a dropdown input to the selection.
-//
-// Args:
-//   name: Should be unique to the dropdown.
-//   checked: Should be true when a given input is the selected one.
-//   callback: Called when the selected item is changed.
-//
-// Returns:
-//   Selection with the input's label.
-export function addInputs<
-  TDatum,
-  GElement extends BaseType = BaseType,
-  PElement extends BaseType = BaseType,
-  PDatum = unknown,
->(
-  selector: Selection<GElement, TDatum, PElement, PDatum>,
-  name: string | ((datum: TDatum) => string),
-  checked: ValueFn<GElement, TDatum, boolean>,
-  callback: (this: HTMLInputElement, datum: TDatum) => void,
-) {
-  selector
-    .append("input")
-    .on("change", function (this: Element, _event: Event, d: TDatum) {
-      if (!(this instanceof HTMLInputElement)) return
-      toggleDropdown.call(this)
-      callback.call(this, d)
-    })
-    .attr("id", () => "input-" + inputId++)
-    .attr("name", typeof name === "string" ? name : (datum: TDatum) => name(datum))
-    .attr("type", "radio")
-    .property("checked", checked)
-  let label = selector.append("label").attr("for", () => "input-" + labelFor++)
-  return label
-}
-
-// Wrapper around makeDropdown/addInputs to create an input for each item in
-// data.
-export function dropdown<
-  TDatum,
-  GElement extends BaseType = BaseType,
-  PElement extends BaseType = BaseType,
-  PDatum = unknown,
->(
-  selector: Selection<GElement, TDatum, PElement, PDatum>,
-  data: readonly TDatum[],
-  name: string,
-  checked: (datum: TDatum) => boolean,
-  callback: (this: HTMLInputElement, datum: TDatum) => void,
-) {
-  let dd = makeDropdown(selector).selectAll("div").data(data).join("div")
-  return addInputs(dd, name, checked, callback)
-}
-
-function requirePresentationNode<T extends Node>(node: T | null, label: string): T {
-  if (node === null) throw new Error(`Unable to create ${label}`)
-  return node
+  sprites = new Map(
+    Object.entries(data.sprites.extra).map(([key, value]) => [
+      key,
+      new Sprite(value.name, value.icon_col, value.icon_row),
+    ]),
+  )
 }
 // endregion presentation.ts
 
@@ -3189,7 +2201,7 @@ export type ItemGroups = Item[][][]
 export function getItemGroups(items: ReadonlyMap<string, Item>, data: CalculatorData): ItemGroups {
   // {groupName: {subgroupName: [item]}}
   const itemGroupMap = new Map<string, Map<string, Item[]>>()
-  for (let [itemKey, item] of items) {
+  for (const item of items.values()) {
     let group = itemGroupMap.get(item.group)
     if (group === undefined) {
       group = new Map()
@@ -3353,16 +2365,6 @@ export class Belt {
   ) {
     this.icon = new Icon(this)
   }
-  renderTooltip(): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true))
-    header.append("span").text(self.name)
-    t.append("b").text(`Max throughput: `)
-    t.append("span").text(`${spec.format.rate(this.rate)}/${spec.format.longRate}`)
-    return requireModelElement(t.node(), "tooltip")
-  }
 }
 
 export function getBelts(data: CalculatorData): Map<string, Belt> {
@@ -3419,16 +2421,6 @@ export class Fuel {
     }
     return x.toUpDecimal(0) + " " + energySuffixes[i]
   }
-  renderTooltip(): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true))
-    header.append("span").text(self.name)
-    t.append("b").text("Energy: ")
-    t.append("span").text(self.valueString())
-    return requireModelElement(t.node(), "tooltip")
-  }
 }
 
 export class FuelCollection extends Map<string, Fuel> {
@@ -3437,19 +2429,14 @@ export class FuelCollection extends Map<string, Fuel> {
   constructor(categories: Map<string, Fuel[]>) {
     super()
     this.categories = categories
-    for (let fuel of categories.get("chemical") ?? []) {
-      this.set(fuel.key, fuel)
-    }
+    for (const fuel of categories.get("chemical") ?? []) this.set(fuel.key, fuel)
   }
 
   getForCategory(category: string, selectedChemicalFuel: Fuel | null = null): Fuel | null {
-    if (category === "chemical" && selectedChemicalFuel !== null) {
-      return selectedChemicalFuel
-    }
+    if (category === "chemical" && selectedChemicalFuel !== null) return selectedChemicalFuel
     return this.categories.get(category)?.[0] ?? null
   }
 }
-
 export function getFuel(data: CalculatorData, items: ReadonlyMap<string, Item>): FuelCollection {
   const fuelCategories = new Map<string, Fuel[]>()
   for (let d of data.fuel) {
@@ -3591,24 +2578,6 @@ export class Building {
     const drain = this.drain()
     return this.qualityPowerThroughput ? drain.mul(quality.craftingSpeedMultiplier) : drain
   }
-  renderTooltip(): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true))
-    header.append("span").text(self.name)
-    let line = t.append("div")
-    line.append("b").text("Energy consumption: ")
-    let { power, suffix } = powerRepresentation(this.power)
-    line.append("span").text(`${formatCanadianNumber(power.toDecimal(0))} ${suffix}`)
-    line = t.append("div")
-    line.append("b").text("Crafting speed: ")
-    line.append("span").text(formatCanadianNumber(this.speed.toDecimal()))
-    line = t.append("div")
-    line.append("b").text("Module slots: ")
-    line.append("span").text(String(this.moduleSlots))
-    return requireModelElement(t.node(), "tooltip")
-  }
 }
 
 export class Miner extends Building {
@@ -3679,24 +2648,6 @@ export class Miner extends Building {
     const quality = spec.getMachineQuality?.(recipe) ?? normalQuality
     return this.resourceDrainRate.mul(quality.miningDrillResourceDrainMultiplier)
   }
-  override renderTooltip(): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true))
-    header.append("span").text(self.name)
-    let line = t.append("div")
-    line.append("b").text("Energy consumption: ")
-    let { power, suffix } = powerRepresentation(this.power)
-    line.append("span").text(`${formatCanadianNumber(power.toDecimal(0))} ${suffix}`)
-    line = t.append("div")
-    line.append("b").text("Mining speed: ")
-    line.append("span").text(formatCanadianNumber(this.miningSpeed.toDecimal()))
-    line = t.append("div")
-    line.append("b").text("Module slots: ")
-    line.append("span").text(String(this.moduleSlots))
-    return requireModelElement(t.node(), "tooltip")
-  }
 }
 
 export class OffshorePump extends Building {
@@ -3718,17 +2669,6 @@ export class OffshorePump extends Building {
   }
   override getRecipeRate(_spec: ModelFactorySpecification, _recipe: Recipe): Rational {
     return this.pumpingSpeed
-  }
-  override renderTooltip(): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true))
-    header.append("span").text(self.name)
-    let line = t.append("div")
-    line.append("b").text("Pumping speed: ")
-    line.append("span").text(`${spec.format.rate(this.pumpingSpeed)}/${spec.format.rateName}`)
-    return requireModelElement(t.node(), "tooltip")
   }
 }
 
@@ -3869,15 +2809,6 @@ export class RocketSilo extends Building {
   }
 }
 
-function renderTooltipBase(this: Building): HTMLElement {
-  let self = this
-  let t = create("div").classed("frame", true)
-  let header = t.append("h3")
-  header.append(() => self.icon.make(32, true))
-  header.append("span").text(self.name)
-  return requireModelElement(t.node(), "tooltip")
-}
-
 export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, Item>): Building[] {
   const buildings: Building[] = []
   let launchConfig = data.rocket_launch
@@ -3912,7 +2843,6 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
     true,
     true,
   )
-  reactor.renderTooltip = renderTooltipBase
   buildings.push(reactor)
   const boilerItem = requireModelItem(items, "boiler")
   const boilerDef = data.boilers.find((entry) => entry.key === "boiler")
@@ -3937,7 +2867,6 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
     true,
     //boilerDef.target_temperature,
   )
-  boiler.renderTooltip = renderTooltipBase
   buildings.push(boiler)
   const siloDef = requireModelItem(items, "rocket-silo")
   let launch = new RocketLaunch(
@@ -3953,7 +2882,6 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
     null,
     launchConfig,
   )
-  launch.renderTooltip = renderTooltipBase
   buildings.push(launch)
   for (let d of data.crafting_machines) {
     const fuel = d.energy_source?.type === "burner" ? (d.energy_source.fuel_category ?? null) : null
@@ -4053,15 +2981,6 @@ export function getBuildings(data: CalculatorData, items: ReadonlyMap<string, It
 }
 
 // Modules and beacons
-
-let hundred = Rational.from_float(100)
-function percent(x: Rational): string {
-  let sign = ""
-  if (!x.less(zero)) {
-    sign = "+"
-  }
-  return `${sign}${formatCanadianNumber(x.mul(hundred).toDecimal())}%`
-}
 
 export class Module {
   readonly effectTypes = new Set<string>()
@@ -4192,358 +3111,6 @@ export class Module {
   hasQualityEffect(): boolean {
     return !this.quality.isZero() || this.category === "quality"
   }
-  renderTooltip(): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true))
-    header.append("span").text(self.name)
-    let line
-    if (!this.power.isZero()) {
-      line = t.append("div")
-      line.append("b").text("Energy consumption: ")
-      line.append("span").text(percent(this.power))
-    }
-    if (!this.speed.isZero()) {
-      line = t.append("div")
-      line.append("b").text("Speed: ")
-      line.append("span").text(percent(this.speed))
-    }
-    if (!this.productivity.isZero()) {
-      line = t.append("div")
-      line.append("b").text("Productivity: ")
-      line.append("span").text(percent(this.productivity))
-    }
-    if (!this.quality.isZero()) {
-      line = t.append("div")
-      line.append("b").text("Quality: ")
-      line.append("span").text(percent(this.quality))
-    }
-    if (!this.pollution.isZero()) {
-      line = t.append("div")
-      line.append("b").text("Pollution: ")
-      line.append("span").text(percent(this.pollution))
-    }
-    return requireModelElement(t.node(), "tooltip")
-  }
-}
-
-export interface ModuleDropdownOption {
-  readonly cell: ModuleDropdownCell
-  readonly module: Module | null
-  checked(): boolean
-  choose(): void
-  tooltip?(): string | null
-}
-
-export interface ModulePipetteSelection {
-  readonly module: Module
-  readonly quality: Quality
-}
-
-export interface ModuleDropdownCell {
-  readonly name: string
-  readonly inputRows: readonly (readonly ModuleDropdownOption[])[]
-  readonly qualityOptions?: readonly Quality[]
-  selectedQuality?(): Quality
-  chooseQuality?(quality: Quality): void
-  keepOpenAfterQualitySelection?(): boolean
-  pipetteLabel?(): string
-  applyPipetteSelection?(selection: ModulePipetteSelection): "applied" | "incompatible"
-}
-
-let modulePipetteSelection: ModulePipetteSelection | null = null
-let modulePipettePointerTarget: Element | null = null
-let modulePipetteStatus: HTMLElement | null = null
-let modulePipetteGhost: HTMLElement | null = null
-let modulePipetteInitialized = false
-
-function qualifiedModuleName(selection: ModulePipetteSelection): string {
-  return selection.quality === normalQuality
-    ? selection.module.name
-    : `${selection.quality.name} ${selection.module.name}`
-}
-
-function selectedPipetteSelection(cell: ModuleDropdownCell): ModulePipetteSelection | null {
-  for (const row of cell.inputRows) {
-    for (const option of row) {
-      if (option.checked() && option.module !== null) {
-        return {
-          module: option.module,
-          quality: cell.selectedQuality?.() ?? currentSpecification().defaultModuleQuality ?? normalQuality,
-        }
-      }
-    }
-  }
-  return null
-}
-
-function moduleOptionTooltip(option: ModuleDropdownOption): string | null {
-  const tooltip = option.tooltip?.() ?? null
-  if (!option.checked()) return tooltip
-  const shortcut = option.module === null ? "Press Q to clear the pipette" : "Press Q to pick up"
-  return tooltip === null ? shortcut : `${tooltip}\n${shortcut}`
-}
-
-function getModuleDropdownCell(element: Element): ModuleDropdownCell | null {
-  const wrapper = element.closest("span.module-wrapper")
-  return wrapper === null ? null : select<Element, ModuleDropdownCell>(wrapper).datum()
-}
-
-function getPipetteSource(element: Element | null): ModulePipetteSelection | null {
-  if (element === null) return null
-  const optionElement = element.closest("span.input")
-  if (optionElement !== null) {
-    const option = select<Element, ModuleDropdownOption>(optionElement).datum()
-    if (option.module === null) return null
-    return {
-      module: option.module,
-      quality: option.cell.selectedQuality?.() ?? currentSpecification().defaultModuleQuality ?? normalQuality,
-    }
-  }
-  const cell = getModuleDropdownCell(element)
-  return cell === null ? null : selectedPipetteSelection(cell)
-}
-
-function renderModulePipetteStatus(message: string | null = null): void {
-  document.body.classList.toggle("module-pipette-active", modulePipetteSelection !== null)
-  if (modulePipetteSelection === null) {
-    if (modulePipetteStatus !== null) modulePipetteStatus.textContent = "Module pipette cleared."
-    if (modulePipetteGhost !== null) modulePipetteGhost.hidden = true
-    return
-  }
-
-  const selection = modulePipetteSelection
-  const name = qualifiedModuleName(selection)
-  const instruction = message ?? "Click compatible module slots to apply. Press Q or Esc to clear."
-  if (modulePipetteStatus !== null) modulePipetteStatus.textContent = `Pipette: ${name}. ${instruction}`
-  if (modulePipetteGhost === null) return
-  modulePipetteGhost.hidden = false
-  modulePipetteGhost.classList.toggle("incompatible", message !== null)
-  modulePipetteGhost.replaceChildren(
-    makeQualityIcon(selection.module.icon, selection.quality, { label: name, tooltip: null }),
-  )
-}
-
-export function clearModulePipette(): void {
-  modulePipetteSelection = null
-  renderModulePipetteStatus()
-}
-
-function isTextEntry(element: Element | null): boolean {
-  return (
-    element instanceof HTMLInputElement ||
-    element instanceof HTMLTextAreaElement ||
-    element instanceof HTMLSelectElement ||
-    (element instanceof HTMLElement && element.isContentEditable)
-  )
-}
-
-function handleModulePipettePointer(event: PointerEvent): void {
-  modulePipettePointerTarget = event.target instanceof Element ? event.target : null
-  if (modulePipetteGhost === null) return
-  const gap = 12
-  const ghostSize = 40
-  const left = event.clientX + gap + ghostSize <= window.innerWidth ? event.clientX + gap : event.clientX - ghostSize
-  const top = event.clientY + gap + ghostSize <= window.innerHeight ? event.clientY + gap : event.clientY - ghostSize
-  modulePipetteGhost.style.left = `${Math.max(4, left)}px`
-  modulePipetteGhost.style.top = `${Math.max(4, top)}px`
-}
-
-function handleModulePipetteKeydown(event: KeyboardEvent): void {
-  if (event.key === "Tab") {
-    modulePipettePointerTarget = null
-    return
-  }
-  if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
-  if (event.key === "Escape" && modulePipetteSelection !== null) {
-    clearModulePipette()
-    return
-  }
-  if (event.key.toLowerCase() !== "q" || isTextEntry(document.activeElement)) return
-
-  const sourceElement =
-    modulePipettePointerTarget ?? (document.activeElement instanceof Element ? document.activeElement : null)
-  modulePipetteSelection = getPipetteSource(sourceElement)
-  event.preventDefault()
-  closeDropdowns()
-  renderModulePipetteStatus()
-}
-
-function handleModulePipetteClick(event: MouseEvent): void {
-  if (modulePipetteSelection === null || event.button !== 0 || !(event.target instanceof Element)) return
-  const trigger = event.target.closest("span.module-wrapper > .dropdownWrapper")
-  if (trigger === null) return
-  const cell = getModuleDropdownCell(trigger)
-  if (cell?.applyPipetteSelection === undefined) return
-
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  const result = cell.applyPipetteSelection(modulePipetteSelection)
-  renderModulePipetteStatus(
-    result === "incompatible" ? `${qualifiedModuleName(modulePipetteSelection)} cannot be used in that slot.` : null,
-  )
-}
-
-export function initializeModulePipette(): void {
-  if (modulePipetteInitialized) return
-  modulePipetteInitialized = true
-  const status = document.createElement("div")
-  status.id = "module_pipette_status"
-  status.className = "module-pipette-status"
-  status.setAttribute("role", "status")
-  status.setAttribute("aria-live", "polite")
-  document.body.append(status)
-  modulePipetteStatus = status
-  const ghost = document.createElement("div")
-  ghost.id = "module_pipette_ghost"
-  ghost.className = "module-pipette-ghost"
-  ghost.setAttribute("aria-hidden", "true")
-  ghost.hidden = true
-  document.body.append(ghost)
-  modulePipetteGhost = ghost
-  document.addEventListener("pointerover", handleModulePipettePointer)
-  document.addEventListener("pointermove", handleModulePipettePointer)
-  document.addEventListener("keydown", handleModulePipetteKeydown)
-  document.addEventListener("click", handleModulePipetteClick, true)
-}
-
-export function disposeModulePipette(): void {
-  if (!modulePipetteInitialized) return
-  modulePipetteInitialized = false
-  document.removeEventListener("pointerover", handleModulePipettePointer)
-  document.removeEventListener("pointermove", handleModulePipettePointer)
-  document.removeEventListener("keydown", handleModulePipetteKeydown)
-  document.removeEventListener("click", handleModulePipetteClick, true)
-  modulePipetteStatus?.remove()
-  modulePipetteGhost?.remove()
-  modulePipetteStatus = null
-  modulePipetteGhost = null
-  modulePipettePointerTarget = null
-  clearModulePipette()
-}
-
-export function moduleDropdown<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
-  selector: Selection<GElement, TDatum, PElement, PDatum>,
-  data:
-    | readonly ModuleDropdownCell[]
-    | ((datum: TDatum, index: number, groups: GElement[]) => readonly ModuleDropdownCell[]),
-): void {
-  selector.each(function (datum, index, groups) {
-    const cells = typeof data === "function" ? data(datum, index, Array.from(groups)) : data
-    renderModuleDropdown(this, cells)
-  })
-}
-
-function renderModuleDropdown(element: Element, data: readonly ModuleDropdownCell[]): void {
-  const selector = select(element)
-  const moduleDropdownSpan = selector
-    .selectAll<HTMLSpanElement, ModuleDropdownCell>("span.module-wrapper")
-    .data(data)
-    .join((enter) => {
-      const wrappers = enter.append("span").classed("module-wrapper", true)
-      wrappers.each(function (this: Element) {
-        makeDropdown(select(this))
-      })
-      return wrappers
-    })
-  moduleDropdownSpan
-    .select<HTMLDivElement>("div.dropdownWrapper")
-    .attr("aria-keyshortcuts", "Q")
-    .attr("data-module-pipette-target", (cell) => (cell.applyPipetteSelection === undefined ? null : "true"))
-    .attr("aria-label", (cell) => {
-      const label = cell.pipetteLabel?.() ?? "Module selector"
-      const selection = selectedPipetteSelection(cell)
-      return selection === null
-        ? `${label}. Press Q to clear the module pipette.`
-        : `${label}: ${qualifiedModuleName(selection)}. Press Q to pick it up.`
-    })
-    .attr("data-tooltip", null)
-  const moduleDropdown = moduleDropdownSpan.selectAll<HTMLDivElement, ModuleDropdownCell>("div.dropdown")
-  moduleDropdown
-    .selectAll<HTMLDivElement, ModuleDropdownCell>("div.equipment-quality-strip")
-    .data((cell) =>
-      cell.qualityOptions && cell.qualityOptions.length > 1 && cell.selectedQuality && cell.chooseQuality ? [cell] : [],
-    )
-    .join("div")
-    .classed("equipment-quality-strip", true)
-    .attr("aria-label", "Equipment quality")
-    .selectAll<HTMLButtonElement, Quality>("button")
-    .data((cell) => cell.qualityOptions ?? [])
-    .join("button")
-    .attr("type", "button")
-    .style("--quality-color", (quality) => quality.color)
-    .classed("selected", function (quality) {
-      const parent = this.parentElement
-      if (parent === null) return false
-      const cell = select<HTMLElement, ModuleDropdownCell>(parent).datum()
-      return cell.selectedQuality?.() === quality
-    })
-    .attr("aria-label", (quality) => `${quality.name} quality`)
-    .attr("title", (quality) => `${quality.name} quality`)
-    .each(function (quality) {
-      this.replaceChildren(quality.icon.make(20, true))
-    })
-    .on("click", function (event: MouseEvent, quality) {
-      event.stopPropagation()
-      const parent = this.parentElement
-      if (parent === null) return
-      const cell = select<HTMLElement, ModuleDropdownCell>(parent).datum()
-      if (cell.keepOpenAfterQualitySelection?.()) {
-        cell.chooseQuality?.(quality)
-      } else {
-        closeDropdowns()
-        globalThis.setTimeout(() => cell.chooseQuality?.(quality), 0)
-      }
-      select(parent)
-        .selectAll<HTMLButtonElement, Quality>("button")
-        .classed("selected", (option) => option === quality)
-      const dropdown = parent.parentElement
-      if (dropdown !== null) {
-        select(dropdown)
-          .selectAll<HTMLElement, ModuleDropdownOption>("span.input")
-          .attr("data-tooltip", moduleOptionTooltip)
-      }
-    })
-  const moduleInputs = moduleDropdown
-    .selectAll<HTMLDivElement, readonly ModuleDropdownOption[]>("div.moduleRow")
-    .data<readonly ModuleDropdownOption[]>((cell) => cell.inputRows)
-    .join("div")
-    .classed("moduleRow", true)
-    .selectAll<HTMLSpanElement, ModuleDropdownOption>("span.input")
-    .data<ModuleDropdownOption>((options) => options)
-    .join(
-      (enter) => {
-        const inputs = enter.append("span").classed("input", true).attr("data-tooltip", moduleOptionTooltip)
-        const label = addInputs(
-          inputs,
-          (option) => option.cell.name,
-          (option) => option.checked(),
-          (option) => option.choose(),
-        )
-        label.append("span").classed("module-option-icon", true)
-        return inputs
-      },
-      (update) => update,
-    )
-  moduleInputs.attr("data-tooltip", moduleOptionTooltip)
-  moduleInputs
-    .selectAll<HTMLInputElement, ModuleDropdownOption>("input")
-    .property("checked", (option: ModuleDropdownOption) => option.checked())
-  moduleInputs.select<HTMLSpanElement>("span.module-option-icon").each(function (option: ModuleDropdownOption) {
-    const wrapper = this.closest<HTMLSpanElement>("span.module-wrapper")
-    if (wrapper === null) throw new Error("Module option is missing its wrapper")
-    const cell = select<HTMLSpanElement, ModuleDropdownCell>(wrapper).datum()
-    const quality =
-      option.checked() && cell.qualityOptions && cell.qualityOptions.length > 1
-        ? (cell.selectedQuality?.() ?? normalQuality)
-        : null
-    const baseIcon = option.module?.icon ?? sprites.get("slot_icon_module")?.icon
-    if (baseIcon === undefined) throw new Error("Missing slot_icon_module sprite")
-    const moduleName = option.module?.name ?? "Empty module slot"
-    const label = quality === null ? moduleName : `${quality.name} ${moduleName}`
-    this.replaceChildren(makeQualityIcon(baseIcon, quality, { label, tooltip: null }))
-  })
 }
 
 const MIN_SPEED_EFFECT = Rational.from_floats(1, 5) // 20%
@@ -5023,11 +3590,6 @@ export function getPlanets(
   return planets
 }
 
-function requireModelElement<T extends Element>(element: T | null, label: string): T {
-  if (element === null) throw new Error(`Unable to create ${label}`)
-  return element
-}
-
 function requireModelItem(items: ReadonlyMap<string, Item>, key: string): Item {
   const item = items.get(key)
   if (item === undefined) throw new Error(`Dataset is missing required item ${key}`)
@@ -5398,146 +3960,7 @@ export function applyPriorities(
   specification.priority.applyArray(levels)
 }
 
-// Resource-priority editor
-
-let unsubscribe: (() => void) | null = null
-let mountedPriority: PriorityList | null = null
-let onCalculationChange: (() => void) | null = null
-let draggedResource: PriorityResource | null = null
-
-export function renderResourcePriorityEditor(priority: PriorityList, onChange: () => void) {
-  if (mountedPriority !== priority) {
-    unsubscribe?.()
-    mountedPriority = priority
-    unsubscribe = priority.subscribe(render)
-  }
-  onCalculationChange = onChange
-  render()
-}
-
-export function unmountResourcePriorityEditor(): void {
-  unsubscribe?.()
-  unsubscribe = null
-  mountedPriority = null
-  onCalculationChange = null
-  document.getElementById("resource_settings")?.replaceChildren()
-}
-
-function render(): void {
-  if (mountedPriority === null) {
-    return
-  }
-
-  const container = select<HTMLElement, unknown>("#resource_settings")
-  container.selectAll("*").remove()
-
-  renderBookend(container, "less valuable", () => mountedPriority!.getFirstLevel())
-
-  mountedPriority.priorities.forEach((level, index) => {
-    if (index > 0) {
-      renderDropTarget(container, "middle", () => level)
-    }
-    renderLevel(container, level)
-  })
-
-  renderBookend(container, "more valuable", () => null)
-}
-
-function renderLevel<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  level: PriorityLevel,
-): void {
-  const levelElement = container.append("div").classed("resource-tier", true)
-  installDropTarget(levelElement, () => level)
-
-  for (const resource of level.resources) {
-    const resourceElement = levelElement
-      .append("div")
-      .classed("resource", true)
-      .attr("draggable", "true")
-      .on("dragstart", function (this: Element, event: DragEvent) {
-        if (!(this instanceof HTMLElement)) return
-        draggedResource = resource
-        event.dataTransfer?.setData("text/plain", resource.recipe.key ?? "resource")
-        event.dataTransfer?.setDragImage(this, 24, 24)
-        container.classed("dragging", true)
-      })
-      .on("dragend", () => {
-        draggedResource = null
-        container.classed("dragging", false)
-      })
-
-    resourceElement.append(() => resource.recipe.icon.make(48))
-    resourceElement
-      .append("input")
-      .attr("type", "text")
-      .attr("size", 4)
-      .attr("value", resource.weight.toString())
-      .on("change", function (this: Element) {
-        if (!(this instanceof HTMLInputElement)) return
-        mountedPriority!.setWeight(resource, Rational.from_string(this.value))
-        onCalculationChange?.()
-      })
-  }
-}
-
-function renderBookend<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  label: string,
-  level: () => PriorityLevel | null,
-): void {
-  const element = container.append("div").classed("resource-tier bookend", true)
-  installDropTarget(element, level)
-  element.append("span").text(label)
-}
-
-function renderDropTarget<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  className: string,
-  level: () => PriorityLevel | null,
-): void {
-  const element = container.append("div").classed(className, true)
-  installDropTarget(element, level)
-}
-
-function installDropTarget<GElement extends Element, TDatum, PElement extends BaseType, PDatum>(
-  element: Selection<GElement, TDatum, PElement, PDatum>,
-  targetLevel: () => PriorityLevel | null,
-): void {
-  element
-    .on("dragover", (event: DragEvent) => event.preventDefault())
-    .on("dragenter", function (this: Element, event: DragEvent) {
-      if (!(this instanceof HTMLElement)) return
-      event.preventDefault()
-      this.classList.add("highlight")
-    })
-    .on("dragleave", function (this: Element, event: DragEvent) {
-      if (!(this instanceof HTMLElement)) return
-      if (event.target === this) {
-        this.classList.remove("highlight")
-      }
-    })
-    .on("drop", function (this: Element, event: DragEvent) {
-      if (!(this instanceof HTMLElement)) return
-      event.preventDefault()
-      this.classList.remove("highlight")
-      if (draggedResource === null || mountedPriority === null) {
-        return
-      }
-      let level = targetLevel()
-      if (level === null) {
-        level = mountedPriority.addPriorityBefore(null)
-      } else if (
-        element.classed("middle") ||
-        (element.classed("bookend") && level === mountedPriority.getFirstLevel())
-      ) {
-        level = mountedPriority.addPriorityBefore(level)
-      }
-      mountedPriority.setPriority(draggedResource, level)
-      draggedResource = null
-      onCalculationChange?.()
-    })
-}
+// React renders and edits PriorityList directly.
 // endregion priorities.ts
 
 // region recipes.ts
@@ -5545,17 +3968,6 @@ function requireItem(items: ReadonlyMap<string, Item>, key: string): Item {
   const item = items.get(key)
   if (item === undefined) throw new Error(`Dataset is missing required item ${key}`)
   return item
-}
-
-function requireElement<T extends Element>(element: T | null, label: string): T {
-  if (element === null) throw new Error(`Unable to create ${label}`)
-  return element
-}
-
-function requireSprite(key: string): { icon: Icon } {
-  const sprite = sprites.get(key)
-  if (sprite === undefined) throw new Error(`Sprite sheet is missing ${key}`)
-  return sprite
 }
 
 // Items
@@ -5593,20 +4005,6 @@ export class Item {
   }
   addUse(recipe: Recipe): void {
     this.uses.push(recipe)
-  }
-  renderTooltip(extra?: Node): HTMLElement {
-    if (this.recipes.length === 1 && this.recipes[0]!.name === this.name) {
-      return this.recipes[0]!.renderTooltip(extra)
-    }
-    let self = this
-    let t = create("div").classed("frame", true)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true, undefined))
-    header.append("span").text(self.name)
-    if (extra) {
-      requireElement(t.node(), "item tooltip").append(extra)
-    }
-    return requireElement(t.node(), "item tooltip")
   }
 }
 
@@ -5781,52 +4179,6 @@ export class Recipe implements SolverRecipe {
   }
   isDisable(): boolean {
     return false
-  }
-  renderTooltip(extra?: Node): HTMLElement {
-    let self = this
-    let t = create("div").classed("frame recipe", true).datum(this)
-    let header = t.append("h3")
-    header.append(() => self.icon.make(32, true, undefined))
-    let name = this.name
-    if (this.products.length === 1 && this.products[0]!.item.name === this.name && one.less(this.products[0]!.amount)) {
-      name = formatCanadianNumber(this.products[0]!.amount.toDecimal()) + " \u00d7 " + name
-    }
-    header.append("span").text("\u00A0" + name)
-    if (extra) {
-      requireElement(t.node(), "recipe tooltip").append(extra)
-    }
-    if (this.ingredients.length === 0) {
-      return requireElement(t.node(), "recipe tooltip")
-    }
-    if (this.products.length > 1 || this.products[0]!.item.name !== this.name) {
-      let productLine = t.append("div")
-      productLine.append("span").text("Products:")
-      let product = productLine.append("span").selectAll("span").data(this.products).join("span")
-      product.append("span").text("\u00A0")
-      let prodIcon = product.append("div").classed("product", true)
-      prodIcon.append((d: Ingredient<Item, Rational>) => d.item.icon.make(32, true, undefined))
-      prodIcon
-        .append("span")
-        .classed("count", true)
-        .text((d: Ingredient<Item, Rational>) => formatCanadianNumber(d.amount.toDecimal()))
-    }
-    let time = t.append("div")
-    time
-      .append("div")
-      .classed("product", true)
-      .append(() => requireSprite("clock").icon.make(32, true, undefined))
-    time.append("span").text("\u00A0" + formatCanadianNumber(this.time.toDecimal()))
-    let ingredient = t.append("div").selectAll("div").data(this.ingredients).join("div")
-    ingredient
-      .append("div")
-      .classed("product", true)
-      .append((d: Ingredient<Item, Rational>) => d.item.icon.make(32, true, undefined))
-    ingredient
-      .append("span")
-      .text(
-        (d: Ingredient<Item, Rational>) => `\u00A0${formatCanadianNumber(d.amount.toDecimal())} \u00d7 ${d.item.name}`,
-      )
-    return requireElement(t.node(), "recipe tooltip")
   }
 }
 
@@ -6337,7 +4689,7 @@ export function getRecipes(data: CalculatorData, items: Map<string, Item>): Reci
 
   // Reap items both produced by no recipes and consumed by no recipes.
   let reapItems = []
-  for (let [itemKey, item] of items) {
+  for (const [itemKey, item] of items) {
     if (item.recipes.length === 0 && item.uses.length === 0) {
       reapItems.push(itemKey)
     } else if (item.recipes.length === 0) {
@@ -6926,12 +5278,6 @@ export interface PollutionComponents {
   readonly total: Rational
 }
 
-export interface LogisticsReport {
-  readonly stackRate: Rational
-  readonly bufferSlots: Rational
-  readonly wagonLoads: Rational
-}
-
 export interface QualityTargetRow {
   readonly item: Item
   readonly recipe: Recipe
@@ -7304,16 +5650,6 @@ export function getAquiloHeat(specification: PlanningSpecification, recipe: Reci
   return Rational.from_float(heatKw * 1000).mul(specification.getCount(recipe, rate).ceil())
 }
 
-export function getLogistics(item: Item, rate: Rational, specification: PlanningSpecification): LogisticsReport | null {
-  if (item.phase !== "solid") return null
-  const stackSize = Rational.from_float(item.stackSize ?? 1)
-  const stackRate = rate.div(stackSize)
-  const bufferItems = rate.mul(specification.bufferMinutes).mul(Rational.from_float(60))
-  const bufferSlots = bufferItems.div(stackSize).ceil()
-  const wagonLoads = stackRate.div(Rational.from_float(40))
-  return { stackRate, bufferSlots, wagonLoads }
-}
-
 export function getQualityTargetReport(specification: PlanningSpecification): QualityTargetRow[] {
   const rows: QualityTargetRow[] = []
   for (const target of specification.buildTargets ?? []) {
@@ -7647,7 +5983,6 @@ export class QualityGraph {
   }
 
   private solverSpec(viableRecipes: ReadonlySet<QualityGraphRecipe>): SolverSpec {
-    const graph = this
     const priority = this.priorityLevels
       .map((level) => [...level].map(([recipe, weight]) => ({ recipe, weight })))
       .filter((level) => level.length > 0)
@@ -9086,32 +7421,6 @@ export function isBeltStackPolicy(value: string): value is BeltStackPolicy {
   return value === "auto" || value === "stacked" || value === "unstacked"
 }
 
-export interface FactoryBuildTarget {
-  index: number
-  itemKey: string
-  item: Item
-  recipe: Recipe | null
-  readonly changedBuilding: boolean
-  basis: TargetBasis
-  buildings: Rational
-  rate: Rational
-  belts: Rational
-  qualityLevel: number
-  qualityStrategy: QualityStrategy
-  readonly defaultRecipe: Recipe | null
-  getRate(): Rational
-  getBuildingCountInput(): string
-  getBeltCountInput(): string
-  setBuildings(value: string, recipe: Recipe | null): void
-  setRate(value: string): void
-  setBelts(value: string): void
-  setQuality(level: number | string): void
-  setQualityStrategy(strategy: QualityStrategy, preservedRate?: Rational | null): void
-  displayRecipes(): void
-  rateChanged(): void
-  invalidateQualityUndo?(recipe: Recipe): void
-}
-
 export interface RecipeConfigurationSnapshot {
   readonly hasBuildingOverride: boolean
   readonly buildingOverride: Building | null
@@ -9134,22 +7443,7 @@ export interface RecipeConfigurationSnapshot {
   } | null
 }
 
-// Factory rendering port
-
-/**
- * Browser-facing operations required by the calculator application model.
- *
- * The application layer depends on this port, not on D3 or concrete DOM
- * renderers. Headless tests omit the port entirely.
- */
-export interface FactoryViewPort {
-  createBuildTarget(index: number, itemKey: string, item: Item, itemGroups: ItemGroups): FactoryBuildTarget
-  mountBuildTarget(target: FactoryBuildTarget): void
-  removeBuildTarget(target: FactoryBuildTarget): void
-  renderSolution(specification: FactorySpecification, totals: Totals): void
-  renderCalculationError(specification: FactorySpecification, error: unknown): void
-  persistUrlState(): void
-}
+// React subscribes to FactorySpecification directly; there is no rendering port.
 
 // Building groups
 
@@ -9377,7 +7671,6 @@ function replaceMap<TKey, TValue>(target: Map<TKey, TValue>, source: ReadonlyMap
 }
 
 export class FactorySpecification {
-  view: FactoryViewPort | null
   readonly items = new Map<string, Item>()
   readonly recipes = new Map<string, Recipe>()
   readonly modules = new Map<string, Module>()
@@ -9393,7 +7686,7 @@ export class FactorySpecification {
   readonly belts = new Map<string, Belt>()
   fuels: FuelCollection | null = null
   itemGroups: ItemGroups = []
-  readonly buildTargets: FactoryBuildTarget[] = []
+  readonly buildTargets: BuildTarget[] = []
   readonly spec = new Map<Recipe, ModuleSpec>()
   defaultModule: Module | null = null
   secondaryDefaultModule: Module | null = null
@@ -9441,9 +7734,7 @@ export class FactorySpecification {
   private readonly stateListeners = new Set<() => void>()
   private stateRevision = 0
 
-  constructor(view: FactoryViewPort | null = null) {
-    this.view = view
-  }
+  constructor() {}
   setQualityGraphOptimizer(optimizer: QualityGraphOptimizer | null): void {
     this.qualityGraphOptimizer = optimizer
   }
@@ -9788,11 +8079,6 @@ export class FactorySpecification {
   }
   notifyRecipeConfigurationChanged(recipe: Recipe): void {
     this.recordRecipeConfigurationChange(recipe)
-    for (const target of this.buildTargets) {
-      if (target.recipe === recipe) {
-        target.invalidateQualityUndo?.(recipe)
-      }
-    }
   }
   captureRecipeConfiguration(recipe: Recipe): RecipeConfigurationSnapshot {
     const moduleSpec = this.spec.get(recipe)
@@ -9961,7 +8247,7 @@ export class FactorySpecification {
     return this.getBuildingGroup(building).selectedBuildings.has(building)
   }
   updateBuildingGroup(group: BuildingGroup): void {
-    for (let [recipe, moduleSpec] of this.spec) {
+    for (const [recipe, moduleSpec] of this.spec) {
       let g = null
       for (let category of getCategories(recipe)) {
         g = this.buildings.get(category)
@@ -10037,7 +8323,7 @@ export class FactorySpecification {
     return bonus
   }
   setDefaultModule(module: Module | null): void {
-    for (let [recipe, moduleSpec] of this.spec) {
+    for (const [recipe, moduleSpec] of this.spec) {
       if (moduleSpec.moduleSource !== "default") continue
       let changed = false
       for (let i = 0; i < moduleSpec.modules.length; i++) {
@@ -10064,7 +8350,7 @@ export class FactorySpecification {
   }
   setSecondaryDefaultModule(module: Module | null): void {
     if (this.secondaryDefaultModule !== this.defaultModule) {
-      for (let [recipe, moduleSpec] of this.spec) {
+      for (const [recipe, moduleSpec] of this.spec) {
         if (moduleSpec.moduleSource !== "default") continue
         let changed = false
         for (let i = 0; i < moduleSpec.modules.length; i++) {
@@ -10107,7 +8393,7 @@ export class FactorySpecification {
     this.defaultBeacon[i] = compatibleModule
   }
   setDefaultBeaconCount(count: Rational): void {
-    for (let [recipe, moduleSpec] of this.spec) {
+    for (const moduleSpec of this.spec.values()) {
       if (moduleSpec.beaconCount.equal(this.defaultBeaconCount)) {
         moduleSpec.beaconCount = count
       }
@@ -10211,24 +8497,19 @@ export class FactorySpecification {
     power = power.add(building.drainForQuality(quality).mul(count.ceil()))
     return { fuel: "electric", power: power }
   }
-  addTarget(itemKey = DEFAULT_ITEM_KEY): FactoryBuildTarget {
+  addTarget(itemKey = DEFAULT_ITEM_KEY): BuildTarget {
     const item = this.items.get(itemKey)
     if (item === undefined) throw new Error(`Unknown target item: ${itemKey}`)
-    if (this.view === null) {
-      throw new Error("Build targets require a configured FactoryViewPort")
-    }
-    let target = this.view.createBuildTarget(this.buildTargets.length, itemKey, item, this.itemGroups)
+    const target = new BuildTarget(this, this.buildTargets.length, item)
     this.buildTargets.push(target)
-    this.view.mountBuildTarget(target)
     return target
   }
-  removeTarget(target: FactoryBuildTarget): void {
+  removeTarget(target: BuildTarget): void {
     this.buildTargets.splice(target.index, 1)
     for (let i = target.index; i < this.buildTargets.length; i++) {
       const current = this.buildTargets[i]
       if (current !== undefined) current.index--
     }
-    this.view?.removeBuildTarget(target)
   }
   toggleIgnore(item: Item): void {
     let updateTargets = false
@@ -10369,7 +8650,7 @@ export class FactorySpecification {
       : solve(solverSpec, dedupedOutputs)
   }
   persistUrlState(): void {
-    this.view?.persistUrlState()
+    persistFactoryUrlState()
   }
   // Backward-compatible name used by existing event handlers.
   setHash(): void {
@@ -10387,7 +8668,6 @@ export class FactorySpecification {
     } catch (error) {
       this.lastTotals = null
       this.lastError = error
-      this.view?.renderCalculationError(this, error)
       this.persistUrlState()
       this.notifyStateChanged()
     }
@@ -10400,36 +8680,23 @@ export class FactorySpecification {
   // from changing the speed of a building), then we need merely re-display
   // the existing solution.
   display(): void {
-    // Update build target text boxes, if needed.
-    for (let target of this.buildTargets) {
-      target.getRate()
-    }
-    if (this.lastTotals === null) {
-      if (this.lastError !== null) {
-        this.view?.renderCalculationError(this, this.lastError)
-      }
-    } else {
-      this.view?.renderSolution(this, this.lastTotals)
-    }
     this.persistUrlState()
-
     this.notifyStateChanged()
   }
 }
 
 // Factory store
 
-let configuredView: FactoryViewPort | null = null
+let persistFactoryUrlState: () => void = () => undefined
 
 export let spec = new FactorySpecification()
 
-export function configureFactoryView(view: FactoryViewPort) {
-  configuredView = view
-  spec.view = view
+export function configureFactoryPersistence(handler: () => void): void {
+  persistFactoryUrlState = handler
 }
 
-export function resetSpec() {
-  spec = new FactorySpecification(configuredView)
+export function resetSpec(): FactorySpecification {
+  spec = new FactorySpecification()
   return spec
 }
 // endregion factory.ts
@@ -10439,13 +8706,12 @@ export type CalculatorTab = "totals" | "graph" | "settings" | "resources" | "hel
 export type FactoryDensity = "comfortable" | "compact"
 export type ProgressionPreset = "early" | "pre-rocket" | "first-planets" | "late-space-age"
 export type QualityPreset = "full-legendary"
+export type CalculationStatus = "loading" | "ready" | "error"
+export type VisualizerType = "sankey" | "boxline"
+export type VisualizerRender = "zoom" | "fix"
+export type VisualizerDirection = "right" | "down"
 
-const PROGRESSION_PRESET_VALUES: ReadonlySet<string> = new Set([
-  "early",
-  "pre-rocket",
-  "first-planets",
-  "late-space-age",
-])
+const PROGRESSION_PRESET_VALUES = new Set<string>(["early", "pre-rocket", "first-planets", "late-space-age"])
 
 export function isProgressionPreset(value: string): value is ProgressionPreset {
   return PROGRESSION_PRESET_VALUES.has(value)
@@ -10454,81 +8720,42 @@ export function isProgressionPreset(value: string): value is ProgressionPreset {
 export function isQualityPreset(value: string): value is QualityPreset {
   return value === "full-legendary"
 }
-export type CalculationStatus = "loading" | "ready" | "error"
 
-export interface PlanningSettingValue {
+interface PlanningSettingValue {
   readonly id: string
   readonly value: string
-  readonly resourceKey: string | undefined
-  readonly itemKey: string | undefined
-}
-
-export interface TargetSnapshot {
-  readonly index: number
-  readonly itemKey: string
-  readonly itemName: string
-  readonly recipeKey: string | null
-  readonly recipeName: string | null
-  readonly buildings: string
-  readonly rate: string
-  readonly qualityLevel: number
-  readonly qualityStrategy: QualityStrategy
-}
-
-export interface CalculatorSettingsSnapshot {
-  readonly displayRate: DisplayRate
-  readonly ratePrecision: number
-  readonly countPrecision: number
-  readonly displayFormat: DisplayFormat
-  readonly miningProductivityPercent: string
-  readonly beltStackSize: string
-  readonly beltStackDefaultPolicy: "auto" | "stacked" | "unstacked"
-  readonly bufferMinutes: string
-  readonly freshnessDelayMinutes: string
-  readonly maxQualityLevel: number
-  readonly equipmentQualityAvailable: boolean
-  readonly qualityPlannerObjective: QualityPlannerObjective
-  readonly visualizationType: string
-  readonly visualizationRender: string
-  readonly visualizationDirection: string
+  readonly resourceKey?: string
+  readonly itemKey?: string
 }
 
 export interface CalculatorSnapshot {
   readonly revision: number
+  readonly specification: FactorySpecification
+  readonly totals: Totals | null
   readonly datasetKey: string
   readonly activeTab: CalculatorTab
   readonly factoryDensity: FactoryDensity
+  readonly colorSchemeKey: string
+  readonly visualizerType: VisualizerType
+  readonly visualizerRender: VisualizerRender
+  readonly visualizerDirection: VisualizerDirection
   readonly title: string
+  readonly shareStatus: string
   readonly status: CalculationStatus
   readonly errorMessage: string | null
-  readonly targets: readonly TargetSnapshot[]
-  readonly settings: CalculatorSettingsSnapshot
 }
 
 export interface CalculatorCommands {
   addTarget(itemKey?: string): void
   removeTarget(index: number): void
+  setDataset(value: string): void
   selectTab(tab: CalculatorTab): void
-  openVisualization(): void
   copyShareLink(): Promise<void>
   applyProgressionPreset(value: ProgressionPreset): void
   applyQualityPreset(value: QualityPreset): void
   setFactoryDensity(value: FactoryDensity): void
   setTitle(value: string): void
-  setRatePrecision(value: number): void
-  setCountPrecision(value: number): void
-  setDisplayFormat(value: DisplayFormat): void
-  setMiningProductivityPercent(value: string): void
-  setPlanningSetting(input: PlanningSettingValue): void
-  setVisualizationType(value: string): void
-  setVisualizationRender(value: string): void
-  setVisualizationDirection(value: string): void
   recalculate(): void
-}
-
-export interface CalculatorBrowserPort {
-  readDatasetKey(): string
-  readTitle(): string
 }
 
 export interface CalculatorStore {
@@ -10541,17 +8768,21 @@ export interface CalculatorStore {
 // endregion application/contracts.ts
 
 // region state.ts
-// Document title
-
 export const DEFAULT_TITLE = "Factorio Calculator"
 
-export function setTitle(title: string) {
-  document.title = title === "" ? DEFAULT_TITLE : title
+let calculatorTitle = DEFAULT_TITLE
+
+export function setTitle(title: string): void {
+  calculatorTitle = title === "" ? DEFAULT_TITLE : title
+  if (typeof document !== "undefined") document.title = calculatorTitle
+}
+
+export function getTitle(): string {
+  return calculatorTitle
 }
 
 const FACTORY_DENSITY_STORAGE_KEY = "factorio-calculator-factory-density"
 const DEFAULT_FACTORY_DENSITY: FactoryDensity = "compact"
-
 export let factoryDensity: FactoryDensity = DEFAULT_FACTORY_DENSITY
 
 function isFactoryDensity(value: string | null): value is FactoryDensity {
@@ -10560,42 +8791,30 @@ function isFactoryDensity(value: string | null): value is FactoryDensity {
 
 export function setFactoryDensity(value: FactoryDensity): void {
   factoryDensity = value
-  document.documentElement.dataset.factoryDensity = value
-  document.querySelectorAll<HTMLInputElement>('input[name="factory_density"]').forEach((input) => {
-    input.checked = input.value === value
-  })
   try {
     window.localStorage.setItem(FACTORY_DENSITY_STORAGE_KEY, value)
   } catch {
-    // Storage may be disabled. The selected density still applies immediately.
+    // Storage is optional.
   }
 }
 
-export function initializeFactoryDensity() {
-  let storedDensity: string | null = null
+export function initializeFactoryDensity(): void {
+  let stored: string | null = null
   try {
-    storedDensity = window.localStorage.getItem(FACTORY_DENSITY_STORAGE_KEY)
+    stored = window.localStorage.getItem(FACTORY_DENSITY_STORAGE_KEY)
   } catch {
-    // Storage may be disabled. The control still works for the current page.
+    // Storage is optional.
   }
-  setFactoryDensity(isFactoryDensity(storedDensity) ? storedDensity : DEFAULT_FACTORY_DENSITY)
-}
-
-export function changeFactoryDensity(event: Event) {
-  let input = event.target
-  if (!(input instanceof HTMLInputElement) || !isFactoryDensity(input.value)) {
-    return
-  }
-  setFactoryDensity(input.value)
+  factoryDensity = isFactoryDensity(stored) ? stored : DEFAULT_FACTORY_DENSITY
 }
 
 type PresetDefinition = {
-  miningProductivity: number
-  recipeProductivityLevel: number
-  belt: string
-  beltStackSize: number
-  maxQualityLevel: number
-  defaultMachines: string[]
+  readonly miningProductivity: number
+  readonly recipeProductivityLevel: number
+  readonly belt: string
+  readonly beltStackSize: number
+  readonly maxQualityLevel: number
+  readonly defaultMachines: readonly string[]
 }
 
 const RECIPE_PRODUCTIVITY_RESEARCH_KEYS = [
@@ -10653,373 +8872,126 @@ const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   },
 }
 
-function getByKey<TKey, TValue>(collection: ReadonlyMap<TKey, TValue> | null, key: TKey | null): TValue | null {
-  if (collection === null || key === null) return null
-  return collection.get(key) ?? null
-}
-
-function getBoundDatum(element: Element): unknown {
-  return (element as Element & { readonly __data__?: unknown }).__data__
-}
-
-function getEventInput(event: Event): HTMLInputElement | null {
-  return event.target instanceof HTMLInputElement ? event.target : null
-}
-
-function getEventSelect(event: Event): HTMLSelectElement | null {
-  return event.target instanceof HTMLSelectElement ? event.target : null
-}
-
-function getEventControl(event: Event): HTMLInputElement | HTMLSelectElement | null {
-  return event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement ? event.target : null
-}
-
-function syncPresetControls(): void {
-  document.querySelectorAll<HTMLInputElement>('#belt_selector input[type="radio"]').forEach((input) => {
-    input.checked = input.value === spec.belt?.key
-  })
-
-  let beltStack = document.getElementById("belt_stack_size") as HTMLSelectElement | null
-  if (beltStack !== null) beltStack.value = spec.beltStackSize.toString()
-  let beltStackPolicy = document.getElementById("belt_stack_default_policy") as HTMLSelectElement | null
-  if (beltStackPolicy !== null) beltStackPolicy.value = spec.beltStackDefaultPolicy
-  let maxQuality = document.getElementById("max_quality") as HTMLSelectElement | null
-  if (maxQuality !== null) maxQuality.value = String(spec.maxQualityLevel)
-  const qualityDefaults = [
-    ["default_machine_quality", spec.defaultMachineQuality],
-    ["default_module_quality", spec.defaultModuleQuality],
-    ["default_beacon_quality", spec.defaultBeaconQuality],
-    ["quality_planner_module_quality", spec.qualityPlannerModuleQuality],
-    ["quality_planner_productivity_module_quality", spec.qualityPlannerProductivityModuleQuality],
-  ] as const
-  for (const [containerId, selected] of qualityDefaults) {
-    const input = document.querySelector<HTMLSelectElement>(`#${containerId} select`)
-    if (input === null) continue
-    input.replaceChildren(
-      ...spec
-        .getAvailableQualities()
-        .map((quality) => new Option(quality.name, quality.key, false, quality === selected)),
-    )
-  }
-
-  document.querySelectorAll<HTMLInputElement>('#building_selector input[type="checkbox"]').forEach((input) => {
-    const building = getBoundDatum(input)
-    input.checked = building instanceof Building && spec.isAutomaticBuildingEnabled(building)
-  })
-
-  document
-    .querySelectorAll<HTMLInputElement>("#recipe_productivity_settings input[data-research-key]")
-    .forEach((input) => {
-      const researchKey = input.dataset.researchKey
-      if (researchKey === undefined) return
-      const percentPerLevel = Number(input.dataset.percentPerLevel)
-      if (!Number.isFinite(percentPerLevel)) return
-      input.value = String(spec.getRecipeProductivityLevel(researchKey) * percentPerLevel)
-    })
-}
-
-export function applyProgressionPresetValue(value: ProgressionPreset): void {
+export function applyProgressionPreset(specification: FactorySpecification, value: ProgressionPreset): void {
   const preset = PROGRESSION_PRESETS[value]
-
-  spec.miningProd = Rational.from_float(preset.miningProductivity / 100)
-  spec.recipeProductivityLevels.clear()
-  for (const researchKey of RECIPE_PRODUCTIVITY_RESEARCH_KEYS) {
-    if (spec.recipeProductivityResearch.has(researchKey)) {
-      spec.setRecipeProductivityLevel(researchKey, preset.recipeProductivityLevel)
+  specification.miningProd = Rational.from_float(preset.miningProductivity / 100)
+  specification.recipeProductivityLevels.clear()
+  for (const key of RECIPE_PRODUCTIVITY_RESEARCH_KEYS) {
+    if (specification.recipeProductivityResearch.has(key)) {
+      specification.setRecipeProductivityLevel(key, preset.recipeProductivityLevel)
     }
   }
-  let belt = getByKey(spec.belts, preset.belt)
-  if (belt !== null) spec.belt = belt
-  spec.beltStackSize = Rational.from_float(preset.beltStackSize)
-  spec.beltStackDefaultPolicy = "auto"
-  spec.beltStackOverrides.clear()
-  spec.setMaxQualityLevel(preset.maxQualityLevel)
-  for (let target of spec.buildTargets) {
-    target.setQuality(target.qualityLevel)
-  }
-
-  spec.clearBuildingOverrides()
-  spec.setAutomaticBuildingPreferences(
-    preset.defaultMachines.map((key) => getByKey(spec.buildingKeys, key)).filter((building) => building !== null),
+  specification.belt = specification.belts.get(preset.belt) ?? specification.belt
+  specification.beltStackSize = Rational.from_float(preset.beltStackSize)
+  specification.beltStackDefaultPolicy = "auto"
+  specification.beltStackOverrides.clear()
+  specification.setMaxQualityLevel(preset.maxQualityLevel)
+  for (const target of specification.buildTargets) target.setQuality(target.qualityLevel)
+  specification.clearBuildingOverrides()
+  specification.setAutomaticBuildingPreferences(
+    preset.defaultMachines.flatMap((key) => {
+      const building = specification.buildingKeys.get(key)
+      return building === undefined ? [] : [building]
+    }),
   )
-
-  syncMiningProductivityControls()
-  syncPresetControls()
-  spec.updateSolution()
+  specification.updateSolution()
 }
 
-export function applyQualityPresetValue(value: QualityPreset): void {
-  if (value !== "full-legendary" || !spec.applyFullLegendaryQuality()) return
-  syncPresetControls()
-  spec.updateSolution()
+export function applyQualityPreset(specification: FactorySpecification, value: QualityPreset): void {
+  if (value === "full-legendary" && specification.applyFullLegendaryQuality()) specification.updateSolution()
 }
 
-export function applyProgressionPreset(event: Event): void {
-  const select = event.target
-  if (!(select instanceof HTMLSelectElement) || !isProgressionPreset(select.value)) return
-  applyProgressionPresetValue(select.value)
-}
-
-export function applyQualityPreset(event: Event): void {
-  const select = event.target
-  if (!(select instanceof HTMLSelectElement) || !isQualityPreset(select.value)) return
-  applyQualityPresetValue(select.value)
-}
-
-export function setPlanningSetting(input: PlanningSettingValue): void {
+function applyPlanningSetting(specification: FactorySpecification, input: PlanningSettingValue): void {
   switch (input.id) {
     case "belt_stack_size":
-      spec.beltStackSize = Rational.from_string(input.value)
+      specification.beltStackSize = Rational.from_string(input.value)
       break
     case "belt_stack_default_policy":
       if (!isBeltStackPolicy(input.value)) return
-      spec.beltStackDefaultPolicy = input.value
+      specification.beltStackDefaultPolicy = input.value
       break
     case "buffer_minutes":
-      spec.bufferMinutes = Rational.max(Rational.from_float(0), Rational.from_string(input.value || "0"))
+      specification.bufferMinutes = Rational.max(zero, Rational.from_string(input.value || "0"))
       break
     case "freshness_delay":
-      spec.freshnessDelayMinutes = Rational.max(Rational.from_float(0), Rational.from_string(input.value || "0"))
+      specification.freshnessDelayMinutes = Rational.max(zero, Rational.from_string(input.value || "0"))
       break
     case "max_quality":
-      spec.setMaxQualityLevel(Number(input.value))
-      for (let target of spec.buildTargets) {
-        target.setQuality(target.qualityLevel)
-      }
+      specification.setMaxQualityLevel(Number(input.value))
+      for (const target of specification.buildTargets) target.setQuality(target.qualityLevel)
       break
     case "quality_planner_objective":
       if (!isQualityPlannerObjective(input.value)) return
-      spec.qualityPlannerObjective = input.value
+      specification.qualityPlannerObjective = input.value
       break
-    default: {
-      const resourceKey = input.resourceKey
-      if (resourceKey) {
-        let recipe = spec.recipes.get(resourceKey)
-        if (recipe)
-          spec.setResourceYield(recipe, Rational.from_string(input.value || "100").div(Rational.from_float(100)))
-        break
+    default:
+      if (input.resourceKey !== undefined) {
+        const recipe = specification.recipes.get(input.resourceKey)
+        if (recipe !== undefined) {
+          specification.setResourceYield(
+            recipe,
+            Rational.from_string(input.value || "100").div(Rational.from_float(100)),
+          )
+        }
+      } else if (input.itemKey !== undefined) {
+        if (input.value === "") specification.asteroidLimits.delete(input.itemKey)
+        else {
+          specification.asteroidLimits.set(
+            input.itemKey,
+            Rational.from_string(input.value).div(specification.format.rateFactor),
+          )
+        }
+      } else {
+        return
       }
-      const itemKey = input.itemKey
-      if (!itemKey) return
-      if (input.value === "") spec.asteroidLimits.delete(itemKey)
-      else spec.asteroidLimits.set(itemKey, Rational.from_string(input.value).div(spec.format.rateFactor))
-    }
   }
-  spec.updateSolution()
-}
-
-export function changePlanningSetting(event: Event): void {
-  const input = getEventControl(event)
-  if (input === null) return
-  setPlanningSetting({
-    id: input.id,
-    value: input.value,
-    resourceKey: input.dataset.resourceKey,
-    itemKey: input.dataset.itemKey,
-  })
-}
-
-// UI actions
-
-// build target events
-
-export function plusHandler(): void {
-  spec.addTarget()
-  spec.updateSolution()
-}
-
-let shareStatusTimer: ReturnType<typeof setTimeout> | null = null
-
-function setShareStatus(message: string): void {
-  let status = document.getElementById("share_status")
-  if (status === null) {
-    return
-  }
-  status.textContent = message
-  if (shareStatusTimer !== null) {
-    clearTimeout(shareStatusTimer)
-  }
-  shareStatusTimer = setTimeout(() => {
-    status.textContent = ""
-    shareStatusTimer = null
-  }, 2500)
-}
-
-function fallbackCopyText(text: string): void {
-  let input = document.createElement("textarea")
-  input.value = text
-  input.setAttribute("readonly", "")
-  input.style.position = "fixed"
-  input.style.opacity = "0"
-  document.body.appendChild(input)
-  input.select()
-  let copied = document.execCommand("copy")
-  input.remove()
-  if (!copied) {
-    throw new Error("The browser did not allow clipboard access.")
-  }
-}
-
-export async function copyShareLink(): Promise<void> {
-  spec.persistUrlState()
-  let url = window.location.href
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url)
-    } else {
-      fallbackCopyText(url)
-    }
-    setShareStatus("Plan link copied.")
-  } catch {
-    setShareStatus("Could not copy automatically. Copy the URL from the address bar.")
-  }
+  specification.updateSolution()
 }
 
 export const DEFAULT_TAB: CalculatorTab = "totals"
-
 export let currentTab: CalculatorTab = DEFAULT_TAB
 
 function isCalculatorTab(value: string): value is CalculatorTab {
   return value === "totals" || value === "graph" || value === "settings" || value === "resources" || value === "help"
 }
 
-let onDeferredTabOpened: (tabName: string) => void = () => undefined
-
-export function configureDeferredTabHandler(handler: (tabName: string) => void): void {
-  onDeferredTabOpened = handler
-}
-
-export function clickTab(requestedTab: string): void {
-  const candidate =
+function selectCalculatorTab(requestedTab: string): void {
+  const alias =
     requestedTab === "about" || requestedTab === "faq" || requestedTab === "changelog" ? "help" : requestedTab
-  const tabName: CalculatorTab =
-    isCalculatorTab(candidate) && document.getElementById(candidate + "_tab") !== null ? candidate : DEFAULT_TAB
-  currentTab = tabName
-  selectAll(".tab").style("display", "none")
-  selectAll(".tab_button, .toolbar-tab-button").classed("active", false)
-  select("#" + tabName + "_tab").style("display", "block")
-  select("#" + tabName + "_button").classed("active", true)
-  document.getElementById("factory_tab_tools")?.toggleAttribute("hidden", tabName !== "totals")
-  if (tabName === "settings" || tabName === "resources") {
-    onDeferredTabOpened(tabName)
+  currentTab = isCalculatorTab(alias) ? alias : DEFAULT_TAB
+}
+
+let shareStatus = ""
+let shareTimer: ReturnType<typeof setTimeout> | null = null
+
+export function getShareStatus(): string {
+  return shareStatus
+}
+
+function setShareStatus(specification: FactorySpecification, value: string): void {
+  shareStatus = value
+  specification.notifyStateChanged()
+  if (shareTimer !== null) clearTimeout(shareTimer)
+  if (value !== "") {
+    shareTimer = setTimeout(() => {
+      shareStatus = ""
+      shareTimer = null
+      specification.notifyStateChanged()
+    }, 2500)
   }
-  spec.setHash()
-  spec.notifyStateChanged()
 }
 
-export function clickVisualize(): void {
-  clickTab("graph")
-  spec.display()
+async function copyShareLink(specification: FactorySpecification): Promise<void> {
+  specification.persistUrlState()
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    setShareStatus(specification, "Plan link copied.")
+  } catch {
+    setShareStatus(specification, "Copy failed. Use the browser address bar.")
+  }
 }
 
-// shared events
-
-export function toggleIgnoreHandler(_event: Event, datum: { readonly item: Item }): void {
-  spec.toggleIgnore(datum.item)
-  spec.updateSolution()
-}
-
-// setting events
-
-export function setCalculatorTitle(value: string): void {
-  setTitle(value)
-  spec.setHash()
-  spec.notifyStateChanged()
-}
-
-export function changeTitle(event: Event): void {
-  const input = getEventInput(event)
-  if (input !== null) setCalculatorTitle(input.value)
-}
-
-export function setRatePrecision(value: number): void {
-  if (!Number.isInteger(value) || value < 0) return
-  spec.format.ratePrecision = value
-  spec.display()
-}
-
-export function changeRatePrecision(event: Event): void {
-  const input = getEventControl(event)
-  if (input !== null) setRatePrecision(Number(input.value))
-}
-
-export function setCountPrecision(value: number): void {
-  if (!Number.isInteger(value) || value < 0) return
-  spec.format.countPrecision = value
-  spec.display()
-}
-
-export function changeCountPrecision(event: Event): void {
-  const input = getEventControl(event)
-  if (input !== null) setCountPrecision(Number(input.value))
-}
-
-export function setDisplayFormat(value: DisplayFormat): void {
-  spec.format.displayFormat = value
-  spec.display()
-}
-
-export function changeFormat(event: Event): void {
-  const input = getEventControl(event)
-  if (input === null || (input.value !== "decimal" && input.value !== "rational")) return
-  setDisplayFormat(input.value)
-}
-
-export function setMiningProductivityPercent(value: string): void {
-  spec.miningProd = Rational.from_string(value).div(Rational.from_float(100))
-  syncMiningProductivityControls()
-  spec.updateSolution()
-}
-
-export function changeMprod(event: Event): void {
-  const input = getEventInput(event)
-  if (input !== null) setMiningProductivityPercent(input.value)
-}
-
-export function syncMiningProductivityControls(): void {
-  let value = spec.miningProd.mul(Rational.from_integer(100)).toDecimal()
-  let input = document.getElementById("mprod") as HTMLInputElement | null
-  if (input !== null) input.value = value
-}
-
-// visualizer events
-
-export function changeVisualizationType(value: string): void {
-  setVisualizerType(value)
-  const direction = getDefaultVisualizerDirection()
-  setVisualizerDirection(direction)
-  select(`#${direction}_direction`).property("checked", true)
-  spec.display()
-}
-
-export function changeVisType(event: Event): void {
-  const input = getEventControl(event)
-  if (input !== null) changeVisualizationType(input.value)
-}
-
-export function changeVisualizationRender(value: string): void {
-  setVisualizerRender(value)
-  spec.display()
-}
-
-export function changeVisRender(event: Event): void {
-  const input = getEventControl(event)
-  if (input !== null) changeVisualizationRender(input.value)
-}
-
-export function changeVisualizationDirection(value: string): void {
-  setVisualizerDirection(value)
-  spec.display()
-}
-
-export function changeVisDir(event: Event): void {
-  const input = getEventControl(event)
-  if (input !== null) changeVisualizationDirection(input.value)
-}
-
-// Dataset selection
-
-class Modification {
+export class Modification {
   constructor(
     readonly name: string,
     readonly filename: string,
@@ -11028,7 +9000,6 @@ class Modification {
 }
 
 export const MODIFICATIONS = new Map([
-  // 2.1.14 has no calculator-relevant prototype changes, so it intentionally reuses the 2.1.13 export and URL key.
   ["space-age-2-1-13", new Modification("Space Age 2.1.14 (EXPERIMENTAL)", "space-age-2.1.13.json", false)],
   ["2-0-55", new Modification("Vanilla 2.0.55", "vanilla-2.0.55.json", false)],
   ["1-1-110", new Modification("Vanilla 1.1.110", "vanilla-1.1.110.json", true)],
@@ -11036,7 +9007,7 @@ export const MODIFICATIONS = new Map([
   ["space-age-2-0-55", new Modification("Space Age 2.0.55", "space-age-2.0.55.json", false)],
 ])
 
-const DEFAULT_MODIFICATION = "space-age-2-1-13"
+export const DEFAULT_MODIFICATION = "space-age-2-1-13"
 const modificationUpdates = new Map([
   ["space-age-2-1-12", "space-age-2-1-13"],
   ["2-0-6", "2-0-55"],
@@ -11048,252 +9019,155 @@ const modificationUpdates = new Map([
   ["space-age-2-0-11", "space-age-2-0-55"],
 ])
 
-let onModificationChanged: () => void = () => {
-  throw new Error("Dataset change handler has not been configured")
+export function normalizeDataSetName(name: string | undefined): string {
+  const updated = name === undefined ? undefined : (modificationUpdates.get(name) ?? name)
+  return updated !== undefined && MODIFICATIONS.has(updated) ? updated : DEFAULT_MODIFICATION
 }
+
+let selectedDatasetKey = DEFAULT_MODIFICATION
+let onModificationChanged: () => void = () => undefined
 
 export function configureDatasetChangeHandler(handler: () => void): void {
   onModificationChanged = handler
 }
 
-function normalizeDataSetName(name: string | undefined): string {
-  const updatedName = name === undefined ? undefined : (modificationUpdates.get(name) ?? name)
-  return updatedName !== undefined && MODIFICATIONS.has(updatedName) ? updatedName : DEFAULT_MODIFICATION
-}
-
-export function renderDataSetOptions(settings: Map<string, string>): void {
-  const selector = document.getElementById("data_set") as HTMLSelectElement
-  select(selector).on("change", () => onModificationChanged())
-  const configuredModification = normalizeDataSetName(settings.get("data"))
-  selector.replaceChildren()
-  for (const [key, modification] of MODIFICATIONS) {
-    const option = document.createElement("option")
-    option.textContent = modification.name
-    option.value = key
-    option.selected = key === configuredModification
-    selector.appendChild(option)
-  }
+function selectDatasetFromSettings(settings: Map<string, string>): void {
+  selectedDatasetKey = normalizeDataSetName(settings.get("data"))
 }
 
 export function currentMod(): string {
-  return (document.getElementById("data_set") as HTMLSelectElement).value
+  return selectedDatasetKey
 }
 
-// Visualization state
+export function selectDataset(value: string): void {
+  const normalized = normalizeDataSetName(value)
+  if (normalized === selectedDatasetKey) return
+  selectedDatasetKey = normalized
+  onModificationChanged()
+}
 
-export const DEFAULT_VISUALIZER = "sankey"
-export const DEFAULT_RENDER = "zoom"
-
-export let visualizerType = DEFAULT_VISUALIZER
-export let visualizerRender = DEFAULT_RENDER
-export let visualizerDirection = getDefaultVisualizerDirection()
+export const DEFAULT_VISUALIZER: VisualizerType = "sankey"
+export const DEFAULT_RENDER: VisualizerRender = "zoom"
+export let visualizerType: VisualizerType = DEFAULT_VISUALIZER
+export let visualizerRender: VisualizerRender = DEFAULT_RENDER
+export let visualizerDirection: VisualizerDirection = "right"
 
 export function setVisualizerType(value: string): void {
-  visualizerType = value
+  visualizerType = value === "boxline" ? "boxline" : "sankey"
 }
-
 export function setVisualizerRender(value: string): void {
-  visualizerRender = value
+  visualizerRender = value === "fix" ? "fix" : "zoom"
 }
-
 export function setVisualizerDirection(value: string): void {
-  visualizerDirection = value
+  visualizerDirection = value === "down" ? "down" : "right"
 }
-
-export function getDefaultVisualizerDirection(): string {
+export function getDefaultVisualizerDirection(): VisualizerDirection {
   return visualizerType === "sankey" ? "right" : "down"
 }
-
 export function isDefaultVisualizerDirection(): boolean {
   return visualizerDirection === getDefaultVisualizerDirection()
 }
 
-// Calculation mode
-
 let legacyCalculation = false
-
 export function setLegacyCalculation(value: boolean): void {
   legacyCalculation = value
 }
-
 export function usesLegacyCalculation(): boolean {
   return legacyCalculation
 }
+
 // endregion state.ts
 
 // region application/store.ts
 const INITIAL_SNAPSHOT: CalculatorSnapshot = {
   revision: 0,
-  datasetKey: "",
-  activeTab: "totals",
+  specification: spec,
+  totals: null,
+  datasetKey: DEFAULT_MODIFICATION,
+  activeTab: DEFAULT_TAB,
   factoryDensity: "compact",
-  title: "Factorio Calculator",
+  colorSchemeKey: "default",
+  visualizerType: DEFAULT_VISUALIZER,
+  visualizerRender: DEFAULT_RENDER,
+  visualizerDirection: "right",
+  title: DEFAULT_TITLE,
+  shareStatus: "",
   status: "loading",
   errorMessage: null,
-  targets: [],
-  settings: {
-    displayRate: "m",
-    ratePrecision: 3,
-    countPrecision: 1,
-    displayFormat: "decimal",
-    miningProductivityPercent: "0",
-    beltStackSize: "1",
-    beltStackDefaultPolicy: "auto",
-    bufferMinutes: "1",
-    freshnessDelayMinutes: "0",
-    maxQualityLevel: 4,
-    equipmentQualityAvailable: false,
-    qualityPlannerObjective: "practical",
-    visualizationType: "sankey",
-    visualizationRender: "zoom",
-    visualizationDirection: "right",
-  },
-}
-
-export const browserCalculatorPort: CalculatorBrowserPort = {
-  readDatasetKey() {
-    const selector = document.getElementById("data_set")
-    return selector instanceof HTMLSelectElement ? selector.value : ""
-  },
-  readTitle() {
-    return document.title
-  },
 }
 
 function getCalculationStatus(specification: FactorySpecification): CalculationStatus {
   if (specification.lastError !== null) return "error"
-  if (specification.items.size === 0 || specification.lastTotals === null) return "loading"
-  return "ready"
+  return specification.items.size === 0 || specification.lastTotals === null ? "loading" : "ready"
 }
 
-function getErrorMessage(error: unknown): string | null {
+function errorMessage(error: unknown): string | null {
   if (error === null) return null
-  if (error instanceof Error) return error.message
-  return String(error)
+  return error instanceof Error ? error.message : String(error)
 }
 
-function createSnapshot(
-  specification: FactorySpecification,
-  revision: number,
-  browser: CalculatorBrowserPort,
-): CalculatorSnapshot {
+function createSnapshot(specification: FactorySpecification, revision: number): CalculatorSnapshot {
   return {
     revision,
-    datasetKey: browser.readDatasetKey(),
+    specification,
+    totals: specification.lastTotals,
+    datasetKey: currentMod(),
     activeTab: currentTab,
     factoryDensity,
-    title: browser.readTitle(),
+    colorSchemeKey: colorScheme.key,
+    visualizerType,
+    visualizerRender,
+    visualizerDirection,
+    title: getTitle(),
+    shareStatus: getShareStatus(),
     status: getCalculationStatus(specification),
-    errorMessage: getErrorMessage(specification.lastError),
-    targets: specification.buildTargets.map((target) => ({
-      index: target.index,
-      itemKey: target.itemKey,
-      itemName: target.item.name,
-      recipeKey: target.recipe?.key ?? null,
-      recipeName: target.recipe?.name ?? null,
-      buildings: target.buildings.toString(),
-      rate: target.rate.toString(),
-      qualityLevel: target.qualityLevel,
-      qualityStrategy: target.qualityStrategy,
-    })),
-    settings: {
-      displayRate: specification.format.rateName,
-      ratePrecision: specification.format.ratePrecision,
-      countPrecision: specification.format.countPrecision,
-      displayFormat: specification.format.displayFormat,
-      miningProductivityPercent: specification.miningProd.mul(Rational.from_integer(100)).toDecimal(),
-      beltStackSize: specification.beltStackSize.toString(),
-      beltStackDefaultPolicy: specification.beltStackDefaultPolicy,
-      bufferMinutes: specification.bufferMinutes.toString(),
-      freshnessDelayMinutes: specification.freshnessDelayMinutes.toString(),
-      maxQualityLevel: specification.maxQualityLevel,
-      equipmentQualityAvailable: specification.qualityTiers.length > 1,
-      qualityPlannerObjective: specification.qualityPlannerObjective,
-      visualizationType: visualizerType,
-      visualizationRender: visualizerRender,
-      visualizationDirection: visualizerDirection,
-    },
+    errorMessage: errorMessage(specification.lastError),
   }
 }
 
 export class BrowserCalculatorStore implements CalculatorStore {
   private readonly listeners = new Set<() => void>()
-  private specification: FactorySpecification = spec
+  private specification = spec
   private unsubscribeSpecification: (() => void) | null = null
-  private snapshot: CalculatorSnapshot = INITIAL_SNAPSHOT
+  private snapshot = INITIAL_SNAPSHOT
   private revision = 0
   private started = false
 
-  constructor(private readonly browser: CalculatorBrowserPort = browserCalculatorPort) {}
-
   readonly getSnapshot = (): CalculatorSnapshot => this.snapshot
-
   readonly subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
 
   readonly commands: CalculatorCommands = {
-    addTarget: (itemKey?: string) => {
-      if (this.snapshot.status !== "ready") return
+    addTarget: (itemKey) => {
+      if (this.specification.items.size === 0) return
       this.specification.addTarget(itemKey)
       this.specification.updateSolution()
     },
-    removeTarget: (index: number) => {
+    removeTarget: (index) => {
       const target = this.specification.buildTargets[index]
       if (target === undefined) return
       this.specification.removeTarget(target)
       this.specification.updateSolution()
     },
+    setDataset: selectDataset,
     selectTab: (tab) => {
-      clickTab(tab)
-      this.refresh()
+      selectCalculatorTab(tab)
+      this.specification.display()
     },
-    openVisualization: () => {
-      clickVisualize()
-      this.refresh()
-    },
-    copyShareLink,
-    applyProgressionPreset: (value: ProgressionPreset) => {
-      applyProgressionPresetValue(value)
-    },
-    applyQualityPreset: (value: QualityPreset) => {
-      applyQualityPresetValue(value)
-    },
-    setFactoryDensity: (value: FactoryDensity) => {
+    copyShareLink: () => copyShareLink(this.specification),
+    applyProgressionPreset: (value) => applyProgressionPreset(this.specification, value),
+    applyQualityPreset: (value) => applyQualityPreset(this.specification, value),
+    setFactoryDensity: (value) => {
       setFactoryDensity(value)
-      this.refresh()
+      this.specification.notifyStateChanged()
     },
-    setTitle: (value: string) => {
-      setCalculatorTitle(value)
+    setTitle: (value) => {
+      setTitle(value)
+      this.specification.display()
     },
-    setRatePrecision: (value: number) => {
-      setRatePrecision(value)
-    },
-    setCountPrecision: (value: number) => {
-      setCountPrecision(value)
-    },
-    setDisplayFormat: (value: DisplayFormat) => {
-      setDisplayFormat(value)
-    },
-    setMiningProductivityPercent: (value: string) => {
-      setMiningProductivityPercent(value)
-    },
-    setPlanningSetting: (input: PlanningSettingValue) => {
-      setPlanningSetting(input)
-    },
-    setVisualizationType: (value: string) => {
-      changeVisualizationType(value)
-    },
-    setVisualizationRender: (value: string) => {
-      changeVisualizationRender(value)
-    },
-    setVisualizationDirection: (value: string) => {
-      changeVisualizationDirection(value)
-    },
-    recalculate: () => {
-      this.specification.updateSolution()
-    },
+    recalculate: () => this.specification.updateSolution(),
   }
 
   start(): void {
@@ -11317,64 +9191,60 @@ export class BrowserCalculatorStore implements CalculatorStore {
 
   private readonly refresh = (): void => {
     this.revision++
-    this.snapshot = createSnapshot(this.specification, this.revision, this.browser)
+    this.snapshot = createSnapshot(this.specification, this.revision)
     for (const listener of this.listeners) listener()
   }
 }
 
 export const calculatorStore = new BrowserCalculatorStore()
-
 export function bindCalculatorSpecification(specification: FactorySpecification): void {
   calculatorStore.bindSpecification(specification)
 }
 // endregion application/store.ts
 
 // region color-schemes.ts
-export class ColorScheme {
-  constructor(
-    readonly name: string,
-    readonly key: string,
-    readonly scheme: ReadonlyMap<string, string>,
-  ) {}
-
-  apply(): void {
-    const html = document.documentElement
-    for (const [name, value] of this.scheme) {
-      html.style.setProperty(name, value)
-    }
-  }
+interface ColorScheme {
+  readonly name: string
+  readonly key: string
+  readonly variables: Readonly<Record<`--${string}`, string>>
 }
 
 export const colorSchemes = [
-  new ColorScheme(
-    "Default",
-    "default",
-    new Map([
-      ["--dark", "#171717"],
-      ["--dark-overlay", "rgba(23, 23, 23, 0.8)"],
-      ["--medium", "#212427"],
-      ["--main", "#272b30"],
-      ["--light", "#3a3f44"],
-      ["--foreground", "#c8c8c8"],
-      ["--accent", "#ff7200"],
-      ["--bright", "#f1fff2"],
-    ]),
-  ),
-  new ColorScheme(
-    "Printer-friendly",
-    "printer",
-    new Map([
-      ["--dark", "#f0f0f0"],
-      ["--dark-overlay", "#ffffff"],
-      ["--medium", "#ffffff"],
-      ["--main", "#ffffff"],
-      ["--light", "#dddddd"],
-      ["--foreground", "#000000"],
-      ["--accent", "#222222"],
-      ["--bright", "#111111"],
-    ]),
-  ),
-] as const
+  {
+    name: "Default",
+    key: "default",
+    variables: {
+      "--dark": "#171717",
+      "--dark-overlay": "rgba(23, 23, 23, 0.8)",
+      "--medium": "#212427",
+      "--main": "#272b30",
+      "--light": "#3a3f44",
+      "--rule": "#454b51",
+      "--foreground": "#c8c8c8",
+      "--muted": "#a7adb3",
+      "--accent": "#ff7200",
+      "--bright": "#f1fff2",
+      "--danger": "#f1a36c",
+    },
+  },
+  {
+    name: "Printer-friendly",
+    key: "printer",
+    variables: {
+      "--dark": "#f0f0f0",
+      "--dark-overlay": "#ffffff",
+      "--medium": "#ffffff",
+      "--main": "#ffffff",
+      "--light": "#dddddd",
+      "--rule": "#bbbbbb",
+      "--foreground": "#000000",
+      "--muted": "#555555",
+      "--accent": "#222222",
+      "--bright": "#111111",
+      "--danger": "#8a2f00",
+    },
+  },
+] as const satisfies readonly ColorScheme[]
 // endregion color-schemes.ts
 
 // region settings/productivity-research.ts
@@ -11561,1325 +9431,116 @@ export function compressCalculatorSettings(settings: string, base64: Base64Codec
 // endregion url/codec.ts
 
 // region settings.ts
-type SettingsMap = ReadonlyMap<string, string>
-type RadioOption = Belt | Fuel
+export type SettingsMap = ReadonlyMap<string, string>
 
 function requireSettingsPlanets(): Map<string, Planet> {
   if (spec.planets === null) throw new Error("Planet data has not been loaded")
   return spec.planets
 }
 
-function requireFuels() {
+function requireFuels(): FuelCollection {
   if (spec.fuels === null) throw new Error("Fuel data has not been loaded")
   return spec.fuels
 }
 
-function requireSettingsElement<TElement extends HTMLElement>(id: string): TElement {
-  const element = document.getElementById(id)
-  if (!(element instanceof HTMLElement)) throw new Error(`Missing #${id}`)
-  return element as TElement
+export function getModuleByKey(moduleKey: string): Module | null {
+  const module = spec.modules.get(moduleKey) ?? shortModules.get(moduleKey)
+  if (module !== undefined) return module
+  if (moduleKey === "null" || moduleKey === "") return null
+  console.warn("unknown module:", moduleKey)
+  return null
 }
 
-// Recipe browser
-
-let searchText = ""
-let showUnavailable = false
-let showChangedOnly = false
-let recipeSettingsRendered = false
-let resourcePrioritiesRendered = false
-
-function recipeCategoryId(category: string): string {
-  return `recipe-category-${category.replace(/[^a-z0-9_-]+/gi, "-")}`
-}
-
-function updateRecipeToggleState(
-  specification: FactorySpecification,
-  element: HTMLButtonElement,
-  recipe: Recipe,
-): void {
-  const unavailable = isRecipeUnavailable(specification, recipe)
-  const enabled = !specification.disable.has(recipe)
-
-  element.classList.toggle("selected", enabled && !unavailable)
-  element.classList.toggle("disabled-recipe", !enabled && !unavailable)
-  element.classList.toggle("unavailable", unavailable)
-  element.disabled = unavailable
-
-  if (unavailable) {
-    const status = "unavailable on the selected planets or compatible machines"
-    element.setAttribute("data-tooltip", `${recipe.name} (${status})`)
-    element.setAttribute("aria-label", `${recipe.name}: ${status}.`)
-    element.setAttribute("aria-disabled", "true")
-    element.removeAttribute("aria-pressed")
-    return
-  }
-
-  const status = enabled ? "enabled" : "disabled"
-  element.setAttribute("data-tooltip", `${recipe.name} (${status})`)
-  element.setAttribute("aria-label", `${recipe.name}: ${status}. Click to ${enabled ? "disable" : "enable"}.`)
-  element.setAttribute("aria-disabled", "false")
-  element.setAttribute("aria-pressed", String(enabled))
-}
-
-function makeRecipeToggles<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  recipes: readonly Recipe[],
-  specification: FactorySpecification,
-): void {
-  const toggles = container
-    .selectAll("button.recipe-setting-toggle")
-    .data(recipes)
-    .join("button")
-    .attr("type", "button")
-    .classed("toggle recipe recipe-setting-toggle", true)
-    .on("click", function (event: Event, recipe: Recipe) {
-      event.preventDefault()
-      if (isRecipeUnavailable(specification, recipe)) {
-        return
-      }
-      setRecipeEnabled(specification, recipe, specification.disable.has(recipe))
-      specification.updateSolution()
-    })
-
-  toggles.each(function (recipe: Recipe) {
-    updateRecipeToggleState(specification, this as HTMLButtonElement, recipe)
-  })
-  toggles.selectAll("*").remove()
-  toggles.append((recipe: Recipe) => recipe.icon.make(32))
-}
-
-function makeRecipeGroups<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  groups: readonly RecipeSettingsGroup[],
-  specification: FactorySpecification,
-): void {
-  const group = container
-    .selectAll<HTMLDetailsElement, RecipeSettingsGroup>("details.recipe-settings-category")
-    .data(groups, (entry: RecipeSettingsGroup) => entry.category)
-    .join("details")
-    .classed("recipe-settings-category", true)
-    .property("open", true)
-    .attr("id", (entry: RecipeSettingsGroup) => recipeCategoryId(entry.category))
-    .attr("data-category", (entry: RecipeSettingsGroup) => entry.category)
-
-  group
-    .selectAll<HTMLElement, RecipeSettingsGroup>("summary")
-    .data((entry: RecipeSettingsGroup) => [entry])
-    .join("summary")
-    .text((entry: RecipeSettingsGroup) => entry.name)
-  group
-    .selectAll("div.recipe-settings-toggle-row")
-    .data((entry: RecipeSettingsGroup) => [entry])
-    .join("div")
-    .classed("toggle-list recipe-settings-toggle-row", true)
-    .each(function (entry: RecipeSettingsGroup) {
-      makeRecipeToggles(select(this as HTMLDivElement), entry.recipes, specification)
-    })
-}
-
-function disableAllRecycling(specification: FactorySpecification, recyclingRecipes: readonly Recipe[]): void {
-  let changed = false
-  for (const recipe of recyclingRecipes) {
-    if (!specification.disable.has(recipe)) {
-      specification.setDisable(recipe)
-      changed = true
-    }
-  }
-  if (changed) {
-    specification.updateSolution()
-  } else {
-    refreshRecipeSettings(specification)
-  }
-}
-
-function resetRecipeChanges(specification: FactorySpecification): void {
-  const overrides = specification.getNetDisable()
-  for (const recipe of overrides.disable) {
-    specification.setEnable(recipe)
-  }
-  for (const recipe of overrides.enable) {
-    specification.setDisable(recipe)
-  }
-  specification.updateSolution()
-}
-
-export function renderRecipeSettings(specification: FactorySpecification): void {
-  searchText = ""
-  showUnavailable = false
-  showChangedOnly = false
-
-  const recipes = getConfigurableRecipes(specification)
-  const productionRecipes = recipes.filter((recipe) => !isRecyclingRecipe(recipe))
-  const recyclingRecipes = recipes.filter(isRecyclingRecipe)
-  const productionGroups = groupRecipesForSettings(productionRecipes)
-  const root = select("#recipe_toggles")
-  root.selectAll("*").remove()
-  root.classed("recipe-settings-browser", true)
-
-  const toolbar = root.append("div").classed("recipe-settings-toolbar", true)
-  toolbar
-    .append("input")
-    .attr("id", "recipe_search")
-    .attr("type", "search")
-    .attr("placeholder", "Search recipes, items, ingredients, or machines")
-    .attr("aria-label", "Search recipes")
-    .on("input", function () {
-      searchText = (this as HTMLInputElement).value
-      refreshRecipeSettings(specification)
-    })
-
-  const unavailableLabel = toolbar.append("label").classed("recipe-settings-unavailable", true)
-  unavailableLabel
-    .append("input")
-    .attr("type", "checkbox")
-    .on("change", function () {
-      showUnavailable = (this as HTMLInputElement).checked
-      refreshRecipeSettings(specification)
-    })
-  unavailableLabel
-    .attr("data-tooltip", "Show recipes blocked by the selected planets or compatible machines.")
-    .append("span")
-    .text("Show unavailable recipes")
-
-  const changedLabel = toolbar.append("label").classed("recipe-settings-changed", true)
-  changedLabel
-    .append("input")
-    .attr("type", "checkbox")
-    .on("change", function (this: HTMLInputElement) {
-      showChangedOnly = this.checked
-      refreshRecipeSettings(specification)
-    })
-  changedLabel.append("span").text("Changed only")
-
-  toolbar
-    .append("button")
-    .attr("type", "button")
-    .classed("ui reset-recipe-changes", true)
-    .text("Reset recipe changes")
-    .on("click", () => resetRecipeChanges(specification))
-
-  root.append("div").attr("id", "recipe_settings_help").classed("recipe-settings-help", true)
-  root.append("div").classed("recipe-settings-summary", true).attr("aria-live", "polite")
-
-  const production = root.append("section").classed("recipe-settings-section production-recipes", true)
-  production.append("h4").text("Production recipes")
-  makeRecipeGroups(production.append("div").classed("recipe-settings-groups", true), productionGroups, specification)
-
-  const recycling = root.append("details").classed("recipe-settings-section recycling-recipes", true)
-  recycling.append("summary").append("span").classed("recycling-recipes-title", true).text("Recycling recipes")
-  const recyclingBody = recycling.append("div").classed("recycling-recipes-body", true)
-  recyclingBody
-    .append("button")
-    .attr("type", "button")
-    .classed("ui disable-recycling-recipes", true)
-    .text("Disable all recycling recipes")
-    .on("click", (event: Event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      disableAllRecycling(specification, recyclingRecipes)
-    })
-  makeRecipeToggles(
-    recyclingBody.append("div").classed("toggle-list recipe-settings-toggle-row", true),
-    recyclingRecipes,
-    specification,
-  )
-
-  root.append("div").classed("recipe-settings-empty", true).text("No recipes match your search.")
-  refreshRecipeSettings(specification)
-}
-
-export function refreshRecipeSettings(specification: FactorySpecification): void {
-  if (!recipeSettingsRendered) {
-    return
-  }
-  const root = select("#recipe_toggles")
-  if (root.empty()) {
-    return
-  }
-
-  const normalizedSearch = normalizeSearchText(searchText)
-  const overrides = specification.getNetDisable()
-  const changedRecipes = new Set([...overrides.disable, ...overrides.enable])
-  let visibleCount = 0
-
-  root.selectAll<HTMLButtonElement, Recipe>("button.recipe-setting-toggle").each(function (recipe: Recipe) {
-    const visible =
-      recipeVisibleInSettings(specification, recipe, {
-        searchText,
-        showUnavailable,
-      }) &&
-      (!showChangedOnly || changedRecipes.has(recipe))
-    const element = this as HTMLButtonElement
-    element.hidden = !visible
-    visibleCount += Number(visible)
-    updateRecipeToggleState(specification, element, recipe)
-  })
-
-  root.selectAll<HTMLDetailsElement, unknown>("details.recipe-settings-category").each(function () {
-    const element = this as HTMLDetailsElement
-    element.hidden = element.querySelector("button.recipe-setting-toggle:not([hidden])") === null
-    if (normalizedSearch !== "" && !element.hidden) element.open = true
-  })
-
-  const production = root.select(".production-recipes")
-  production.property("hidden", production.select("button.recipe-setting-toggle:not([hidden])").empty())
-  const recycling = root.select("details.recycling-recipes")
-  const visibleRecyclingCount = recycling.selectAll("button.recipe-setting-toggle:not([hidden])").size()
-  recycling.property("hidden", visibleRecyclingCount === 0)
-  if (normalizedSearch !== "" && visibleRecyclingCount > 0) {
-    recycling.property("open", true)
-  }
-  recycling
-    .select(".recycling-recipes-title")
-    .text(`Recycling recipes${visibleRecyclingCount > 0 ? ` (${visibleRecyclingCount})` : ""}`)
-
-  const recyclingRecipes = recycling.selectAll<HTMLButtonElement, Recipe>("button.recipe-setting-toggle").data()
-  recycling
-    .select("button.disable-recycling-recipes")
-    .property(
-      "disabled",
-      recyclingRecipes.length === 0 || recyclingRecipes.every((recipe) => specification.disable.has(recipe)),
-    )
-
-  let helpText = "Orange: enabled · Dimmed: disabled · Click to toggle"
-  if (showUnavailable) {
-    helpText += " Locked recipes are unavailable on the selected planets or machines."
-  }
-  root.select(".recipe-settings-help").text(helpText)
-
-  root
-    .select(".recipe-settings-summary")
-    .text(
-      normalizedSearch === ""
-        ? `${visibleCount} recipe${visibleCount === 1 ? "" : "s"}`
-        : `${visibleCount} matching recipe${visibleCount === 1 ? "" : "s"}`,
-    )
-  root.select("button.reset-recipe-changes").property("disabled", changedRecipes.size === 0)
-  root.select(".recipe-settings-empty").property("hidden", visibleCount !== 0)
-}
-
-// Recipe and location panel
-
-function applyLocationSettings(settings: SettingsMap): boolean {
-  const planets = requireSettingsPlanets()
-  const hasMultipleLocations = planets.size > 1
-  select("#location_toolbar").property("hidden", !hasMultipleLocations)
-  if (!hasMultipleLocations) {
-    return false
-  }
-
-  let keys = settings.has("planet") ? (settings.get("planet") ?? "").split(",").filter(Boolean) : [DEFAULT_PLANET]
-  for (let key of keys) {
-    const location = planets.get(key)
-    if (location !== undefined) {
-      spec.selectPlanet(location)
-    }
-  }
-  return true
-}
-
-function applyRecipeOverrides(settings: SettingsMap, hasMultipleLocations: boolean): void {
-  if (!settings.has("disable") && !settings.has("enable")) {
-    if (!hasMultipleLocations) {
-      spec.setDefaultDisable()
-    }
-    return
-  }
-
-  for (let key of settings.get("disable")?.split(",") ?? []) {
-    let recipe = spec.recipes.get(key)
-    if (recipe !== undefined) {
-      spec.setDisable(recipe)
-    }
-  }
-  for (let key of settings.get("enable")?.split(",") ?? []) {
-    let recipe = spec.recipes.get(key)
-    if (recipe !== undefined) {
-      spec.setEnable(recipe)
-    }
-  }
-}
-
-function renderLocationSelector(hasMultipleLocations: boolean): void {
-  let selector = select("#planet_selector").classed("toggle-list", true)
-  selector.selectAll("*").remove()
-  if (!hasMultipleLocations) {
-    return
-  }
-
-  let toggles = selector
-    .selectAll("button")
-    .data(sorted(requireSettingsPlanets().values(), (location: Planet) => location.order))
-    .join("button")
-    .attr("type", "button")
-    .classed("toggle location-toggle", true)
-    .classed("selected", (location: Planet) => spec.selectedPlanets.has(location))
-    .attr("aria-pressed", (location: Planet) => String(spec.selectedPlanets.has(location)))
-    .attr("data-tooltip", (location: Planet) => location.name)
-    .on("click", function (event: MouseEvent, location: Planet) {
-      if (event.shiftKey) {
-        event.preventDefault()
-        if (spec.selectedPlanets.has(location)) {
-          spec.unselectPlanet(location)
-        } else {
-          spec.selectPlanet(location)
-        }
-      } else {
-        spec.selectOnePlanet(location)
-      }
-      selectAll<HTMLButtonElement, Planet>("#planet_selector .toggle")
-        .classed("selected", (candidate: Planet) => spec.selectedPlanets.has(candidate))
-        .attr("aria-pressed", (candidate: Planet) => String(spec.selectedPlanets.has(candidate)))
-      refreshRecipeSettings(spec)
-      spec.updateSolution()
-    })
-
-  toggles.selectAll("*").remove()
-  toggles.append((location: Planet) => location.icon.make(24))
-  toggles
-    .append("span")
-    .classed("location-name", true)
-    .text((location: Planet) => location.name)
-}
-
-export function renderRecipeAndLocationSettings(settings: SettingsMap): void {
-  let hasMultipleLocations = applyLocationSettings(settings)
-  applyRecipeOverrides(settings, hasMultipleLocations)
-  renderLocationSelector(hasMultipleLocations)
-  recipeSettingsRendered = false
-  document.getElementById("recipe_toggles")?.replaceChildren()
-}
-
-// Settings form
-
-// There are several things going on with this control flow. Settings should
-// work like this:
-// 1) Settings are parsed from the URL fragment into the settings Map.
-// 2) Each setting's `render` function is called.
-// 3) If the setting is not present in the map, a default value is used.
-// 4) The setting is applied.
-// 5) The setting's GUI is placed into a consistent state.
-// Remember to add the setting to fragment.js, too!
-
-// tab
-
-function renderTab(settings: SettingsMap) {
-  let tabName: string = DEFAULT_TAB
-  if (settings.has("tab")) {
-    tabName = settings.get("tab") ?? DEFAULT_TAB
-  }
-  clickTab(tabName)
-}
-
-// build targets
-
-function renderTargets(settings: SettingsMap) {
-  spec.buildTargets.splice(0, spec.buildTargets.length)
-  selectAll("#targets li.target").remove()
-
-  let targetSetting = settings.get("items")
-  if (targetSetting !== undefined && targetSetting !== "") {
-    let targets = targetSetting.split(",")
-    for (let targetString of targets) {
-      const parsed = parseTargetSetting(targetString)
-      if (parsed === null) {
-        console.log("invalid target:", targetString)
-        continue
-      }
-      if (!spec.items.has(parsed.itemKey)) {
-        console.log("unknown item:", parsed.itemKey)
-        continue
-      }
-
-      let recipe = null
-      if (parsed.recipeKey !== null) {
-        if (!spec.recipes.has(parsed.recipeKey)) {
-          console.log("unknown recipe:", parsed.recipeKey)
-          continue
-        }
-        recipe = spec.recipes.get(parsed.recipeKey) ?? null
-      }
-
-      const target = spec.addTarget(parsed.itemKey)
-      if (parsed.mode === "f") {
-        target.setBuildings(parsed.value, recipe)
-        target.displayRecipes()
-      } else if (parsed.mode === "r") {
-        target.setRate(parsed.value)
-      } else {
-        target.setBelts(parsed.value)
-      }
-      target.setQuality(parsed.qualityLevel)
-      target.setQualityStrategy(parsed.qualityStrategy)
-    }
-  } else {
-    spec.addTarget()
-  }
-}
-
-// modules
-
-function getModule(moduleKey: string): Module | null {
-  let module
-  if (spec.modules.has(moduleKey)) {
-    module = spec.modules.get(moduleKey)
-  } else if (shortModules.has(moduleKey)) {
-    module = shortModules.get(moduleKey)
-  } else if (moduleKey === "null") {
-    module = null
-  }
-  if (module === undefined) {
-    console.log("unknown module:", moduleKey)
-    return null
-  }
-  return module
-}
-
-function getAvailableQuality(qualityKey: string | undefined): Quality | null {
+export function getAvailableQuality(qualityKey: string | undefined): Quality | null {
   if (qualityKey === undefined) return null
   const quality = spec.qualities.get(qualityKey)
-  if (quality === undefined || spec.getQualityIndex(quality) > spec.maxQualityLevel) return null
-  return quality
+  return quality !== undefined && spec.getQualityIndex(quality) <= spec.maxQualityLevel ? quality : null
 }
 
-function getQuality(qualityKey: string | undefined): Quality {
+export function getQuality(qualityKey: string | undefined): Quality {
   return getAvailableQuality(qualityKey) ?? spec.getNormalQuality()
 }
 
-function renderQualitySelect(
-  containerId: string,
-  label: string,
-  selected: Quality,
-  choose: (quality: Quality) => void,
-): void {
-  const container = select<HTMLElement, unknown>(`#${containerId}`)
-  container.selectAll("*").remove()
-  const input = container.append("select").attr("aria-label", label).classed("equipment-quality-select", true)
-  input
-    .selectAll("option")
-    .data(spec.getAvailableQualities())
-    .join("option")
-    .attr("value", (quality) => quality.key)
-    .text((quality) => quality.name)
-  input.property("value", selected.key).on("change", (event: Event) => {
-    const target = event.target
-    if (!(target instanceof HTMLSelectElement)) return
-    choose(getQuality(target.value))
-    spec.updateSolution()
-  })
+function applyTitle(settings: SettingsMap): void {
+  setTitle(settings.has("title") ? decodeURIComponent(settings.get("title") ?? "") : "")
 }
 
-function renderQualityPlannerModuleSelect(options: {
-  readonly containerId: string
-  readonly label: string
-  readonly modules: readonly Module[]
-  readonly selected: Module | null
-  readonly automaticLabel: string
-  readonly choose: (module: Module | null) => void
-}): void {
-  const container = select<HTMLElement, unknown>(`#${options.containerId}`)
-  container.selectAll("*").remove()
-  const input = container
-    .append("select")
-    .attr("aria-label", options.label)
-    .classed("quality-planner-module-select", true)
-  input
-    .selectAll("option")
-    .data<Module | null>([null, ...options.modules])
-    .join("option")
-    .attr("value", (module) => module?.key ?? "")
-    .text((module) => module?.name ?? options.automaticLabel)
-  input.property("value", options.selected?.key ?? "").on("change", (event: Event) => {
-    const target = event.target
-    if (!(target instanceof HTMLSelectElement)) return
-    options.choose(target.value === "" ? null : (spec.modules.get(target.value) ?? null))
-    spec.updateSolution()
-  })
+function applyIgnore(settings: SettingsMap): void {
+  spec.ignore.clear()
+  for (const itemKey of (settings.get("ignore") ?? "").split(",")) {
+    if (!itemKey) continue
+    const item = spec.items.get(itemKey)
+    if (item !== undefined) spec.ignore.add(item)
+  }
 }
 
-function renderEquipmentQualityDefaults(settings: SettingsMap): void {
-  spec.setDefaultMachineQuality(getQuality(settings.get("dmachq")))
-  spec.setDefaultModuleQuality(getQuality(settings.get("dmq")))
-  spec.setDefaultBeaconQuality(getQuality(settings.get("dbq")))
-  renderQualitySelect("default_machine_quality", "Default machine quality", spec.defaultMachineQuality, (quality) =>
-    spec.setDefaultMachineQuality(quality),
+function applyFormatting(settings: SettingsMap): void {
+  const rate = settings.get("rate")
+  spec.format.setDisplayRate(
+    rate !== undefined && longRateNames.has(rate as DisplayRate) ? (rate as DisplayRate) : DEFAULT_RATE,
   )
-  renderQualitySelect("default_module_quality", "Default module quality", spec.defaultModuleQuality, (quality) =>
-    spec.setDefaultModuleQuality(quality),
-  )
-  renderQualitySelect("default_beacon_quality", "Default beacon quality", spec.defaultBeaconQuality, (quality) =>
-    spec.setDefaultBeaconQuality(quality),
-  )
+  spec.format.ratePrecision = Number(settings.get("rp") ?? DEFAULT_RATE_PRECISION)
+  spec.format.countPrecision = Number(settings.get("cp") ?? DEFAULT_COUNT_PRECISION)
+  spec.format.displayFormat = settings.get("vf") === "r" ? "rational" : DEFAULT_FORMAT
 }
 
-function renderQualityPlanner(settings: SettingsMap): void {
-  const configuredQualityModule = settings.has("qpm")
-    ? getModule(settings.get("qpm") ?? "null")
-    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null)
-  spec.qualityPlannerModule = configuredQualityModule?.hasQualityEffect() ? configuredQualityModule : null
-  spec.qualityPlannerModuleQuality = settings.has("qpmq")
-    ? getQuality(settings.get("qpmq"))
-    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
-  const configuredProductivityModule = settings.has("qppm")
-    ? getModule(settings.get("qppm") ?? "null")
-    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY) ?? null)
-  spec.qualityPlannerProductivityModule = configuredProductivityModule?.hasProdEffect()
-    ? configuredProductivityModule
-    : null
-  spec.qualityPlannerProductivityModuleQuality = settings.has("qppmq")
-    ? getQuality(settings.get("qppmq"))
-    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
-  const objective = settings.get("qpo")
-  spec.qualityPlannerObjective =
-    objective !== undefined && isQualityPlannerObjective(objective) ? objective : "practical"
-
-  const qualityModules = sorted(
-    [...spec.modules.values()].filter((module) => module.hasQualityEffect()),
-    (module) => module.order,
-  )
-  renderQualityPlannerModuleSelect({
-    containerId: "quality_planner_module",
-    label: "Quality factory quality module",
-    modules: qualityModules,
-    selected: spec.qualityPlannerModule,
-    automaticLabel: "Best compatible quality module",
-    choose(module) {
-      spec.qualityPlannerModule = module?.hasQualityEffect() ? module : null
-    },
-  })
-  renderQualitySelect(
-    "quality_planner_module_quality",
-    "Quality factory quality module quality",
-    spec.qualityPlannerModuleQuality,
-    (quality) => {
-      spec.qualityPlannerModuleQuality = quality
-    },
-  )
-
-  const productivityModules = sorted(
-    [...spec.modules.values()].filter((module) => module.hasProdEffect()),
-    (module) => module.order,
-  )
-  renderQualityPlannerModuleSelect({
-    containerId: "quality_planner_productivity_module",
-    label: "Quality factory productivity module",
-    modules: productivityModules,
-    selected: spec.qualityPlannerProductivityModule,
-    automaticLabel: "Best compatible productivity module",
-    choose(module) {
-      spec.qualityPlannerProductivityModule = module?.hasProdEffect() ? module : null
-    },
-  })
-  renderQualitySelect(
-    "quality_planner_productivity_module_quality",
-    "Quality factory productivity module quality",
-    spec.qualityPlannerProductivityModuleQuality,
-    (quality) => {
-      spec.qualityPlannerProductivityModuleQuality = quality
-    },
-  )
-}
-
-function renderEquipmentQualityOverrides(settings: SettingsMap): void {
-  for (const entry of (settings.get("machineq") ?? "").split(",")) {
-    if (!entry) continue
+function applyProductivity(settings: SettingsMap): void {
+  spec.miningProd = Rational.from_string(settings.get("mprod") ?? "0").div(Rational.from_float(100))
+  spec.recipeProductivityLevels.clear()
+  for (const entry of (settings.get("rprod") ?? "").split(",")) {
     const separator = entry.lastIndexOf(":")
     if (separator < 0) continue
-    const recipe = spec.recipes.get(entry.slice(0, separator))
-    if (recipe) spec.setMachineQuality(recipe, getQuality(entry.slice(separator + 1)), "default")
-  }
-  for (const entry of (settings.get("moduleq") ?? "").split(",")) {
-    if (!entry) continue
-    const [machinePart, beaconModulePart = "", beaconQualityKey = ""] = entry.split(";")
-    if (machinePart === undefined) continue
-    const [recipeKey, ...moduleQualityKeys] = machinePart.split(":")
-    if (recipeKey === undefined) continue
-    const recipe = spec.recipes.get(recipeKey)
-    if (!recipe) continue
-    const moduleSpec = spec.getModuleSpec(recipe)
-    if (!moduleSpec) continue
-    moduleQualityKeys.forEach((key, index) => {
-      const quality = getAvailableQuality(key)
-      if (quality) moduleSpec.restoreModuleQualityOverride(index, quality)
-    })
-    beaconModulePart.split(":").forEach((key, index) => {
-      const quality = getAvailableQuality(key)
-      if (quality) moduleSpec.restoreBeaconModuleQualityOverride(quality, index)
-    })
-    const beaconQuality = getAvailableQuality(beaconQualityKey)
-    if (beaconQuality) moduleSpec.restoreBeaconQualityOverride(beaconQuality)
+    const level = Number(entry.slice(separator + 1))
+    if (Number.isFinite(level) && level >= 0) spec.setRecipeProductivityLevel(entry.slice(0, separator), level)
   }
 }
 
-// NOTE: Buildings must be configured before modules!
-function renderModules(settings: SettingsMap) {
-  let two = Rational.from_float(2)
-  let moduleString = settings.get("modules")
-  if (moduleString !== undefined && moduleString !== "") {
-    for (let recipeSetting of moduleString.split(",")) {
-      const [buildingModuleSettings, beaconSettings] = recipeSetting.split(";")
-      if (buildingModuleSettings === undefined) continue
-      const [recipeKey, ...moduleKeyList] = buildingModuleSettings.split(":")
-      if (recipeKey === undefined) continue
-      const recipe = spec.recipes.get(recipeKey)
-      if (recipe === undefined) {
-        console.log("unknown recipe:", recipeKey)
-        continue
-      }
-      const moduleSpec = spec.getModuleSpec(recipe)
-      if (moduleSpec === null) {
-        console.log("recipe has no module-capable building:", recipeKey)
-        continue
-      }
-      for (let i = 0; i < moduleKeyList.length; i++) {
-        const moduleKey = moduleKeyList[i]
-        if (moduleKey === undefined || moduleKey === "") {
-          continue
-        }
-        let module = getModule(moduleKey)
-        if (module !== undefined) {
-          moduleSpec.setModule(i, module)
-        }
-      }
-      if (beaconSettings !== undefined) {
-        let beaconParts = beaconSettings.split(":")
-        // The legacy beacon config was simply in the form
-        // "module:module count". If the count is even, then it is
-        // adapted to the new format by dividing it by two and placing
-        // the specified module in both slots. Otherwise, a single slot
-        // is filled and the count is used as the beacon count.
-        let module1
-        let module2
-        let count
-        if (beaconParts.length === 2) {
-          const firstBeaconKey = beaconParts[0]
-          const countValue = beaconParts[1]
-          if (firstBeaconKey === undefined || countValue === undefined) continue
-          const module = getModule(firstBeaconKey)
-          count = Rational.from_string(countValue)
-          let divmod = count.divmod(two)
-          if (divmod.remainder.isZero()) {
-            module1 = module
-            module2 = module
-            count = divmod.quotient
-          } else {
-            module1 = module
-            module2 = null
-          }
-        } else {
-          const firstBeaconKey = beaconParts[0]
-          const secondBeaconKey = beaconParts[1]
-          const countValue = beaconParts[2]
-          if (firstBeaconKey === undefined || secondBeaconKey === undefined || countValue === undefined) continue
-          module1 = getModule(firstBeaconKey)
-          module2 = getModule(secondBeaconKey)
-          count = Rational.from_string(countValue)
-        }
-        moduleSpec.setBeaconModule(module1, 0)
-        moduleSpec.setBeaconModule(module2, 1)
-        moduleSpec.setBeaconCount(count)
-      }
-    }
-  }
-}
-
-// ignore
-
-function renderIgnore(settings: SettingsMap) {
-  spec.ignore.clear()
-  // UI will be rendered later, as part of the solution.
-  let ignoreSetting = settings.get("ignore")
-  if (ignoreSetting !== undefined && ignoreSetting !== "") {
-    let ignore = ignoreSetting.split(",")
-    for (let itemKey of ignore) {
-      let item = spec.items.get(itemKey)
-      if (item === undefined) {
-        console.log("unknown item:", itemKey)
-        continue
-      }
-      spec.ignore.add(item)
-    }
-  }
-}
-
-// title
-
-function renderTitle(settings: SettingsMap) {
-  const input = requireSettingsElement<HTMLInputElement>("title_setting")
-  let title = ""
-  if (settings.has("title")) {
-    title = decodeURIComponent(settings.get("title") ?? "")
-  }
-  input.value = title
-  setTitle(title)
-}
-
-// display rate
-
-function rateHandler(this: HTMLInputElement) {
-  spec.format.setDisplayRate(this.value as DisplayRate)
-  spec.display()
-}
-
-function renderRateOptions(settings: SettingsMap) {
-  let rateName = DEFAULT_RATE
-  if (settings.has("rate")) {
-    rateName = settings.get("rate") ?? DEFAULT_RATE
-  }
-  spec.format.setDisplayRate(rateName as DisplayRate)
-  const rates: { rateName: DisplayRate; longRateName: string }[] = []
-  for (let [rateName, longRateName] of longRateNames) {
-    rates.push({ rateName, longRateName })
-  }
-  let form = select("#display_rate")
-  form.selectAll("*").remove()
-  let rateOption = form.selectAll("span").data(rates).join("span")
-  rateOption
-    .append("input")
-    .attr("id", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName + "_rate")
-    .attr("type", "radio")
-    .attr("name", "rate")
-    .attr("value", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName)
-    .property("checked", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName === rateName)
-    .on("change", function () {
-      rateHandler.call(this as HTMLInputElement)
-    })
-  rateOption
-    .append("label")
-    .attr("for", (d: { rateName: DisplayRate; longRateName: string }) => d.rateName + "_rate")
-    .text((d: { rateName: DisplayRate; longRateName: string }) => "items/" + d.longRateName)
-  rateOption.append("br")
-}
-
-// precisions
-
-function renderPrecisions(settings: SettingsMap) {
-  spec.format.ratePrecision = DEFAULT_RATE_PRECISION
-  if (settings.has("rp")) {
-    spec.format.ratePrecision = Number(settings.get("rp") ?? DEFAULT_RATE_PRECISION)
-  }
-  select("#rprec").attr("value", spec.format.ratePrecision)
-  spec.format.countPrecision = DEFAULT_COUNT_PRECISION
-  if (settings.has("cp")) {
-    spec.format.countPrecision = Number(settings.get("cp") ?? DEFAULT_COUNT_PRECISION)
-  }
-  select("#cprec").attr("value", spec.format.countPrecision)
-}
-
-// value format
-
-let displayFormats = new Map<string, DisplayFormat>([
-  ["d", "decimal"],
-  ["r", "rational"],
-])
-
-function renderValueFormat(settings: SettingsMap) {
-  spec.format.displayFormat = DEFAULT_FORMAT
-  if (settings.has("vf")) {
-    spec.format.displayFormat = displayFormats.get(settings.get("vf") ?? "") ?? DEFAULT_FORMAT
-  }
-  let input = document.getElementById(spec.format.displayFormat + "_format") as HTMLInputElement
-  input.checked = true
-}
-
-// mining productivity
-
-function renderMiningProd(settings: SettingsMap) {
-  let mprod = "0"
-  if (settings.has("mprod")) {
-    mprod = settings.get("mprod") ?? "0"
-  }
-  spec.miningProd = Rational.from_string(mprod).div(Rational.from_float(100))
-  syncMiningProductivityControls()
-}
-
-function renderRecipeProductivityResearch(settings: SettingsMap) {
-  spec.recipeProductivityLevels.clear()
-  if (settings.has("rprod")) {
-    for (let entry of (settings.get("rprod") ?? "").split(",")) {
-      let separator = entry.lastIndexOf(":")
-      if (separator === -1) continue
-      let researchKey = entry.slice(0, separator)
-      let level = Number(entry.slice(separator + 1))
-      if (Number.isFinite(level) && level >= 0) {
-        spec.setRecipeProductivityLevel(researchKey, level)
-      }
-    }
-  }
-
-  const research = sorted(spec.recipeProductivityResearch.values(), (entry: RecipeProductivityResearch) => entry.name)
-  let container = select("#recipe_productivity_settings")
-  let miner = spec.items.get("electric-mining-drill") ?? spec.items.get("burner-mining-drill")
-  let miningIcon = container.select(".mining-productivity-icon")
-  miningIcon.selectAll("*").remove()
-  if (miner !== undefined) {
-    miningIcon.append(() => miner.icon.make(24, true))
-  }
-  container.selectAll("label.recipe-productivity-research-setting").remove()
-  let settingsRows = container
-    .selectAll("label.recipe-productivity-research-setting")
-    .data(research)
-    .join("label")
-    .classed("recipe-productivity-setting", true)
-    .classed("recipe-productivity-research-setting", true)
-  settingsRows
-    .append((entry: RecipeProductivityResearch) => entry.icon.make(24, true))
-    .classed("recipe-productivity-icon", true)
-  settingsRows.append("span").text((entry: RecipeProductivityResearch) => entry.name)
-  let percentageInputs = settingsRows.append("span").classed("recipe-productivity-percentage", true)
-  percentageInputs
-    .append("input")
-    .attr("type", "number")
-    .attr("min", 0)
-    .attr("max", 300)
-    .attr("step", (entry: RecipeProductivityResearch) => recipeProductivityPercentPerLevel(entry))
-    .attr("data-research-key", (entry: RecipeProductivityResearch) => entry.key)
-    .attr("data-percent-per-level", (entry: RecipeProductivityResearch) => recipeProductivityPercentPerLevel(entry))
-    .attr("aria-label", (entry: RecipeProductivityResearch) => `${entry.name} bonus percentage`)
-    .property(
-      "value",
-      (entry: RecipeProductivityResearch) =>
-        recipeProductivityPercent(entry, spec.getRecipeProductivityLevel(entry.key)) ?? 0,
-    )
-    .on("change", function (_event: Event, entry: RecipeProductivityResearch) {
-      const input = this as HTMLInputElement
-      spec.setRecipeProductivityLevel(entry.key, recipeProductivityLevelFromPercent(entry, input.value))
-      const level = spec.getRecipeProductivityLevel(entry.key)
-      input.value = recipeProductivityPercent(entry, level) ?? "0"
-      spec.updateSolution()
-    })
-  percentageInputs.append("span").attr("aria-hidden", "true").text("%")
-}
-
-// color scheme
 export const DEFAULT_COLOR_SCHEME = "default"
+export let colorScheme: ColorScheme = colorSchemes[0]!
 
-export let colorScheme: ColorScheme = colorSchemes[0]
-
-function renderColorScheme(settings: SettingsMap) {
-  let color = DEFAULT_COLOR_SCHEME
-  if (settings.has("c")) {
-    color = settings.get("c") ?? DEFAULT_COLOR_SCHEME
-  }
-  setColorScheme(color)
-  select("#color_scheme")
-    .on("change", function (event: Event) {
-      const target = event.target
-      if (!(target instanceof HTMLSelectElement)) return
-      setColorScheme(target.value)
-      spec.display()
-    })
-    .selectAll("option")
-    .data(colorSchemes)
-    .join("option")
-    .attr("value", (d: ColorScheme) => d.key)
-    .property("selected", (d: ColorScheme) => d.key === color)
-    .text((d: ColorScheme) => d.name)
+export function setColorScheme(schemeKey: string): void {
+  colorScheme = colorSchemes.find((scheme) => scheme.key === schemeKey) ?? colorSchemes[0]!
 }
 
-function setColorScheme(schemeKey: string): void {
-  for (let scheme of colorSchemes) {
-    if (scheme.key === schemeKey) {
-      colorScheme = scheme
-      colorScheme.apply()
-      return
-    }
-  }
-}
-
-// buildings
-
-function renderBuildings(settings: SettingsMap) {
-  const groupSet = new Set<BuildingGroup>()
-  for (let [cat, group] of spec.buildings) {
-    if (group.buildings.length > 1) {
-      groupSet.add(group)
-    }
-  }
+function applyBuildingPreferences(settings: SettingsMap): void {
   spec.resetAutomaticBuildingPreferences()
-  if (settings.has("buildings")) {
-    let buildingKeys = (settings.get("buildings") ?? "").split(",")
-    const selections = new Map<BuildingGroup, Building[]>()
-    for (let key of buildingKeys) {
-      let building = spec.buildingKeys.get(key)
-      if (building === undefined) {
-        console.log("unknown building:", key)
-        continue
-      }
-      let group = spec.getBuildingGroup(building)
-      if (!selections.has(group)) {
-        selections.set(group, [])
-      }
-      selections.get(group)?.push(building)
-    }
-    for (let selectedBuildings of selections.values()) {
-      const minimum = selectedBuildings[0]
-      if (minimum === undefined) continue
-      spec.setMinimumBuilding(minimum)
-      for (let building of selectedBuildings.slice(1)) {
-        spec.setAutomaticBuildingEnabled(building, true)
-      }
-    }
+  const selections = new Map<BuildingGroup, Building[]>()
+  for (const key of (settings.get("buildings") ?? "").split(",")) {
+    if (!key) continue
+    const building = spec.buildingKeys.get(key)
+    if (building === undefined) continue
+    const group = spec.getBuildingGroup(building)
+    const selected = selections.get(group) ?? []
+    selected.push(building)
+    selections.set(group, selected)
   }
-
-  // It doesn't really matter how we order these, but pick something just to
-  // make it consistent.
-  const groups = sorted(groupSet, (g: BuildingGroup) => g.getDefault()?.name ?? "")
-  const groupIndex = new Map<Building, number>()
-  for (let [i, g] of groups.entries()) {
-    for (let building of g.buildings) {
-      groupIndex.set(building, i)
-    }
+  for (const buildings of selections.values()) {
+    const minimum = buildings[0]
+    if (minimum === undefined) continue
+    spec.setMinimumBuilding(minimum)
+    for (const building of buildings.slice(1)) spec.setAutomaticBuildingEnabled(building, true)
   }
-  let div = select("#building_selector")
-  div.selectAll("*").remove()
-  let set = div.selectAll("div").data(groups).join("div").classed("machine-setting", true)
-  let options = set
-    .selectAll("span")
-    .data((group: BuildingGroup) => group.buildings)
-    .join("span")
-  options
-    .append("input")
-    .attr("id", (building: Building) => `building-input-${groupIndex.get(building)}-${building.key}`)
-    .attr("type", "checkbox")
-    .property("checked", (building: Building) => spec.isAutomaticBuildingEnabled(building))
-    .on("change", function (event: Event, building: Building) {
-      const input = this as HTMLInputElement
-      if (!spec.setAutomaticBuildingEnabled(building, input.checked)) {
-        select(input).property("checked", true)
-        return
-      }
-      spec.updateSolution()
-    })
-  options
-    .append("label")
-    .attr("for", (building: Building) => `building-input-${groupIndex.get(building)}-${building.key}`)
-    .append((building: Building) => building.icon.make(32))
 }
 
-function renderBuildingOverrides(settings: SettingsMap) {
-  for (let recipe of [...spec.buildingOverrides.keys()]) {
-    spec.setBuildingOverride(recipe, null)
-  }
-
-  let machineString = settings.get("machines")
-  if (machineString === undefined || machineString === "") {
-    return
-  }
-
-  for (let machineSetting of machineString.split(",")) {
-    const [recipeKey, buildingKey] = machineSetting.split(":")
-    if (recipeKey === undefined || buildingKey === undefined) continue
+function applyBuildingOverrides(settings: SettingsMap): void {
+  spec.clearBuildingOverrides()
+  for (const entry of (settings.get("machines") ?? "").split(",")) {
+    const [recipeKey, buildingKey] = entry.split(":")
+    if (!recipeKey || !buildingKey) continue
     const recipe = spec.recipes.get(recipeKey)
     const building = spec.buildingKeys.get(buildingKey)
-    if (recipe === undefined || building === undefined || !spec.setBuildingOverride(recipe, building)) {
-      console.log("unknown or unavailable recipe machine:", machineSetting)
-    }
+    if (recipe !== undefined && building !== undefined) spec.setBuildingOverride(recipe, building, "default")
   }
 }
 
-// belt
-
-function beltHandler(_event: Event, belt: Belt): void {
-  spec.belt = belt
-  if (spec.buildTargets.some((target) => target.basis === "belts")) spec.updateSolution()
-  else spec.display()
+function applyBeltsAndFuel(settings: SettingsMap): void {
+  const beltKey = settings.get("belt") ?? DEFAULT_BELT
+  spec.belt = spec.belts.get(beltKey) ?? spec.belts.get(DEFAULT_BELT) ?? null
+  const fuelKey = settings.get("fuel") ?? DEFAULT_FUEL
+  spec.fuel = requireFuels().get(fuelKey) ?? requireFuels().get(DEFAULT_FUEL) ?? null
 }
 
-let radioInput = 0
-let radioLabel = 0
-
-interface RadioSettingOption {
-  readonly key: string
-  readonly icon: Icon
-}
-
-function radioSetting<
-  TOption extends RadioSettingOption,
-  GElement extends BaseType,
-  TDatum,
-  PElement extends BaseType,
-  PDatum,
->(
-  form: Selection<GElement, TDatum, PElement, PDatum>,
-  name: string,
-  data: readonly TOption[],
-  checked: (option: TOption) => boolean,
-  onChange: (event: Event, option: TOption) => void,
-): void {
-  const option = form.selectAll<HTMLSpanElement, TOption>("span").data(data).join("span")
-  option
-    .append("input")
-    .attr("id", () => `radio-input-${radioInput++}`)
-    .attr("type", "radio")
-    .attr("name", name)
-    .attr("value", (datum: TOption) => datum.key)
-    .property("checked", (datum: TOption) => checked(datum))
-    .on("change", (event: Event, datum: TOption) => onChange(event, datum))
-  option
-    .append("label")
-    .attr("for", () => `radio-input-${radioLabel++}`)
-    .append((datum: TOption) => datum.icon.make(32))
-}
-
-function renderBelts(settings: SettingsMap) {
-  let beltKey = DEFAULT_BELT
-  if (settings.has("belt")) {
-    const b = settings.get("belt")
-    if (b !== undefined && spec.belts.has(b)) {
-      beltKey = b
-    } else {
-      console.log("unknown belt:", b)
-    }
-  }
-  spec.belt = spec.belts.get(beltKey) ?? null
-
-  const belts = Array.from(spec.belts.values())
-  let form = select("#belt_selector")
-  form.selectAll("*").remove()
-  radioSetting(form, "belt", belts, (belt: Belt) => belt === spec.belt, beltHandler)
-}
-
-// fuel
-
-function fuelHandler(_event: Event, fuel: Fuel): void {
-  spec.fuel = fuel
-  spec.updateSolution()
-}
-
-function renderFuel(settings: SettingsMap) {
-  let fuelKey = DEFAULT_FUEL
-  if (settings.has("fuel")) {
-    const f = settings.get("fuel")
-    if (f !== undefined && requireFuels().has(f)) {
-      fuelKey = f
-    } else {
-      console.log("unknown fuel:", f)
-    }
-  }
-  spec.fuel = requireFuels().get(fuelKey) ?? null
-
-  const fuels = Array.from(requireFuels().values())
-  let form = select("#fuel_selector")
-  form.selectAll("*").remove()
-  radioSetting(form, "fuel", fuels, (fuel: Fuel) => fuel === spec.fuel, fuelHandler)
-}
-
-// visualizer
-
-function renderVisualizer(settings: SettingsMap) {
-  if (settings.has("vt")) {
-    setVisualizerType(settings.get("vt") ?? DEFAULT_VISUALIZER)
-  } else {
-    setVisualizerType(DEFAULT_VISUALIZER)
-  }
-  select(`#${visualizerType}_type`).property("checked", true)
-  if (settings.has("vr")) {
-    setVisualizerRender(settings.get("vr") ?? DEFAULT_RENDER)
-  } else {
-    setVisualizerRender(DEFAULT_RENDER)
-  }
-  select(`#${visualizerRender}_render`).property("checked", true)
-  if (settings.has("vd")) {
-    setVisualizerDirection(settings.get("vd") ?? getDefaultVisualizerDirection())
-  } else {
-    setVisualizerDirection(getDefaultVisualizerDirection())
-  }
-  select(`#${visualizerDirection}_direction`).property("checked", true)
-}
-
-// default module
-
-class DefaultModuleInput implements ModuleDropdownOption {
-  constructor(
-    readonly cell: DefaultModuleCell,
-    readonly module: Module | null,
-  ) {}
-
-  checked(): boolean {
-    return this.module === spec.defaultModule
-  }
-
-  choose(): void {
-    spec.setDefaultModule(this.module)
-    spec.updateSolution()
-  }
-}
-
-class DefaultModuleCell implements ModuleDropdownCell {
-  readonly name = "default_module_dropdown"
-  readonly inputRows: readonly (readonly DefaultModuleInput[])[]
-
-  constructor() {
-    this.inputRows = moduleRows.map((row) => row.map((module) => new DefaultModuleInput(this, module)))
-  }
-}
-
-class SecondaryModuleInput implements ModuleDropdownOption {
-  constructor(
-    readonly cell: SecondaryModuleCell,
-    readonly module: Module | null,
-  ) {}
-
-  checked(): boolean {
-    return this.module === spec.secondaryDefaultModule
-  }
-
-  choose(): void {
-    spec.setSecondaryDefaultModule(this.module)
-    spec.updateSolution()
-  }
-}
-
-class SecondaryModuleCell implements ModuleDropdownCell {
-  readonly name = "secondary_module_dropdown"
-  readonly inputRows: readonly (readonly SecondaryModuleInput[])[]
-
-  constructor() {
-    this.inputRows = moduleRows.map((row) => row.map((module) => new SecondaryModuleInput(this, module)))
-  }
-}
-
-function renderDefaultModule(settings: SettingsMap): void {
-  const defaultModule = settings.has("dm") ? getModule(settings.get("dm") ?? "null") : null
-  spec.setDefaultModule(defaultModule)
-  const secondaryModule = settings.has("dm2") ? getModule(settings.get("dm2") ?? "null") : null
-  spec.setSecondaryDefaultModule(secondaryModule)
-
-  const defaultCell = new DefaultModuleCell()
-  const defaultSelector = select<HTMLElement, unknown>("#default_module")
-  defaultSelector.selectAll("*").remove()
-  moduleDropdown(defaultSelector, [defaultCell])
-
-  const secondaryCell = new SecondaryModuleCell()
-  const secondarySelector = select<HTMLElement, unknown>("#secondary_module")
-  secondarySelector.selectAll("*").remove()
-  moduleDropdown(secondarySelector, [secondaryCell])
-}
-
-class DefaultBeaconInput implements ModuleDropdownOption {
-  constructor(
-    readonly cell: DefaultBeaconCell,
-    readonly module: Module | null,
-  ) {}
-
-  checked(): boolean {
-    return this.module === spec.defaultBeacon[this.cell.index]
-  }
-
-  choose(): void {
-    const oldModule = spec.defaultBeacon[this.cell.index] ?? null
-    spec.setDefaultBeacon(this.module, this.cell.index)
-    if (this.cell.index === 0 && oldModule === spec.defaultBeacon[1]) {
-      spec.setDefaultBeacon(this.module, 1)
-      selectAll<HTMLInputElement, ModuleDropdownOption>(
-        "#default_beacon span.module-wrapper:nth-child(2) input",
-      ).property("checked", (datum: ModuleDropdownOption) => this.module === datum.module)
-    }
-    spec.updateSolution()
-  }
-}
-
-class DefaultBeaconCell implements ModuleDropdownCell {
-  readonly name: string
-  readonly inputRows: readonly (readonly DefaultBeaconInput[])[]
-
-  constructor(readonly index: number) {
-    this.name = `default_beacon_dropdown_${index}`
-    this.inputRows = moduleRows.map((row) =>
-      row
-        .filter((module) => module === null || module.canBeacon())
-        .map((module) => new DefaultBeaconInput(this, module)),
-    )
-  }
-}
-
-function renderDefaultBeacon(settings: SettingsMap): void {
-  let defaultBeacon: [Module | null, Module | null] = [null, null]
-  let defaultCount = zero
-  let legacy = false
-  if (settings.has("db")) {
-    const keys = (settings.get("db") ?? "").split(":")
-    legacy = keys.length === 1
-    defaultBeacon = [getModule(keys[0] ?? "null"), getModule(keys[1] ?? "null")]
-  }
-  if (settings.has("dbc")) defaultCount = Rational.from_string(settings.get("dbc") ?? "0")
-  if (legacy) {
-    const divmod = defaultCount.divmod(Rational.from_float(2))
-    if (divmod.remainder.isZero()) {
-      defaultBeacon = [defaultBeacon[0], defaultBeacon[0]]
-      defaultCount = divmod.quotient
-    }
-  }
-  defaultBeacon.forEach((module, index) => spec.setDefaultBeacon(module, index))
-  spec.setDefaultBeaconCount(defaultCount)
-
-  const cells: readonly ModuleDropdownCell[] = [new DefaultBeaconCell(0), new DefaultBeaconCell(1)]
-  const selector = select<HTMLElement, unknown>("#default_beacon")
-  selector.selectAll("*").remove()
-  moduleDropdown(selector, cells)
-  select("#default_beacon_count")
-    .attr("value", formatCanadianNumber(defaultCount.toDecimal()))
-    .on("change", (event: Event) => {
-      const target = event.target
-      if (!(target instanceof HTMLInputElement)) return
-      spec.setDefaultBeaconCount(Rational.from_string(target.value))
-      spec.updateSolution()
-    })
-}
-
-// Recipe and production-location settings are rendered by the panel above.
-
-// resource priority
-
-function renderResourcePriorities(settings: SettingsMap) {
-  spec.setDefaultPriority()
-  if (settings.has("priority")) {
-    let tiers: [string, Rational][][] | null = []
-    let keys = (settings.get("priority") ?? "").split(";")
-    outer: for (let tierStr of keys) {
-      const tier: [string, Rational][] = []
-      for (let pair of tierStr.split(",")) {
-        // Backward compatibility: If this is using the old format,
-        // ignore the whole thing and bail.
-        if (pair.indexOf("=") === -1) {
-          console.log("bailing:", pair)
-          tiers = null
-          break outer
-        }
-        const [key, weightStr] = pair.split("=")
-        if (key === undefined || weightStr === undefined) continue
-        if (!spec.isValidPriorityKey(key)) {
-          console.log("invalid priority key:", key)
-          continue
-        }
-        tier.push([key, Rational.from_string(weightStr)])
-      }
-      tiers?.push(tier)
-    }
-    if (tiers !== null) {
-      spec.setPriorities(tiers)
-    }
-  }
-  resourcePrioritiesRendered = false
-  unmountResourcePriorityEditor()
-}
-
-export function ensureDeferredSettingsRendered(): void {
-  if (!recipeSettingsRendered) {
-    recipeSettingsRendered = true
-    renderRecipeSettings(spec)
-  }
-}
-
-export function ensureDeferredResourcesRendered(): void {
-  if (!resourcePrioritiesRendered) {
-    resourcePrioritiesRendered = true
-    renderResourcePriorityEditor(spec.priority, () => spec.updateSolution())
-  }
-}
-
-function renderPlanningSettings(settings: SettingsMap) {
+function applyPlanning(settings: SettingsMap): void {
   spec.beltStackSize = Rational.from_string(settings.get("bstack") ?? "1")
   const serializedStackPolicy = settings.get("bstackmode")
   spec.beltStackDefaultPolicy =
@@ -12889,94 +9550,267 @@ function renderPlanningSettings(settings: SettingsMap) {
         : "auto"
       : (parseBeltStackSettingPolicy(serializedStackPolicy) ?? "auto")
   spec.beltStackOverrides.clear()
-  const stackItemSettings = parseBeltStackItemSettings(settings.get("bstackitems") ?? "")
-  if (stackItemSettings !== null) {
-    for (const entry of stackItemSettings) {
+  const itemSettings = parseBeltStackItemSettings(settings.get("bstackitems") ?? "")
+  if (itemSettings !== null) {
+    for (const entry of itemSettings) {
       const item = spec.items.get(entry.itemKey)
       if (item?.phase === "solid") spec.setBeltStackOverride(item, entry.policy)
     }
   }
+
   spec.bufferMinutes = Rational.from_string(settings.get("buffer") ?? "1")
   spec.freshnessDelayMinutes = Rational.from_string(settings.get("fresh") ?? "0")
   spec.setMaxQualityLevel(Number(settings.get("maxq") ?? "4"))
 
   spec.resourceYields.clear()
-  let resourceYields = settings.get("ryield")
-  if (resourceYields) {
-    for (let entry of resourceYields.split(",")) {
-      let split = entry.lastIndexOf(":")
-      let recipe = spec.recipes.get(entry.slice(0, split))
-      if (recipe && split > 0)
-        spec.setResourceYield(recipe, Rational.from_string(entry.slice(split + 1)).div(Rational.from_float(100)))
+  for (const entry of (settings.get("ryield") ?? "").split(",")) {
+    const separator = entry.lastIndexOf(":")
+    const recipe = separator < 0 ? undefined : spec.recipes.get(entry.slice(0, separator))
+    if (recipe !== undefined) {
+      spec.setResourceYield(recipe, Rational.from_string(entry.slice(separator + 1)).div(Rational.from_float(100)))
     }
   }
+
   spec.asteroidLimits.clear()
-  let caps = settings.get("astcap")
-  if (caps) {
-    for (let entry of caps.split(",")) {
-      let split = entry.lastIndexOf(":")
-      if (split > 0)
-        spec.asteroidLimits.set(
-          entry.slice(0, split),
-          Rational.from_string(entry.slice(split + 1)).div(spec.format.rateFactor),
-        )
+  for (const entry of (settings.get("astcap") ?? "").split(",")) {
+    const separator = entry.lastIndexOf(":")
+    if (separator > 0) {
+      spec.asteroidLimits.set(
+        entry.slice(0, separator),
+        Rational.from_string(entry.slice(separator + 1)).div(spec.format.rateFactor),
+      )
     }
   }
 
   spec.recipeLocations.clear()
-  let locations = settings.get("rloc")
-  if (locations) {
-    for (let entry of locations.split(",")) {
-      const [recipeKey, locationKey] = entry.split(":")
-      if (recipeKey === undefined || locationKey === undefined) continue
-      const recipe = spec.recipes.get(recipeKey)
-      const location = requireSettingsPlanets().get(locationKey)
-      if (recipe && location) spec.setRecipeLocation(recipe, location)
+  for (const entry of (settings.get("rloc") ?? "").split(",")) {
+    const [recipeKey, locationKey] = entry.split(":")
+    if (!recipeKey || !locationKey) continue
+    const recipe = spec.recipes.get(recipeKey)
+    const location = requireSettingsPlanets().get(locationKey)
+    if (recipe !== undefined && location !== undefined) spec.setRecipeLocation(recipe, location)
+  }
+}
+
+function applyVisualizer(settings: SettingsMap): void {
+  setVisualizerType(settings.get("vt") ?? DEFAULT_VISUALIZER)
+  setVisualizerRender(settings.get("vr") ?? DEFAULT_RENDER)
+  setVisualizerDirection(settings.get("vd") ?? getDefaultVisualizerDirection())
+}
+
+function applyEquipmentDefaults(settings: SettingsMap): void {
+  spec.setDefaultMachineQuality(getQuality(settings.get("dmachq")))
+  spec.setDefaultModuleQuality(getQuality(settings.get("dmq")))
+  spec.setDefaultBeaconQuality(getQuality(settings.get("dbq")))
+}
+
+function applyQualityPlanner(settings: SettingsMap): void {
+  const qualityModule = settings.has("qpm")
+    ? getModuleByKey(settings.get("qpm") ?? "null")
+    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null)
+  spec.qualityPlannerModule = qualityModule?.hasQualityEffect() ? qualityModule : null
+  spec.qualityPlannerModuleQuality = settings.has("qpmq")
+    ? getQuality(settings.get("qpmq"))
+    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
+
+  const productivityModule = settings.has("qppm")
+    ? getModuleByKey(settings.get("qppm") ?? "null")
+    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY) ?? null)
+  spec.qualityPlannerProductivityModule = productivityModule?.hasProdEffect() ? productivityModule : null
+  spec.qualityPlannerProductivityModuleQuality = settings.has("qppmq")
+    ? getQuality(settings.get("qppmq"))
+    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
+  const objective = settings.get("qpo")
+  spec.qualityPlannerObjective =
+    objective !== undefined && isQualityPlannerObjective(objective) ? objective : "practical"
+}
+
+function applyDefaultModules(settings: SettingsMap): void {
+  spec.setDefaultModule(settings.has("dm") ? getModuleByKey(settings.get("dm") ?? "null") : null)
+  spec.setSecondaryDefaultModule(settings.has("dm2") ? getModuleByKey(settings.get("dm2") ?? "null") : null)
+}
+
+function applyDefaultBeacon(settings: SettingsMap): void {
+  let modules: [Module | null, Module | null] = [null, null]
+  let count = zero
+  let legacy = false
+  if (settings.has("db")) {
+    const keys = (settings.get("db") ?? "").split(":")
+    legacy = keys.length === 1
+    modules = [getModuleByKey(keys[0] ?? "null"), getModuleByKey(keys[1] ?? "null")]
+  }
+  if (settings.has("dbc")) count = Rational.from_string(settings.get("dbc") ?? "0")
+  if (legacy) {
+    const halves = count.divmod(Rational.from_float(2))
+    if (halves.remainder.isZero()) {
+      modules = [modules[0], modules[0]]
+      count = halves.quotient
     }
   }
-
-  ;(document.getElementById("belt_stack_size") as HTMLSelectElement).value = spec.beltStackSize.toString()
-  ;(document.getElementById("belt_stack_default_policy") as HTMLSelectElement).value = spec.beltStackDefaultPolicy
-  ;(document.getElementById("buffer_minutes") as HTMLInputElement).value = spec.bufferMinutes.toDecimal()
-  ;(document.getElementById("freshness_delay") as HTMLInputElement).value = spec.freshnessDelayMinutes.toDecimal()
-  ;(document.getElementById("max_quality") as HTMLSelectElement).value = String(spec.maxQualityLevel)
-  document.querySelectorAll<HTMLInputElement>("[data-resource-key]").forEach((input) => {
-    let recipe = spec.recipes.get(input.dataset.resourceKey ?? "")
-    let value = recipe ? spec.getResourceYield(recipe) : one
-    input.value = value.mul(Rational.from_float(100)).toDecimal()
-  })
-  document.querySelectorAll<HTMLInputElement>("[data-item-key]").forEach((input) => {
-    let value = spec.asteroidLimits.get(input.dataset.itemKey ?? "")
-    input.value = value ? value.mul(spec.format.rateFactor).toDecimal() : ""
-  })
+  modules.forEach((module, index) => spec.setDefaultBeacon(module, index))
+  spec.setDefaultBeaconCount(count)
 }
 
-export function renderSettings(settings: SettingsMap) {
-  renderTitle(settings)
-  renderIgnore(settings)
-  renderRateOptions(settings)
-  renderPrecisions(settings)
-  renderValueFormat(settings)
-  renderMiningProd(settings)
-  renderRecipeProductivityResearch(settings)
-  renderColorScheme(settings)
-  renderBuildings(settings)
-  renderBelts(settings)
-  renderPlanningSettings(settings)
-  renderFuel(settings)
-  renderVisualizer(settings)
-  renderEquipmentQualityDefaults(settings)
-  renderDefaultModule(settings)
-  renderQualityPlanner(settings)
-  renderDefaultBeacon(settings)
-  renderResourcePriorities(settings)
-  renderRecipeAndLocationSettings(settings)
-  renderBuildingOverrides(settings)
-  renderTargets(settings)
-  renderModules(settings)
-  renderEquipmentQualityOverrides(settings)
-  renderTab(settings)
+function applyPrioritiesFromSettings(settings: SettingsMap): void {
+  spec.setDefaultPriority()
+  const serialized = settings.get("priority")
+  if (serialized === undefined) return
+  const tiers: [string, Rational][][] = []
+  for (const tierString of serialized.split(";")) {
+    const tier: [string, Rational][] = []
+    for (const pair of tierString.split(",")) {
+      const [key, weight] = pair.split("=")
+      if (!key || weight === undefined || !spec.isValidPriorityKey(key)) continue
+      tier.push([key, Rational.from_string(weight)])
+    }
+    tiers.push(tier)
+  }
+  spec.setPriorities(tiers)
 }
+
+function applyLocationsAndRecipes(settings: SettingsMap): void {
+  const planets = requireSettingsPlanets()
+  spec.selectedPlanets.clear()
+  const multiple = planets.size > 1
+  if (multiple) {
+    const keys = settings.has("planet") ? (settings.get("planet") ?? "").split(",").filter(Boolean) : [DEFAULT_PLANET]
+    for (const key of keys) {
+      const planet = planets.get(key)
+      if (planet !== undefined) spec.selectedPlanets.add(planet)
+    }
+    if (spec.selectedPlanets.size === 0) {
+      const fallback = planets.get(DEFAULT_PLANET) ?? planets.values().next().value
+      if (fallback !== undefined) spec.selectedPlanets.add(fallback)
+    }
+    syncLocationDisabledRecipes(spec)
+  }
+
+  if (!settings.has("disable") && !settings.has("enable")) {
+    if (!multiple) spec.setDefaultDisable()
+    return
+  }
+  for (const key of (settings.get("disable") ?? "").split(",")) {
+    const recipe = spec.recipes.get(key)
+    if (recipe !== undefined) spec.setDisable(recipe)
+  }
+  for (const key of (settings.get("enable") ?? "").split(",")) {
+    const recipe = spec.recipes.get(key)
+    if (recipe !== undefined) spec.setEnable(recipe)
+  }
+}
+
+function applyTargets(settings: SettingsMap): void {
+  spec.buildTargets.splice(0)
+  const serialized = settings.get("items")
+  if (!serialized) {
+    spec.addTarget()
+    return
+  }
+  for (const targetString of serialized.split(",")) {
+    const parsed = parseTargetSetting(targetString)
+    if (parsed === null || !spec.items.has(parsed.itemKey)) continue
+    const recipe = parsed.recipeKey === null ? null : (spec.recipes.get(parsed.recipeKey) ?? null)
+    const target = spec.addTarget(parsed.itemKey)
+    if (parsed.mode === "f") target.setBuildings(parsed.value, recipe)
+    else if (parsed.mode === "r") target.setRate(parsed.value)
+    else target.setBelts(parsed.value)
+    target.setQuality(parsed.qualityLevel)
+    target.setQualityStrategy(parsed.qualityStrategy)
+    target.refreshRecipes()
+  }
+  if (spec.buildTargets.length === 0) spec.addTarget()
+}
+
+function applyRecipeModules(settings: SettingsMap): void {
+  const two = Rational.from_float(2)
+  for (const recipeSetting of (settings.get("modules") ?? "").split(",")) {
+    if (!recipeSetting) continue
+    const [machineSettings, beaconSettings] = recipeSetting.split(";")
+    if (machineSettings === undefined) continue
+    const [recipeKey, ...moduleKeys] = machineSettings.split(":")
+    const recipe = recipeKey === undefined ? undefined : spec.recipes.get(recipeKey)
+    if (recipe === undefined) continue
+    const moduleSpec = spec.getModuleSpec(recipe)
+    if (moduleSpec === null) continue
+    moduleKeys.forEach((moduleKey, index) => {
+      if (moduleKey) moduleSpec.setModule(index, getModuleByKey(moduleKey))
+    })
+    if (beaconSettings === undefined) continue
+    const beacon = beaconSettings.split(":")
+    let first: Module | null
+    let second: Module | null
+    let count: Rational
+    if (beacon.length === 2) {
+      first = getModuleByKey(beacon[0] ?? "null")
+      count = Rational.from_string(beacon[1] ?? "0")
+      const halves = count.divmod(two)
+      if (halves.remainder.isZero()) {
+        second = first
+        count = halves.quotient
+      } else {
+        second = null
+      }
+    } else {
+      first = getModuleByKey(beacon[0] ?? "null")
+      second = getModuleByKey(beacon[1] ?? "null")
+      count = Rational.from_string(beacon[2] ?? "0")
+    }
+    moduleSpec.setBeaconModule(first, 0)
+    moduleSpec.setBeaconModule(second, 1)
+    moduleSpec.setBeaconCount(count)
+  }
+}
+
+function applyEquipmentOverrides(settings: SettingsMap): void {
+  for (const entry of (settings.get("machineq") ?? "").split(",")) {
+    const separator = entry.lastIndexOf(":")
+    const recipe = separator < 0 ? undefined : spec.recipes.get(entry.slice(0, separator))
+    if (recipe !== undefined) spec.setMachineQuality(recipe, getQuality(entry.slice(separator + 1)), "default")
+  }
+  for (const entry of (settings.get("moduleq") ?? "").split(",")) {
+    if (!entry) continue
+    const [machinePart, beaconPart = "", beaconQualityKey = ""] = entry.split(";")
+    if (!machinePart) continue
+    const [recipeKey, ...machineQualityKeys] = machinePart.split(":")
+    const recipe = recipeKey === undefined ? undefined : spec.recipes.get(recipeKey)
+    const moduleSpec = recipe === undefined ? null : spec.getModuleSpec(recipe)
+    if (moduleSpec === null) continue
+    machineQualityKeys.forEach((key, index) => {
+      const quality = getAvailableQuality(key)
+      if (quality !== null) moduleSpec.restoreModuleQualityOverride(index, quality)
+    })
+    beaconPart.split(":").forEach((key, index) => {
+      const quality = getAvailableQuality(key)
+      if (quality !== null) moduleSpec.restoreBeaconModuleQualityOverride(quality, index)
+    })
+    const beaconQuality = getAvailableQuality(beaconQualityKey)
+    if (beaconQuality !== null) moduleSpec.restoreBeaconQualityOverride(beaconQuality)
+  }
+}
+
+export function applySettings(settings: SettingsMap): void {
+  applyTitle(settings)
+  applyIgnore(settings)
+  applyFormatting(settings)
+  applyProductivity(settings)
+  setColorScheme(settings.get("c") ?? DEFAULT_COLOR_SCHEME)
+  applyBuildingPreferences(settings)
+  applyBeltsAndFuel(settings)
+  applyPlanning(settings)
+  applyVisualizer(settings)
+  applyEquipmentDefaults(settings)
+  applyDefaultModules(settings)
+  applyQualityPlanner(settings)
+  applyDefaultBeacon(settings)
+  applyPrioritiesFromSettings(settings)
+  applyLocationsAndRecipes(settings)
+  applyBuildingOverrides(settings)
+  applyTargets(settings)
+  applyRecipeModules(settings)
+  applyEquipmentOverrides(settings)
+  selectCalculatorTab(settings.get("tab") ?? DEFAULT_TAB)
+}
+
 // endregion settings.ts
 
 // region url/history.ts
@@ -13163,8 +9997,9 @@ export function formatSettings(
   targets: Iterable<readonly [Item, Rational]> | null = null,
 ): string {
   let settings = ""
-  if (!excludeTitle && document.title !== DEFAULT_TITLE) {
-    settings += "title=" + encodeURIComponent(document.title) + "&"
+  const title = getTitle()
+  if (!excludeTitle && title !== DEFAULT_TITLE) {
+    settings += "title=" + encodeURIComponent(title) + "&"
   }
   settings += "data=" + currentMod() + "&"
   let tab = currentTab
@@ -13321,7 +10156,7 @@ export function formatSettings(
       }
       targetStrings.push(
         formatTargetSetting({
-          itemKey: target.itemKey,
+          itemKey: target.item.key,
           mode,
           value,
           recipeKey:
@@ -13576,2147 +10411,25 @@ export function getFactorySummary(specification: FactorySpecification, totals: T
 }
 // endregion results/summary.ts
 
-// region results.ts
-function requireNode<TNode extends Node>(node: TNode | null, label: string): TNode {
-  if (node === null) throw new Error(`Unable to create ${label}`)
-  return node
-}
-
-function getMapValue<TKey, TValue>(map: ReadonlyMap<TKey, TValue>, key: TKey): TValue | undefined {
-  return map.get(key)
-}
-
-// Row recipe selector
-
-let openItemKey: string | null = null
-let dismissHandlerInstalled = false
-const recipeSelectorInstances = new Set<Instance>()
-
-function closeAll(except: Instance | null = null): void {
-  if (except === null) {
-    openItemKey = null
-  }
-  for (let instance of recipeSelectorInstances) {
-    if (instance !== except) {
-      instance.hide()
-    }
-  }
-}
-
-function installDismissHandler(): void {
-  if (dismissHandlerInstalled) {
-    return
-  }
-  dismissHandlerInstalled = true
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeAll()
-    }
-  })
-}
-
-interface RecipeSelectorRow {
-  readonly item: Item
-  readonly recipe: Recipe
-}
-
-export function makeRecipeSelector(row: RecipeSelectorRow): HTMLElement | null {
-  const recipes = getItemProductionRecipes(row.item)
-  if (recipes.length === 0) return null
-
-  installDismissHandler()
-  const details = create("details").classed("recipe-selector", true).property("open", false)
-  const summary = details
-    .append("summary")
-    .attr("data-tooltip", `Enable or disable recipes for ${row.item.name}.`)
-    .attr("aria-label", `Enable or disable recipes for ${row.item.name}.`)
-    .on("click", (event: Event) => event.preventDefault())
-  summary.append(() => row.item.icon.make(32, true))
-
-  let menu: HTMLDivElement | null = null
-  const ensureMenu = (instance: Instance): void => {
-    if (menu !== null) {
-      instance.setContent(menu)
-      return
-    }
-    const createdMenu = create("div").classed("recipe-selector-menu", true)
-    menu = requireNode(createdMenu.node(), "recipe selector menu")
-    createdMenu.append("div").classed("recipe-selector-title", true).text(`Recipes for ${row.item.name}`)
-    const groups = createdMenu
-      .selectAll<HTMLElement, RecipeSelectorGroup>("section.recipe-selector-group")
-      .data(getRecipeSelectorGroups(recipes, row.recipe), (entry: RecipeSelectorGroup) => entry.key)
-      .join("section")
-      .classed("recipe-selector-group", true)
-    groups
-      .append("div")
-      .classed("recipe-selector-group-title", true)
-      .text((entry: RecipeSelectorGroup) => entry.name)
-    const options = groups
-      .selectAll<HTMLLabelElement, Recipe>("label")
-      .data((entry: RecipeSelectorGroup) => entry.recipes)
-      .join("label")
-      .classed("recipe-selector-option", true)
-      .classed("active", (recipe: Recipe) => recipe === row.recipe)
-    options
-      .append("input")
-      .attr("type", "checkbox")
-      .property("checked", (recipe: Recipe) => !spec.disable.has(recipe))
-      .on("change", (event: Event, recipe: Recipe) => {
-        event.stopPropagation()
-        const target = event.target
-        if (!(target instanceof HTMLInputElement)) return
-        openItemKey = row.item.key
-        setRecipeEnabled(spec, recipe, target.checked)
-        refreshRecipeSettings(spec)
-        spec.updateSolution()
-      })
-    options.append((recipe: Recipe) => recipe.icon.make(32))
-    options.append("span").text((recipe: Recipe) => {
-      const recipeDetails: string[] = []
-      if (!recipe.time.isZero()) recipeDetails.push(`${formatCanadianNumber(recipe.time.toDecimal())} s`)
-      if (spec.selectedPlanets.size > 0) {
-        const count = getRecipeLocations(spec, recipe, spec.getBuilding(recipe)).length
-        recipeDetails.push(`${count} selected location${count === 1 ? "" : "s"}`)
-      }
-      return recipeDetails.length > 0 ? `${recipe.name} — ${recipeDetails.join(", ")}` : recipe.name
-    })
-    instance.setContent(requireNode(createdMenu.node(), "recipe selector menu"))
-  }
-
-  const detailsNode = requireNode(details.node(), "recipe selector")
-  const instance = makePopover(detailsNode, " ", {
-    appendTo: () => document.body,
-    arrow: false,
-    offset: [0, 8],
-    placement: "right-start",
-    showOnCreate: openItemKey === row.item.key,
-    theme: "factorio-menu",
-    onShow(instance) {
-      ensureMenu(instance)
-      closeAll(instance)
-      openItemKey = row.item.key
-      details.property("open", true)
-    },
-    onHide() {
-      details.property("open", false)
-      if (document.body.contains(detailsNode) && openItemKey === row.item.key) openItemKey = null
-    },
-    onDestroy(instance) {
-      recipeSelectorInstances.delete(instance)
-    },
-  })
-  recipeSelectorInstances.add(instance)
-  return detailsNode
-}
-
-let machineSelectorCount = 0
-
-interface MachineOption {
-  readonly building: Building | null
-  readonly displayBuilding: Building
-  readonly label: string
-}
-
-interface MachineSelectorRow {
-  readonly recipe: Recipe
-  readonly building: Building
-}
-
-function makeMachineSelector(row: MachineSelectorRow, compatibleBuildings: readonly Building[]): HTMLElement {
-  const automaticBuilding = spec.getAutomaticBuilding(row.recipe) ?? row.building
-  const override = spec.getBuildingOverride(row.recipe)
-  const label = (building: Building): string => {
-    const details: string[] = []
-    if (!building.speed.isZero()) details.push(`speed ${formatCanadianNumber(building.speed.toDecimal())}`)
-    details.push(`${building.moduleSlots} module slot${building.moduleSlots === 1 ? "" : "s"}`)
-    return `${building.name} — ${details.join(", ")}`
-  }
-  const options: MachineOption[] = [
-    { building: null, displayBuilding: automaticBuilding, label: `Automatic (${label(automaticBuilding)})` },
-    ...(compatibleBuildings.length > 1 || override !== null
-      ? compatibleBuildings.map((building) => ({ building, displayBuilding: building, label: label(building) }))
-      : []),
-  ]
-
-  const root = create("span")
-    .classed("machine-selector", true)
-    .attr("aria-label", `Choose a machine for ${row.recipe.name}`)
-  const dropdown = makeDropdown(root).classed("machine-dropdown", true)
-  const quality = spec.getMachineQuality(row.recipe)
-  const hasQualityChoices = row.building.supportsEquipmentQuality() && spec.getAvailableQualities().length > 1
-  if (hasQualityChoices) {
-    dropdown
-      .append("div")
-      .classed("equipment-quality-strip", true)
-      .attr("aria-label", "Machine quality")
-      .selectAll<HTMLButtonElement, Quality>("button")
-      .data(spec.getAvailableQualities())
-      .join("button")
-      .attr("type", "button")
-      .style("--quality-color", (option) => option.color)
-      .classed("selected", (option) => option === quality)
-      .attr("aria-label", (option) => `${option.name} quality`)
-      .attr("title", (option) => `${option.name} quality`)
-      .each(function (option) {
-        this.replaceChildren(option.icon.make(20, true))
-      })
-      .on("click", (event: MouseEvent, option) => {
-        event.stopPropagation()
-        closeDropdowns()
-        globalThis.setTimeout(() => {
-          spec.setMachineQuality(row.recipe, option)
-          spec.updateSolution()
-        }, 0)
-      })
-  }
-  const choices = dropdown
-    .selectAll<HTMLDivElement, MachineOption>("div.machine-option")
-    .data(options)
-    .join("div")
-    .classed("machine-option", true)
-  const labels = addInputs(
-    choices,
-    `machine-selector-${machineSelectorCount++}`,
-    (option) => option.building === override,
-    (option) => {
-      if (spec.setBuildingOverride(row.recipe, option.building)) spec.updateSolution()
-    },
-  )
-  labels.append(function (option: MachineOption) {
-    const iconQuality = hasQualityChoices && option.building === override ? quality : null
-    const machineName = formatEquipmentName(option.displayBuilding.name)
-    return makeQualityIcon(option.displayBuilding.icon, iconQuality, {
-      label: iconQuality === null ? machineName : `${iconQuality.name} ${machineName}`,
-      tooltip: null,
-      badgeTitle: `${quality.name} machine quality`,
-    })
-  })
-  labels
-    .append("span")
-    .classed("machine-option-name", true)
-    .text((option: MachineOption) => option.label)
-  return requireNode(root.node(), "machine selector")
-}
-export { powerRepresentation as powerRepr }
-
-function alignPower(value: Rational): string {
-  if (value.isZero()) return "0 W"
-  const { power, suffix } = powerRepresentation(value)
-  return `${spec.format.alignCount(power)} ${suffix}`
-}
-
-type HeaderAlignment = "left" | "right" | "center"
-
-class Header {
-  constructor(
-    readonly text: string,
-    readonly colspan: number,
-    readonly surplus = false,
-    readonly title: string | null = null,
-    readonly icon: Icon | null = null,
-    readonly align: HeaderAlignment = "right",
-  ) {}
-}
-
-function setLength<TValue>(values: TValue[], length: number, createValue: () => TValue): void {
-  if (values.length > length) values.length = length
-  while (values.length < length) values.push(createValue())
-}
-
-class BreakdownRow {
-  constructor(
-    readonly item: Item,
-    readonly recipe: Recipe,
-    readonly rate: Rational,
-    readonly building: Building | null,
-    readonly count: Rational | null,
-    readonly percent: string | null = null,
-    readonly divider = false,
-  ) {}
-}
-
-function getBreakdown(item: Item, totals: Totals): BreakdownRow[] {
-  const rows: BreakdownRow[] = []
-  let found = false
-  for (const recipe of item.recipes) {
-    if (!totals.rates.has(recipe)) continue
-    for (const ingredient of recipe.getIngredients()) {
-      if (!isItem(ingredient.item)) continue
-      const rate = totals.consumers.get(ingredient.item)?.get(recipe)
-      if (rate === undefined) continue
-      let building: Building | null = null
-      let count: Rational | null = null
-      const producers = totals.producers.get(ingredient.item)
-      if (producers?.size === 1) {
-        const producer = producers.keys().next().value
-        if (producer instanceof Recipe) {
-          const recipeRate = rate.div(producer.gives(ingredient.item))
-          building = spec.getBuilding(producer)
-          count = spec.getCount(producer, recipeRate)
-        }
-      }
-      rows.push(new BreakdownRow(ingredient.item, recipe, rate, building, count))
-      found = true
-    }
-  }
-
-  const producers = totals.producers.get(item)
-  const singleProducer = producers?.size === 1 ? producers.keys().next().value : undefined
-  const singleRecipe = singleProducer instanceof Recipe ? singleProducer : null
-  const amount = singleRecipe?.gives(item) ?? null
-  const building = singleRecipe === null ? null : spec.getBuilding(singleRecipe)
-  const itemConsumers = totals.consumers.get(item)
-  const itemTotal = totals.items.get(item)
-  if (itemConsumers === undefined || itemTotal === undefined || itemTotal.isZero()) return rows
-  const hundred = Rational.from_float(100)
-  for (const [consumer, rate] of itemConsumers) {
-    if (!(consumer instanceof Recipe)) continue
-    let count: Rational | null = null
-    if (singleRecipe !== null && amount !== null) count = spec.getCount(singleRecipe, rate.div(amount))
-    const percent = rate.div(itemTotal).mul(hundred)
-    const percentText = percent.less(one) ? "<1%" : `${formatCanadianNumber(percent.toDecimal(0))}%`
-    rows.push(new BreakdownRow(item, consumer, rate, building, count, percentText, found))
-    found = false
-  }
-  return rows
-}
-
-function formatModuleEffect(label: string, value: Rational): string | null {
-  if (value.isZero()) return null
-  const sign = value.less(zero) ? "" : "+"
-  return `${label} ${sign}${formatCanadianNumber(value.mul(Rational.from_integer(100)).toDecimal())}%`
-}
-
-function formatEquipmentName(name: string): string {
-  return name.replace(
-    /(^|[ -])([a-z])/g,
-    (_match, prefix: string, letter: string) => `${prefix}${letter.toUpperCase()}`,
-  )
-}
-
-function formatQualifiedModule(module: Module, quality: Quality): string {
-  const effects = [
-    formatModuleEffect("Speed", module.speedFor(quality)),
-    formatModuleEffect("Productivity", module.productivityFor(quality)),
-    formatModuleEffect("Quality", module.qualityFor(quality)),
-    formatModuleEffect("Energy", module.powerFor(quality)),
-    formatModuleEffect("Pollution", module.pollutionFor(quality)),
-  ].filter((effect): effect is string => effect !== null)
-  return `${quality.name} ${formatEquipmentName(module.name)}${effects.length === 0 ? "" : `\n${effects.join("\n")}`}`
-}
-
-class ModuleInput implements ModuleDropdownOption {
-  private slot: ModuleSlot | null = null
-  module: Module | null = null
-
-  get cell(): ModuleSlot {
-    if (this.slot === null) throw new Error("Module input is not attached to a slot")
-    return this.slot
-  }
-
-  checked(): boolean {
-    const cell = this.cell
-    return cell.moduleSpec.getModule(cell.index) === this.module
-  }
-
-  tooltip(): string | null {
-    return this.module === null ? "Empty Module Slot" : formatQualifiedModule(this.module, this.cell.selectedQuality())
-  }
-
-  choose(): void {
-    const cell = this.cell
-    const toUpdate = [cell.index]
-    if (cell.index === 0) {
-      const modules = cell.moduleSpec.modules
-      const oldModule = modules[cell.index]
-      for (let index = 1; index < modules.length; index++) {
-        if (modules[index] === oldModule) toUpdate.push(index)
-      }
-    }
-    let needsRecalculation = false
-    for (const index of toUpdate) {
-      needsRecalculation = cell.moduleSpec.setModule(index, this.module) || needsRecalculation
-    }
-    if (needsRecalculation || spec.isFactoryTarget(cell.moduleSpec.recipe)) spec.updateSolution()
-    else spec.display()
-  }
-
-  setData(slot: ModuleSlot, module: Module | null): void {
-    this.slot = slot
-    this.module = module
-  }
-}
-
-let slotCount = 0
-
-class ModuleSlot implements ModuleDropdownCell {
-  readonly name = `moduleslot-${slotCount++}`
-  moduleSpec: ModuleSpec
-  index = 0
-  readonly inputRows: ModuleInput[][] = []
-
-  get qualityOptions(): readonly Quality[] {
-    const qualities = spec.getAvailableQualities()
-    return qualities.length > 1 ? qualities : []
-  }
-
-  selectedQuality(): Quality {
-    return this.moduleSpec.moduleQualities[this.index] ?? spec.getNormalQuality()
-  }
-
-  keepOpenAfterQualitySelection(): boolean {
-    return this.moduleSpec.modules[this.index] === null
-  }
-
-  pipetteLabel(): string {
-    return this.index === 0
-      ? "Module 1 — normal selection changes matching slots"
-      : `Module ${this.index + 1} — changes this slot`
-  }
-
-  applyPipetteSelection(selection: ModulePipetteSelection): "applied" | "incompatible" {
-    if (!selection.module.canUse(this.moduleSpec.recipe, this.moduleSpec.building)) return "incompatible"
-    let needsRecalculation = this.moduleSpec.setModule(this.index, selection.module)
-    needsRecalculation = this.moduleSpec.setModuleQuality(this.index, selection.quality) || needsRecalculation
-    if (needsRecalculation || spec.isFactoryTarget(this.moduleSpec.recipe)) spec.updateSolution()
-    else spec.display()
-    return "applied"
-  }
-
-  chooseQuality(quality: Quality): void {
-    const toUpdate = [this.index]
-    if (this.index === 0) {
-      const oldModule = this.moduleSpec.modules[0]
-      const oldQuality = this.selectedQuality()
-      for (let index = 1; index < this.moduleSpec.modules.length; index++) {
-        const slotQuality = this.moduleSpec.moduleQualities[index] ?? spec.getNormalQuality()
-        if (this.moduleSpec.modules[index] === oldModule && slotQuality === oldQuality) toUpdate.push(index)
-      }
-    }
-    let needsRecalculation = false
-    for (const index of toUpdate) {
-      needsRecalculation = this.moduleSpec.setModuleQuality(index, quality) || needsRecalculation
-    }
-    if (toUpdate.every((index) => this.moduleSpec.modules[index] === null)) return
-    if (needsRecalculation || spec.isFactoryTarget(this.moduleSpec.recipe)) spec.updateSolution()
-    else spec.display()
-  }
-
-  constructor(
-    readonly group: DisplayGroup,
-    readonly row: DisplayRow,
-    moduleSpec: ModuleSpec,
-  ) {
-    this.moduleSpec = moduleSpec
-    setLength(this.inputRows, moduleRows.length, () => [])
-  }
-
-  setData(moduleSpec: ModuleSpec, index: number): void {
-    this.moduleSpec = moduleSpec
-    this.index = index
-    for (let rowIndex = 0; rowIndex < this.inputRows.length; rowIndex++) {
-      const inputRow = this.inputRows[rowIndex]
-      const modules = moduleRows[rowIndex]
-      if (inputRow === undefined || modules === undefined) continue
-      let inputIndex = 0
-      for (const module of modules) {
-        if (module !== null && !module.canUse(moduleSpec.recipe, moduleSpec.building)) continue
-        const input = inputRow[inputIndex] ?? new ModuleInput()
-        if (inputRow[inputIndex] === undefined) inputRow.push(input)
-        input.setData(this, module)
-        inputIndex++
-      }
-      inputRow.length = inputIndex
-    }
-  }
-}
-
-class BeaconInput implements ModuleDropdownOption {
-  constructor(
-    readonly cell: BeaconCell,
-    readonly module: Module | null,
-  ) {}
-
-  checked(): boolean {
-    return this.module === this.cell.row.moduleSpec?.beaconModules[this.cell.index]
-  }
-
-  tooltip(): string | null {
-    return this.module === null
-      ? "Empty Beacon Module Slot"
-      : formatQualifiedModule(this.module, this.cell.selectedQuality())
-  }
-
-  choose(): void {
-    const moduleSpec = this.cell.row.moduleSpec
-    if (moduleSpec === null) return
-    const toUpdate = [this.cell.index]
-    if (this.cell.index === 0 && moduleSpec.beaconModules[0] === moduleSpec.beaconModules[1]) toUpdate.push(1)
-    for (const index of toUpdate) moduleSpec.setBeaconModule(this.module, index)
-    if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
-    else spec.display()
-  }
-}
-
-let beaconCount = 0
-
-class BeaconCell implements ModuleDropdownCell {
-  readonly name = `beaconslot-${beaconCount++}`
-  readonly inputRows: BeaconInput[][] = []
-
-  get qualityOptions(): readonly Quality[] {
-    const qualities = spec.getAvailableQualities()
-    return qualities.length > 1 ? qualities : []
-  }
-
-  selectedQuality(): Quality {
-    return this.row.moduleSpec?.beaconModuleQualities[this.index] ?? spec.getNormalQuality()
-  }
-
-  keepOpenAfterQualitySelection(): boolean {
-    const moduleSpec = this.row.moduleSpec
-    return moduleSpec !== null && moduleSpec.beaconModules[this.index] === null
-  }
-
-  pipetteLabel(): string {
-    return `Beacon module ${this.index + 1}`
-  }
-
-  applyPipetteSelection(selection: ModulePipetteSelection): "applied" | "incompatible" {
-    const moduleSpec = this.row.moduleSpec
-    if (
-      moduleSpec === null ||
-      !selection.module.canBeacon() ||
-      !selection.module.canUse(moduleSpec.recipe, moduleSpec.building)
-    ) {
-      return "incompatible"
-    }
-    moduleSpec.setBeaconModule(selection.module, this.index)
-    moduleSpec.setBeaconModuleQuality(selection.quality, this.index)
-    if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
-    else spec.display()
-    return "applied"
-  }
-
-  chooseQuality(quality: Quality): void {
-    const moduleSpec = this.row.moduleSpec
-    if (moduleSpec === null) return
-    const toUpdate = [this.index]
-    if (this.index === 0) {
-      const oldModule = moduleSpec.beaconModules[0]
-      const oldQuality = this.selectedQuality()
-      const secondQuality = moduleSpec.beaconModuleQualities[1] ?? spec.getNormalQuality()
-      if (moduleSpec.beaconModules[1] === oldModule && secondQuality === oldQuality) toUpdate.push(1)
-    }
-    for (const index of toUpdate) moduleSpec.setBeaconModuleQuality(quality, index)
-    if (toUpdate.every((index) => moduleSpec.beaconModules[index] === null)) return
-    if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
-    else spec.display()
-  }
-
-  constructor(
-    readonly row: DisplayRow,
-    readonly index: number,
-  ) {}
-
-  setData(moduleSpec: ModuleSpec | null): void {
-    this.inputRows.length = 0
-    if (moduleSpec === null) return
-    for (const modules of moduleRows) {
-      const inputRow = modules
-        .filter(
-          (module) => module === null || (module.canBeacon() && module.canUse(moduleSpec.recipe, moduleSpec.building)),
-        )
-        .map((module) => new BeaconInput(this, module))
-      if (inputRow.length > 0) this.inputRows.push(inputRow)
-    }
-  }
-}
-
-class DisplayRow {
-  item: Item | null = null
-  recipe: FactoryRecipe | null = null
-  building: Building | null = null
-  moduleSpec: ModuleSpec | null = null
-  single = false
-  breakdown: BreakdownRow[] | null = null
-  readonly slots: ModuleSlot[] = []
-  readonly beaconModules: BeaconCell[] = [new BeaconCell(this, 0), new BeaconCell(this, 1)]
-
-  setData(
-    item: Item | null,
-    recipe: FactoryRecipe | null,
-    building: Building | null,
-    moduleSpec: ModuleSpec | null,
-    single: boolean,
-    breakdown: BreakdownRow[] | null,
-  ): void {
-    this.item = item
-    this.recipe = recipe
-    this.building = building
-    this.moduleSpec = moduleSpec
-    this.single = single
-    this.breakdown = breakdown
-    for (const beaconCell of this.beaconModules) beaconCell.setData(moduleSpec)
-  }
-}
-
-class DisplayGroup {
-  readonly rows: DisplayRow[] = []
-
-  setData(totals: Totals, itemValues: Iterable<Item>, recipeValues: Iterable<FactoryRecipe>): void {
-    const items = [...itemValues]
-    const recipes = [...recipeValues]
-    if (items.length === 0) {
-      this.rows.length = 0
-      return
-    }
-    const length = Math.max(items.length, recipes.length)
-    setLength(this.rows, length, () => new DisplayRow())
-    for (let index = 0; index < length; index++) {
-      const row = this.rows[index]
-      if (row === undefined) continue
-      const item = items[index] ?? null
-      const recipe = recipes[index] ?? null
-      let building: Building | null = null
-      let moduleSpec: ModuleSpec | null = null
-      if (recipe instanceof Recipe) {
-        building = spec.getBuilding(recipe)
-        if (building?.canBeacon()) moduleSpec = spec.getModuleSpec(recipe)
-      }
-      const moduleSlotCount = moduleSpec?.modules.length ?? 0
-      setLength(row.slots, moduleSlotCount, () => {
-        if (moduleSpec === null) throw new Error("Cannot create a module slot without a module specification")
-        return new ModuleSlot(this, row, moduleSpec)
-      })
-      if (moduleSpec !== null) {
-        for (let slotIndex = 0; slotIndex < moduleSlotCount; slotIndex++)
-          row.slots[slotIndex]?.setData(moduleSpec, slotIndex)
-      }
-      const single = item !== null && recipe !== null && item.key === recipe.key
-      row.setData(item, recipe, building, moduleSpec, single, item === null ? null : getBreakdown(item, totals))
-    }
-  }
-}
-
-export function resetDisplay(): void {
-  clearModulePipette()
-  selectAll("table#totals > tbody").remove()
-  displayGroups = []
-}
-
-let displayGroups: DisplayGroup[] = []
-
-function getDisplayGroups(totals: Totals): void {
-  const recipes = [...totals.rates.keys()].filter(isFactoryRecipe).reverse()
-  const groups = topoSort(getRecipeGroups(new Set(recipes)))
-  setLength(displayGroups, groups.length, () => new DisplayGroup())
-  groups.forEach((group, index) => {
-    const items = new Set<Item>()
-    for (const recipe of group) {
-      for (const product of recipe.products) {
-        if (isItem(product.item) && totals.items.has(product.item)) items.add(product.item)
-      }
-    }
-    displayGroups[index]?.setData(totals, items, group)
-  })
-}
-
-function toggleBreakdownHandler(this: Element): void {
-  const row = this.parentElement
-  const breakdownRow = row?.nextElementSibling
-  if (row === null || breakdownRow === null || breakdownRow === undefined) return
-  if (row.classList.contains("breakdown-open")) {
-    row.classList.remove("breakdown-open")
-    breakdownRow.classList.remove("breakdown-open")
-  } else {
-    row.classList.add("breakdown-open")
-    breakdownRow.classList.add("breakdown-open")
-  }
-}
-
-class ItemIcon implements IconObject {
-  readonly name: string
-  readonly icon_col: number
-  readonly icon_row: number
-  readonly icon: Icon
-  private readonly extra = create("span")
-
-  constructor(readonly item: Item) {
-    this.name = item.name
-    this.icon_col = item.icon_col
-    this.icon_row = item.icon_row
-    this.icon = new Icon(this)
-  }
-
-  setText(text: string): void {
-    this.extra.text(text)
-  }
-
-  renderTooltip(): HTMLElement {
-    return this.item.renderTooltip(requireNode(this.extra.node(), "item status"))
-  }
-}
-
-// All this pipe stuff is legacy code, irrelevant as of 2.0, but we might as
-// well keep it around for legacy datasets.
-
-// For pipe segment of the given length, returns maximum throughput as fluid/s.
-function pipeThroughput(length: Rational): Rational {
-  let R = Rational.from_float
-  if (length.equal(zero)) {
-    // A length of zero represents a solid line of pumps.
-    return R(12000)
-  } else if (length.less(R(198))) {
-    let numerator = R(50).mul(length).add(R(150))
-    let denominator = R(3).mul(length).sub(one)
-    return numerator.div(denominator).mul(R(60))
-  } else {
-    return R(60 * 4000).div(R(39).add(length))
-  }
-}
-
-// Throughput at which pipe length equation changes.
-let pipeThreshold = Rational.from_floats(4000, 236)
-
-// For fluid throughput in fluid/s, returns maximum length of pipe that can
-// support it.
-function pipeLength(throughput: Rational): Rational | null {
-  let R = Rational.from_float
-  throughput = throughput.div(R(60))
-  if (R(200).less(throughput)) {
-    return null
-  } else if (R(100).less(throughput)) {
-    return zero
-  } else if (pipeThreshold.less(throughput)) {
-    let numerator = throughput.add(R(150))
-    let denominator = R(3).mul(throughput).sub(R(50))
-    return numerator.div(denominator)
-  } else {
-    return R(4000).div(throughput).sub(R(39))
-  }
-}
-
-// Just hardcode this. It used to be a setting, but now it's defunct.
-let minPipeLength = Rational.from_float(17)
-let maxPipeThroughput = pipeThroughput(minPipeLength)
-
-function pipeValues(rate: Rational): { pipes: Rational; length: Rational } {
-  let pipes = rate.div(maxPipeThroughput).ceil()
-  let perPipeRate = rate.div(pipes)
-  const maximumLength = pipeLength(perPipeRate)
-  const length = maximumLength?.floor() ?? zero
-  return { pipes: pipes, length: length }
-}
-
-function pipeText(rate: Rational): string {
-  if (!usesLegacyCalculation()) {
-    return ""
-  }
-  if (rate.equal(zero)) {
-    return " \u00d7 0"
-  }
-  let { pipes, length } = pipeValues(rate)
-  let pipeString = ""
-  if (one.less(pipes)) {
-    pipeString += " \u00d7 " + formatCanadianNumber(pipes.toDecimal(0))
-  }
-  pipeString += " \u2264 " + formatCanadianNumber(length.toDecimal(0))
-  return pipeString
-}
-
-class PipeIcon implements IconObject {
-  readonly name: string
-  readonly icon_col: number
-  readonly icon_row: number
-  readonly icon: Icon
-
-  constructor() {
-    const item = spec.items.get("pipe")
-    if (item === undefined) throw new Error("Missing pipe item")
-    this.name = item.name
-    this.icon_col = item.icon_col
-    this.icon_row = item.icon_row
-    this.icon = new Icon(this)
-  }
-}
-
-function requireResultPlanets(specification: FactorySpecification): ReadonlyMap<string, Planet> {
-  if (specification.planets === null) throw new Error("Planet data is not initialized")
-  return specification.planets
-}
-
-function requireItemRate(map: ReadonlyMap<SolverItem, Rational>, item: Item, label: string): Rational {
-  const rate = map.get(item)
-  if (rate === undefined) throw new Error(`Missing ${label} rate for ${item.key}`)
-  return rate
-}
-
-function requireRecipeRate(map: ReadonlyMap<SolverRecipe, Rational>, recipe: FactoryRecipe, label: string): Rational {
-  const rate = map.get(recipe)
-  if (rate === undefined) throw new Error(`Missing ${label} rate for ${recipe.key}`)
-  return rate
-}
-
-function requireRowItem(row: DisplayRow): Item {
-  if (row.item === null) throw new Error("Display row has no item")
-  return row.item
-}
-
-function requireRowRecipe(row: DisplayRow): Recipe {
-  if (!(row.recipe instanceof Recipe)) throw new Error("Display row has no concrete recipe")
-  return row.recipe
-}
-
-function requireRowBuilding(row: DisplayRow): Building {
-  if (row.building === null) throw new Error("Display row has no building")
-  return row.building
-}
-
-function requireRowModuleSpec(row: DisplayRow): ModuleSpec {
-  if (row.moduleSpec === null) throw new Error("Display row has no module specification")
-  return row.moduleSpec
-}
-
-function makeLocationSelector(row: DisplayRow): HTMLSelectElement {
-  const recipe = requireRowRecipe(row)
-  const building = row.building
-  const compatible = getCompatibleLocations(spec, recipe, building)
-  const configured = spec.recipeLocations.get(recipe) ?? null
-  const assigned = configured !== null && compatible.includes(configured) ? configured : null
-  const automatic = getAssignedLocation(spec, recipe, building)
-  const planets = requireResultPlanets(spec)
-  const selector = create("select")
-    .classed("recipe-location-selector", true)
-    .attr("aria-label", `Choose production location for ${recipe.name}`)
-    .on("change", (event: Event) => {
-      const target = event.target
-      if (!(target instanceof HTMLSelectElement)) return
-      const location = target.value === "" ? null : (planets.get(target.value) ?? null)
-      spec.setRecipeLocation(recipe, location)
-      spec.updateSolution()
-    })
-  selector
-    .append("option")
-    .attr("value", "")
-    .property("selected", assigned === null)
-    .text(`Automatic (${automatic?.name ?? "unavailable"})`)
-  selector
-    .selectAll<HTMLOptionElement, Planet>("option.location")
-    .data(compatible)
-    .join("option")
-    .classed("location", true)
-    .attr("value", (location: Planet) => location.key)
-    .property("selected", (location: Planet) => location === assigned)
-    .text((location: Planet) => location.name)
-  return requireNode(selector.node() as HTMLSelectElement | null, "location selector")
-}
-
-function formatLocationNames(locations: readonly Planet[]): string {
-  return locations.map((location) => location.name).join(" / ")
-}
-
-function getLocationCellText(
-  specification: FactorySpecification,
-  recipe: FactoryRecipe | null,
-  building: Building | null,
-): string {
-  if (!(recipe instanceof Recipe) || !recipe.isReal()) return ""
-  const locations = getRecipeLocations(specification, recipe, building)
-  if (locations.length === 0) return "Unavailable"
-  if (locations.length === specification.selectedPlanets.size && locations.length > 2) return "Any selected"
-  if (locations.length > 2) return `${locations.length} locations`
-  return formatLocationNames(locations)
-}
-
-function getRocketStatsForRow(row: DisplayRow): RocketLaunchStats | null {
-  if (!(row.recipe instanceof Recipe) || row.recipe.key !== "rocket-part") return null
-  return row.building instanceof RocketSilo ? row.building.getLaunchStats(spec) : null
-}
-
-function getBuildingCountTooltip(row: DisplayRow): string | null {
-  const recipe = requireRowRecipe(row)
-  const building = requireRowBuilding(row)
-  const quality = spec.getMachineQuality(recipe)
-  const rocket = getRocketStatsForRow(row)
-  if (rocket !== null) {
-    const limit = `${spec.format.rate(rocket.animationLaunchRate)} launches/${spec.format.rateName} per silo`
-    return rocket.launchLimited
-      ? `${quality.name}-quality launch animation limit: ${limit}. More speed does not increase steady-state throughput; productivity still reduces required crafts.`
-      : `Maximum ${quality.name.toLowerCase()}-quality buffered launch rate: ${limit}. Current rocket-part crafting is slower than the launch animation.`
-  }
-  if (building instanceof Miner) {
-    const drain = building.getResourceDrainRate(spec, recipe)
-    const patchYield = spec.getProdEffect(recipe).div(drain)
-    return `${quality.name} ${formatEquipmentName(building.name)}\nResource drain ${formatCanadianNumber(drain.mul(Rational.from_integer(100)).toDecimal())}% per mined unit\nExpected patch yield ×${formatCanadianNumber(patchYield.toDecimal())} at current mining productivity.`
-  }
-  if (!building.supportsEquipmentQuality()) return null
-  const craftingSpeed = building.getRecipeRate(spec, recipe).mul(recipe.time)
-  const productivity = spec.getProdEffect(recipe).sub(one)
-  return `${quality.name} ${formatEquipmentName(building.name)}\nEffective crafting speed ${formatCanadianNumber(craftingSpeed.toDecimal())}\nProductivity ${formatModuleEffect("", productivity)?.trim() ?? "0%"}`
-}
-
-function isLaunchLimitedRow(row: DisplayRow): boolean {
-  return getRocketStatsForRow(row)?.launchLimited ?? false
-}
-
-interface SummaryCard {
-  readonly label: string
-  readonly value: string
-}
-
-interface QualityPlanMetric {
-  readonly label: string
-  readonly value: string
-}
-
-interface QualityBuildLine {
-  readonly stage: string
-  readonly recipe: Recipe
-  readonly kind: QualityOperationRate["kind"]
-  readonly configuration: QualityTierConfiguration
-  readonly qualityLevels: Set<number>
-  machineCount: Rational
-}
-
-const QUALITY_BUILD_STAGE_ORDER = [
-  "Local sources",
-  "Fluid production",
-  "Quality production",
-  "Guaranteed-quality crafting",
-  "Recycling",
-] as const
-
-function formatQualityPercent(value: Rational, precision = 6): string {
-  return `${formatCanadianNumber(value.mul(Rational.from_integer(100)).toDecimal(precision))}%`
-}
-
-function qualifiedAmountKey(entry: Pick<QualifiedItemAmount, "item" | "qualityLevel">): string {
-  return `${entry.item.key}@q${entry.qualityLevel}`
-}
-
-function qualifiedAmountLabel(entry: QualifiedItemAmount): string {
-  const quality =
-    entry.item.phase === "solid" ? `${QUALITY_TIERS[entry.qualityLevel] ?? `Quality ${entry.qualityLevel}`} ` : ""
-  return `${quality}${entry.item.name}`
-}
-
-function qualifiedAmountQuality(specification: FactorySpecification, entry: QualifiedItemAmount): Quality | null {
-  if (entry.item.phase !== "solid") return null
-  const quality = specification.qualityTiers[entry.qualityLevel]
-  if (quality === undefined) throw new Error(`Missing quality tier ${entry.qualityLevel}`)
-  return quality
-}
-
-function renderQualifiedAmounts<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  specification: FactorySpecification,
-  amounts: readonly QualifiedItemAmount[],
-  emptyText?: string,
-): void {
-  if (amounts.length === 0) {
-    if (emptyText !== undefined) container.append("div").text(emptyText)
-    return
-  }
-  const lines = container
-    .selectAll<HTMLDivElement, QualifiedItemAmount>("div.quality-plan-material-line")
-    .data(amounts)
-    .join("div")
-    .classed("quality-plan-material-line", true)
-  lines.each(function (entry) {
-    const line = select(this)
-    const quality = qualifiedAmountQuality(specification, entry)
-    const label = qualifiedAmountLabel(entry)
-    line.append(() => makeQualityIcon(entry.item.icon, quality, { label }))
-    line
-      .append("span")
-      .classed("quality-plan-material-rate", true)
-      .text(`${specification.format.rate(entry.amount)}/${specification.format.rateName}`)
-  })
-}
-
-function subtractQualifiedAmounts(
-  amounts: readonly QualifiedItemAmount[],
-  subtract: readonly QualifiedItemAmount[],
-): QualifiedItemAmount[] {
-  const remaining = new Map(subtract.map((entry) => [qualifiedAmountKey(entry), entry.amount]))
-  return amounts.flatMap((entry) => {
-    const amount = entry.amount.sub(remaining.get(qualifiedAmountKey(entry)) ?? zero)
-    return zero.less(amount) ? [{ ...entry, amount }] : []
-  })
-}
-
-function moduleLoadoutLabel(configuration: QualityTierConfiguration): string {
-  const groups = new Map<string, { count: number; label: string }>()
-  for (let index = 0; index < configuration.modules.length; index++) {
-    const module = configuration.modules[index]
-    if (module === null || module === undefined) continue
-    const quality = configuration.moduleQualities[index]?.name ?? "Normal"
-    const key = `${quality}::${module.key}`
-    const group = groups.get(key) ?? { count: 0, label: `${quality} ${module.name}` }
-    group.count++
-    groups.set(key, group)
-  }
-  const modules = [...groups.values()].map(({ count, label }) => `${count} × ${label}`).join(", ")
-  const beaconGroups = new Map<string, { count: number; label: string }>()
-  for (let index = 0; index < configuration.beaconModules.length; index++) {
-    const module = configuration.beaconModules[index]
-    if (module === null || module === undefined) continue
-    const quality = configuration.beaconModuleQualities[index]?.name ?? "Normal"
-    const key = `${quality}::${module.key}`
-    const group = beaconGroups.get(key) ?? { count: 0, label: `${quality} ${module.name}` }
-    group.count++
-    beaconGroups.set(key, group)
-  }
-  const beacons = [...beaconGroups.values()].map(({ count, label }) => `${count} × ${label}`).join(", ")
-  const beacon =
-    beacons === "" || configuration.beaconCount.isZero()
-      ? ""
-      : `${configuration.beaconCount.toDecimal()} × ${configuration.beaconQuality.name} beacon (${beacons})`
-  return [modules || "No direct modules", beacon].filter(Boolean).join("; ")
-}
-
-function moduleConfigurationLabel(configuration: QualityTierConfiguration): string {
-  return `${configuration.machineQuality.name} ${configuration.building?.name ?? "hand crafting"}; ${moduleLoadoutLabel(configuration)}`
-}
-
-function qualityPlanDiagnosticMetrics(
-  specification: FactorySpecification,
-  plan: QualityTargetPlan,
-): QualityPlanMetric[] {
-  const metrics: QualityPlanMetric[] = [
-    {
-      label: "Expected target",
-      value: `${specification.format.rate(plan.requested)}/${specification.format.rateName}`,
-    },
-    { label: "First-pass Normal → target", value: formatQualityPercent(plan.firstPassChance) },
-    {
-      label: "Crafting operations",
-      value: `${specification.format.rate(plan.totalCrafts)}/${specification.format.rateName}`,
-    },
-    {
-      label: "Recycling operations",
-      value: `${specification.format.rate(plan.totalRecycles)}/${specification.format.rateName}`,
-    },
-    {
-      label: "Machines to place",
-      value: specification.format.count(plan.totalMachineCount),
-    },
-  ]
-  const represented = powerRepresentation(plan.totalPower)
-  metrics.push({
-    label: "Power",
-    value: `${specification.format.count(represented.power)} ${represented.suffix}`,
-  })
-  return metrics
-}
-
-function recycledItemName(recipe: Recipe): string {
-  return recipe.ingredients.find(({ item }) => item.phase === "solid")?.item.name ?? recipe.name
-}
-
-function qualityOperationLabel(operation: Pick<QualityOperationRate, "kind" | "recipe">): string {
-  if (operation.kind === "dispose" || operation.kind === "recycle") {
-    return `Recycle ${recycledItemName(operation.recipe)}`
-  }
-  if (operation.kind === "source") {
-    if (!operation.recipe.isResource()) return operation.recipe.name
-    return operation.recipe.products.some(({ item }) => item.phase !== "solid")
-      ? `Pump ${operation.recipe.name}`
-      : `Mine ${operation.recipe.name}`
-  }
-  return operation.recipe.name
-}
-
-function qualityBuildStage(operation: QualityOperationRate): string {
-  if (operation.kind === "source") return "Local sources"
-  if (operation.kind === "recycle" || operation.kind === "dispose") return "Recycling"
-  if (operation.recipe.products[0]?.item.phase !== "solid") return "Fluid production"
-  return zero.less(operation.configuration.qualityChance) ? "Quality production" : "Guaranteed-quality crafting"
-}
-
-function aggregateQualityBuildLines(plan: QualityTargetPlan): QualityBuildLine[] {
-  const lines = new Map<string, QualityBuildLine>()
-  for (const operation of plan.operations) {
-    const stage = qualityBuildStage(operation)
-    const configurationKey = moduleConfigurationLabel(operation.configuration)
-    const key = `${stage}::${operation.kind}::${operation.recipe.key}::${configurationKey}`
-    const existing = lines.get(key)
-    if (existing === undefined) {
-      lines.set(key, {
-        stage,
-        recipe: operation.recipe,
-        kind: operation.kind,
-        configuration: operation.configuration,
-        qualityLevels: new Set([operation.qualityLevel]),
-        machineCount: operation.machineCount,
-      })
-      continue
-    }
-    existing.qualityLevels.add(operation.qualityLevel)
-    existing.machineCount = existing.machineCount.add(operation.machineCount)
-  }
-  return [...lines.values()].sort((left, right) => {
-    const stage =
-      QUALITY_BUILD_STAGE_ORDER.indexOf(left.stage as (typeof QUALITY_BUILD_STAGE_ORDER)[number]) -
-      QUALITY_BUILD_STAGE_ORDER.indexOf(right.stage as (typeof QUALITY_BUILD_STAGE_ORDER)[number])
-    if (stage !== 0) return stage
-    return (left.recipe.order ?? "").localeCompare(right.recipe.order ?? "")
-  })
-}
-
-function qualityPlanProfileLabel(specification: FactorySpecification, plan: QualityTargetPlan): string {
-  if (plan.profile === "planet") {
-    const planetName = specification.planets?.get(plan.planetKey)?.name
-    return `${planetName ?? plan.planetKey} practical quality factory`
-  }
-  return "Vulcanus practical quality factory"
-}
-
-function renderQualityEquipment<GElement extends BaseType, Datum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, Datum, PElement, PDatum>,
-  configuration: QualityTierConfiguration,
-): void {
-  const directModules = configuration.modules.flatMap((module, index) => {
-    const quality = configuration.moduleQualities[index]
-    return module === null || module === undefined || quality === undefined ? [] : [{ module, quality }]
-  })
-  const beaconModules = configuration.beaconModules.flatMap((module, index) => {
-    const quality = configuration.beaconModuleQualities[index]
-    return module === null || module === undefined || quality === undefined ? [] : [{ module, quality }]
-  })
-
-  if (directModules.length === 0) {
-    container.append("span").classed("quality-plan-equipment-empty", true).text("No direct modules")
-  } else {
-    container
-      .append("span")
-      .classed("quality-plan-equipment-slots", true)
-      .selectAll<HTMLSpanElement, (typeof directModules)[number]>("span.quality-icon")
-      .data(directModules)
-      .join((enter) =>
-        enter.append(({ module, quality }) => {
-          const label = `${quality.name} ${formatEquipmentName(module.name)}`
-          return makeQualityIcon(module.icon, quality, { label })
-        }),
-      )
-      .classed("quality-plan-equipment-icon", true)
-  }
-
-  if (!configuration.beaconCount.isZero() && beaconModules.length > 0) {
-    container
-      .append("span")
-      .classed("quality-plan-beacon-label", true)
-      .text(`${configuration.beaconCount.toDecimal()} × ${configuration.beaconQuality.name} beacon`)
-    container
-      .append("span")
-      .classed("quality-plan-equipment-slots", true)
-      .selectAll<HTMLSpanElement, (typeof beaconModules)[number]>("span.quality-icon")
-      .data(beaconModules)
-      .join((enter) =>
-        enter.append(({ module, quality }) => {
-          const label = `${quality.name} ${formatEquipmentName(module.name)}`
-          return makeQualityIcon(module.icon, quality, { label })
-        }),
-      )
-      .classed("quality-plan-equipment-icon", true)
-  }
-}
-
-function renderMetricGrid<GElement extends BaseType, TDatum, PElement extends BaseType, PDatum>(
-  container: Selection<GElement, TDatum, PElement, PDatum>,
-  metrics: readonly QualityPlanMetric[],
-): void {
-  const metric = container
-    .append("div")
-    .classed("quality-plan-metrics", true)
-    .selectAll<HTMLDivElement, QualityPlanMetric>("div")
-    .data(metrics)
-    .join("div")
-    .classed("quality-plan-metric", true)
-  metric
-    .append("div")
-    .classed("quality-plan-metric-value", true)
-    .text((entry: QualityPlanMetric) => entry.value)
-  metric
-    .append("div")
-    .classed("quality-plan-metric-label", true)
-    .text((entry: QualityPlanMetric) => entry.label)
-}
-
-function renderQualityPlans<PElement extends BaseType, PDatum>(
-  root: Selection<HTMLElement, unknown, PElement, PDatum>,
-  specification: FactorySpecification,
-  plans: readonly QualityTargetPlan[],
-): void {
-  const list = root
-    .selectAll<HTMLDivElement, readonly QualityTargetPlan[]>("div.quality-plan-list")
-    .data(plans.length === 0 ? [] : [plans])
-    .join("div")
-    .classed("quality-plan-list", true)
-
-  list
-    .selectAll<HTMLDetailsElement, QualityTargetPlan>("details.quality-plan")
-    .data(plans)
-    .join("details")
-    .classed("quality-plan", true)
-    .property("open", true)
-    .each(function (this: HTMLDetailsElement, plan: QualityTargetPlan) {
-      const card = select(this)
-      card.selectAll("*").remove()
-      const tier = QUALITY_TIERS[plan.qualityLevel] ?? `Quality ${plan.qualityLevel}`
-      const summary = card.append("summary").classed("quality-plan-title", true)
-      summary.append("span").classed("quality-plan-title-main", true).text(`${tier} ${plan.item.name}`)
-      summary
-        .append("span")
-        .classed("quality-plan-title-rate", true)
-        .text(`${specification.format.rate(plan.requested)}/${specification.format.rateName}`)
-      const recyclerMachines = plan.operations
-        .filter((operation) => operation.kind === "recycle" || operation.kind === "dispose")
-        .reduce((total, operation) => total.add(operation.machineCount), zero)
-      summary
-        .append("span")
-        .classed("quality-plan-title-profile", true)
-        .text(
-          `${qualityPlanProfileLabel(specification, plan)}${recyclerMachines.isZero() ? "" : ` · ${specification.format.count(recyclerMachines)} recyclers`}`,
-        )
-
-      const allFresh = [...plan.freshInputs, ...plan.fluidInputs]
-      const localFeed = subtractQualifiedAmounts(allFresh, plan.importedInputs)
-      const feed = card.append("section").classed("quality-plan-material quality-plan-primary-section", true)
-      feed.append("h4").text("Feed")
-      renderQualifiedAmounts(
-        feed.append("div").classed("quality-plan-lines", true),
-        specification,
-        localFeed,
-        "No local raw inputs",
-      )
-
-      if (plan.importedInputs.length > 0) {
-        const planetName = specification.planets?.get(plan.planetKey)?.name ?? plan.planetKey
-        const imports = card.append("section").classed("quality-plan-imports quality-plan-primary-section", true)
-        imports.append("h4").text(`Bring to ${planetName}`)
-        renderQualifiedAmounts(
-          imports.append("div").classed("quality-plan-lines", true),
-          specification,
-          plan.importedInputs,
-        )
-      }
-
-      const build = card.append("section").classed("quality-plan-build quality-plan-primary-section", true)
-      build.append("h4").text("Build")
-      const buildLines = aggregateQualityBuildLines(plan)
-      for (const stageName of QUALITY_BUILD_STAGE_ORDER) {
-        const stageLines = buildLines.filter((line) => line.stage === stageName)
-        if (stageLines.length === 0) continue
-        const stage = build.append("details").classed("quality-plan-build-stage", true)
-        const stageMachines = stageLines.reduce((total, line) => total.add(line.machineCount), zero)
-        const stageSummary = stage.append("summary")
-        stageSummary.append("span").text(stageName)
-        stageSummary
-          .append("span")
-          .classed("quality-plan-build-stage-meta", true)
-          .text(
-            `${stageLines.length} ${stageLines.length === 1 ? "step" : "steps"}${stageMachines.isZero() ? "" : ` · ${specification.format.count(stageMachines)} machines`}`,
-          )
-        const rows = stage
-          .selectAll<HTMLDivElement, QualityBuildLine>("div.quality-plan-build-line")
-          .data(stageLines)
-          .join("div")
-          .classed("quality-plan-build-line", true)
-        const machine = rows.append("div").classed("quality-plan-build-machine", true)
-        machine.append("strong").text((line) => {
-          const building = line.configuration.building
-          const machineName = building === null ? "Hand crafting" : formatEquipmentName(building.name)
-          const quality =
-            line.configuration.machineQuality.key === "normal" ? "" : `${line.configuration.machineQuality.name} `
-          return `${specification.format.count(line.machineCount)} × ${quality}${machineName}`
-        })
-        machine.append("span").text((line) => ` — ${qualityOperationLabel(line)}`)
-        const equipment = rows.append("div").classed("quality-plan-build-equipment", true)
-        equipment.each(function (line) {
-          renderQualityEquipment(select<HTMLDivElement, QualityBuildLine>(this), line.configuration)
-        })
-      }
-
-      const routing = card.append("section").classed("quality-plan-routing quality-plan-primary-section", true)
-      routing.append("h4").text("Routing")
-      const routingLines = [
-        `Keep ${tier} ${plan.item.name}.`,
-        `Recycle lower-quality products automatically${plan.recyclerRecipe === null ? " where a real recycler route exists" : ""}.`,
-      ]
-      if (plan.surplusOutputs.length > 0) routingLines.push("Store or route the unavoidable outputs listed in details.")
-      routing
-        .append("div")
-        .classed("quality-plan-lines", true)
-        .selectAll("div")
-        .data(routingLines)
-        .join("div")
-        .text((line: string) => line)
-
-      const advanced = card.append("details").classed("quality-plan-advanced", true)
-      advanced.append("summary").text("Quality math and full operation rates")
-      const advancedBody = advanced.append("div").classed("quality-plan-advanced-body", true)
-      const meta = advancedBody.append("div").classed("quality-plan-meta", true)
-      meta
-        .append("span")
-        .text(`Objective: ${plan.objective === "configured" ? "practical configured policy" : plan.objective}`)
-      meta.append("span").text("Automatic tier policy")
-      renderMetricGrid(advancedBody, qualityPlanDiagnosticMetrics(specification, plan))
-
-      const operationTable = advancedBody.append("table").classed("quality-plan-operations", true)
-      const header = operationTable.append("thead").append("tr")
-      for (const label of [
-        "Operation",
-        "Input quality",
-        `Rate/${specification.format.rateName}`,
-        "Machines",
-        "Power",
-        "Equipment",
-      ]) {
-        header.append("th").text(label)
-      }
-      const rows = operationTable
-        .append("tbody")
-        .selectAll<HTMLTableRowElement, QualityOperationRate>("tr")
-        .data(plan.operations)
-        .join("tr")
-      rows.append("td").text((operation: QualityOperationRate) => qualityOperationLabel(operation))
-      rows
-        .append("td")
-        .text(
-          (operation: QualityOperationRate) =>
-            QUALITY_TIERS[operation.qualityLevel] ?? `Quality ${operation.qualityLevel}`,
-        )
-      rows
-        .append("td")
-        .classed("numeric", true)
-        .text((operation: QualityOperationRate) => specification.format.rate(operation.rate))
-      rows
-        .append("td")
-        .classed("numeric", true)
-        .text((operation: QualityOperationRate) => specification.format.count(operation.machineCount))
-      rows
-        .append("td")
-        .classed("numeric", true)
-        .text((operation: QualityOperationRate) => {
-          const represented = powerRepresentation(operation.power)
-          return `${specification.format.count(represented.power)} ${represented.suffix}`
-        })
-      const equipment = rows
-        .append("td")
-        .append("div")
-        .classed("quality-plan-build-equipment quality-plan-operation-equipment", true)
-      equipment
-        .append("span")
-        .classed("quality-plan-operation-machine", true)
-        .text((operation: QualityOperationRate) => {
-          const building = operation.configuration.building
-          const quality =
-            operation.configuration.machineQuality.key === "normal"
-              ? ""
-              : `${operation.configuration.machineQuality.name} `
-          return `${quality}${building === null ? "Hand crafting" : formatEquipmentName(building.name)}`
-        })
-      equipment.each(function (operation) {
-        renderQualityEquipment(select(this), operation.configuration)
-      })
-
-      if (plan.surplusOutputs.length > 0) {
-        const surplus = advancedBody.append("div").classed("quality-plan-surplus", true)
-        surplus.append("h4").text("Unavoidable outputs")
-        renderQualifiedAmounts(
-          surplus.append("div").classed("quality-plan-lines", true),
-          specification,
-          plan.surplusOutputs,
-        )
-      }
-
-      advancedBody
-        .append("div")
-        .classed("quality-plan-notes", true)
-        .selectAll("div")
-        .data(plan.warnings)
-        .join("div")
-        .text((warning: string) => warning)
-    })
-}
-
-function renderFactorySummary(specification: FactorySpecification, totals: Totals): void {
-  const summary = getFactorySummary(specification, totals)
-  const root = select<HTMLElement, unknown>("#factory_summary").property("hidden", false)
-  const totalPower = summary.electricalPower.add(summary.planning.beaconPower)
-  const { power, suffix } = powerRepresentation(totalPower)
-  const cards: SummaryCard[] = [
-    { label: "Active recipes", value: formatCanadianNumber(String(summary.recipeCount)) },
-    { label: "Machines to place", value: formatCanadianNumber(summary.placedMachines.toDecimal(0)) },
-    { label: "Electric + beacon power", value: `${specification.format.count(power)} ${suffix}` },
-  ]
-  if (!summary.planning.pollution.isZero())
-    cards.push({ label: "Pollution / min", value: specification.format.count(summary.planning.pollution) })
-  if (!summary.planning.spores.isZero())
-    cards.push({ label: "Spores / min", value: specification.format.count(summary.planning.spores) })
-  if (summary.planning.rocket !== null) {
-    cards.push({
-      label: `Rocket launches / ${specification.format.rateName}`,
-      value: specification.format.rate(summary.planning.rocket.launches),
-    })
-  }
-  if (!summary.planning.aquiloHeat.isZero()) {
-    const heat = powerRepresentation(summary.planning.aquiloHeat)
-    cards.push({ label: "Aquilo heat", value: `${specification.format.count(heat.power)} ${heat.suffix}` })
-  }
-  if (summary.planning.transport.length > 0)
-    cards.push({
-      label: "Cross-location flows",
-      value: formatCanadianNumber(String(summary.planning.transport.length)),
-    })
-  if (summary.importedItems.length > 0)
-    cards.push({ label: "Imported items", value: formatCanadianNumber(String(summary.importedItems.length)) })
-  const lowest = summary.planning.freshness[0]
-  if (lowest !== undefined) {
-    cards.push({
-      label: "Lowest freshness",
-      value: `${formatCanadianNumber((lowest.remaining.toFloat() * 100).toFixed(1))}% · ${lowest.item.name}`,
-    })
-  }
-  for (const [fuel, rate] of [...summary.fuelRates].sort(([fuelA], [fuelB]) => fuelA.name.localeCompare(fuelB.name))) {
-    cards.push({
-      label: `${fuel.name} / ${specification.format.rateName}`,
-      value: specification.format.rate(rate),
-    })
-  }
-  const card = root
-    .selectAll<HTMLDivElement, SummaryCard>("div.factory-summary-card")
-    .data(cards, (entry: SummaryCard) => entry.label)
-    .join("div")
-    .classed("factory-summary-card", true)
-  card
-    .selectAll<HTMLDivElement, SummaryCard>("div.factory-summary-value")
-    .data((entry: SummaryCard) => [entry])
-    .join("div")
-    .classed("factory-summary-value", true)
-    .text((entry: SummaryCard) => entry.value)
-  card
-    .selectAll<HTMLDivElement, SummaryCard>("div.factory-summary-label")
-    .data((entry: SummaryCard) => [entry])
-    .join("div")
-    .classed("factory-summary-label", true)
-    .text((entry: SummaryCard) => entry.label)
-
-  const warnings: string[] = []
-  if (summary.planning.rocket?.launchLimited) {
-    const rocket = summary.planning.rocket
-    warnings.push(
-      `Rocket silo launch-limited at ${specification.format.rate(rocket.animationLaunchRate)} launches/${specification.format.rateName} per silo; more speed will not increase throughput.`,
-    )
-  }
-  for (const target of summary.planning.qualityTargets) {
-    warnings.push(
-      `${target.tier} ${target.item.name}: ${formatCanadianNumber((target.probability.toFloat() * 100).toFixed(3))}% first-pass chance; ${specification.format.rate(target.totalProduction)}/${specification.format.rateName} direct crafts if lower-quality outputs are not reused.`,
-    )
-  }
-  if (
-    summary.qualityRecipeCount > 0 &&
-    summary.planning.qualityTargets.length === 0 &&
-    summary.planning.qualityPlans.length === 0
-  ) {
-    warnings.push("Quality modules selected; choose a target quality to include its yield.")
-  }
-  const expired = summary.planning.freshness.filter((row) => row.expired)
-  if (expired.length > 0)
-    warnings.push(`Fully spoiled after the configured delay: ${expired.map((row) => row.item.name).join(", ")}.`)
-  const agriculturalScience = summary.planning.freshness.find((row) => row.item.key === "agricultural-science-pack")
-  if (agriculturalScience !== undefined && !specification.freshnessDelayMinutes.isZero()) {
-    warnings.push(
-      `Agricultural science after ${formatCanadianNumber(specification.freshnessDelayMinutes.toDecimal())} min: ${formatCanadianNumber((agriculturalScience.remaining.toFloat() * 100).toFixed(1))}% effective.`,
-    )
-  }
-  for (const row of summary.planning.asteroidConstraints.filter((entry) => entry.exceeded)) {
-    warnings.push(
-      `${row.item.name} cap exceeded: ${specification.format.rate(row.required)} required vs ${specification.format.rate(row.limit)} available/${specification.format.rateName}.`,
-    )
-  }
-  if (!summary.planning.aquiloHeat.isZero())
-    warnings.push("Aquilo heat excludes belts, pipes, inserters, pumps, tanks, and other logistics entities.")
-
-  root
-    .selectAll<HTMLDivElement, string>("div.factory-summary-warning")
-    .data(warnings)
-    .join("div")
-    .classed("factory-summary-warning", true)
-    .text((warning: string) => warning)
-
-  renderQualityPlans(root, specification, summary.planning.qualityPlans)
-}
-
-function getErrorCode(error: unknown): string | null {
-  if (typeof error !== "object" || error === null || !("code" in error)) return null
-  const code = error.code
-  return typeof code === "string" ? code : null
-}
-
-export function displayCalculationError(_specification: FactorySpecification, error: unknown): void {
-  const code = getErrorCode(error)
-  const rawMessage = error instanceof Error ? error.message : String(error)
-  let message = "The current settings could not produce a complete factory."
-  let title = "Unable to calculate this factory"
-  let guidance = "Check the target values, selected recipes, machines, locations, and resource priorities."
-
-  if (code === "missing-recipe") {
-    message = rawMessage
-    guidance =
-      "Choose a compatible production location above, enable a recipe in Settings, choose another recipe, or click the item icon in the Factory table to treat that item as imported."
-  } else if (code === "infeasible") {
-    message = "This combination of recipes and resource priorities cannot produce every requested output."
-    guidance =
-      "Review alternate recipes and resource priorities. A cyclic or multi-output chain may require at least one additional recipe or imported input."
-  } else if (
-    /cannot produce .* output with the current quality settings|No recipe is available to produce/i.test(rawMessage)
-  ) {
-    message = rawMessage
-  } else if (/integer|number|denominator|divide|invalid/i.test(rawMessage)) {
-    title = "Invalid numeric value"
-    message = "One of the entered values is not a valid number."
-    guidance = "Use a whole number, decimal, or fraction such as 60, 2.5, or 1/3."
-  }
-
-  const root = select<HTMLElement, unknown>("#calculation_error").property("hidden", false)
-  root.select(".calculation-error-title").text(title)
-  root.select(".calculation-error-message").text(message)
-  root.select(".calculation-error-guidance").text(guidance)
-  select("#factory_summary").property("hidden", true)
-  select("table#totals").property("hidden", true)
-}
-
-export function displayItems(spec: FactorySpecification, totals: Totals): void {
-  const belt = spec.belt
-  if (belt === null) throw new Error("Belt data is not initialized")
-
-  select("#calculation_error").property("hidden", true)
-  renderFactorySummary(spec, totals)
-  getDisplayGroups(totals)
-  const table = select<HTMLTableElement, unknown>("table#totals")
-  const showFactoryTable = displayGroups.some((group) => group.rows.length > 0)
-  table.property("hidden", !showFactoryTable)
-  if (!showFactoryTable) {
-    table.selectAll("thead th").remove()
-    table.selectAll("tbody").remove()
-    return
-  }
-
-  const showLocations = spec.selectedPlanets.size > 1
-  const showSurplus = totals.surplus.size > 0
-  const headers: Header[] = [
-    new Header("Item", 2, false, null, null, "left"),
-    new Header(`Rate / ${spec.format.rateName}`, 1, false, null, null, "right"),
-    ...(showSurplus ? [new Header(`Surplus / ${spec.format.rateName}`, 1, true, null, null, "right")] : []),
-    new Header("Belts", 1, false, `Select stacking per item; counts use ${belt.name}`, belt.icon, "right"),
-    new Header("Machines", 2, false, null, null, "center"),
-    ...(showLocations ? [new Header("Location", 1, false, null, null, "left")] : []),
-    new Header("Modules", 1, false, null, null, "left"),
-    new Header("Beacons", 1, false, null, null, "left"),
-    new Header("Power", 1, false, null, null, "right"),
-    new Header("", 1, false, null, null, "center"),
-  ]
-  const totalCols = headers.reduce((sum, header) => sum + header.colspan, 0)
-
-  table.classed("nosurplus", totals.surplus.size === 0)
-
-  const headerRow = table
-    .selectAll<HTMLTableRowElement, unknown>("thead tr")
-    .classed("factory-header", true)
-    .selectAll<HTMLTableCellElement, Header>("th")
-    .data(headers)
-  headerRow.exit().remove()
-  const headerCell = headerRow
-    .join("th")
-    .classed("surplus", (header: Header) => header.surplus)
-    .classed("align-left", (header: Header) => header.align === "left")
-    .classed("align-center", (header: Header) => header.align === "center")
-    .classed("align-right", (header: Header) => header.align === "right")
-    .attr("colspan", (header: Header) => header.colspan)
-    .attr("data-tooltip", (header: Header) => header.title)
-  headerCell.each(function (this: Element, header: Header) {
-    const cell = select(this)
-    cell.selectAll("*").remove()
-    const icon = header.icon
-    if (icon !== null) cell.append(() => icon.make(18)).classed("header-icon", true)
-    cell.append("span").text(header.text)
-  })
-
-  const rowGroup = table
-    .selectAll<HTMLTableSectionElement, DisplayGroup>("tbody")
-    .data(displayGroups)
-    .join("tbody")
-    .classed("display-group", true)
-    .classed("multi", (group: DisplayGroup) => group.rows.length > 1)
-  rowGroup.selectAll("tr.breakdown").remove()
-
-  const displayRows = rowGroup
-    .selectAll<HTMLTableRowElement, DisplayRow>("tr.display-row")
-    .data<DisplayRow>((group: DisplayGroup) => group.rows)
-    .join((enter) => {
-      const rows = enter.append("tr").classed("display-row", true)
-
-      rows
-        .append("td")
-        .classed("item", true)
-        .on("click", function (this: Element) {
-          toggleBreakdownHandler.call(this)
-        })
-        .append("svg")
-        .classed("breakdown-arrow", true)
-        .attr("viewBox", "0 0 16 16")
-        .attr("width", 16)
-        .attr("height", 16)
-        .append("use")
-        .attr("href", "images/icons.svg#right")
-
-      const itemCell = rows.append("td").classed("item item-identity", true)
-      const itemToggle = itemCell.append("button").classed("item-import-toggle", true).attr("type", "button")
-      itemToggle.append("span").classed("item-icon", true)
-      itemToggle.append("span").classed("item-name", true)
-      itemToggle.append("span").classed("item-state", true)
-
-      rows.append("td").classed("item right-align", true).append("tt").classed("item-rate", true)
-      rows.append("td").classed("item surplus right-align", true).append("tt").classed("surplus-rate", true)
-      const logisticsCell = rows.append("td").classed("item right-align logistics-cell pad-right", true)
-      logisticsCell.append("tt").classed("belt-count", true)
-      const beltStackPolicy = logisticsCell
-        .append("select")
-        .classed("belt-stack-policy", true)
-        .attr("title", "Set belt stacking for this item")
-        .on("change", function (this: HTMLSelectElement, _event: Event, row: DisplayRow) {
-          const value = this.value
-          if (value !== "" && !isBeltStackPolicy(value)) return
-          spec.setBeltStackOverride(requireRowItem(row), value === "" ? null : value)
-          spec.updateSolution()
-        })
-      beltStackPolicy.append("option").attr("value", "").text("Default")
-      beltStackPolicy.append("option").attr("value", "auto").text("Auto")
-      beltStackPolicy.append("option").attr("value", "stacked").text("Stacked")
-      beltStackPolicy.append("option").attr("value", "unstacked").text("Unstacked")
-      logisticsCell.append("span").classed("belt-stack-height", true)
-
-      rows.append("td").classed("pad building building-icon leftmost right-align", true)
-      rows.append("td").classed("right-align building", true).append("tt").classed("building-count", true)
-      rows.append("td").classed("location-cell", true)
-      rows.append("td").classed("pad building module module-cell", true)
-
-      const beaconCell = rows.append("td").classed("pad building module beacon", true)
-      const beaconControls = beaconCell.append("span").classed("beacon-controls", true)
-      beaconControls.append("span").classed("beacon-container", true)
-      const beaconQuality = beaconControls.append("span").classed("beacon-quality-selector", true)
-      beaconQuality.each(function () {
-        const selector = select(this)
-        makeDropdown(selector)
-          .classed("beacon-quality-dropdown", true)
-          .append("div")
-          .classed("equipment-quality-strip", true)
-        selector.select(".dropdownWrapper").append("span").classed("beacon-quality-trigger", true)
-      })
-      const beaconCountSpan = beaconControls.append("span").classed("beacon-count", true)
-      beaconCountSpan.append("span").text(" \u00d7 ")
-      beaconCountSpan
-        .append("input")
-        .attr("type", "text")
-        .attr("size", 3)
-        .on("change", function (this: Element, event: Event, row: DisplayRow) {
-          const target = event.target
-          if (!(target instanceof HTMLInputElement)) return
-          const moduleSpec = requireRowModuleSpec(row)
-          const recipe = requireRowRecipe(row)
-          moduleSpec.setBeaconCount(Rational.from_string(target.value))
-          if (spec.isFactoryTarget(recipe)) spec.updateSolution()
-          else spec.display()
-        })
-
-      const powerCell = rows.append("td").classed("right-align building power-cell", true)
-      powerCell.append("span").classed("fuel-icon", true)
-      powerCell.append("tt").classed("power", true)
-
-      rows
-        .append("td")
-        .classed("popout pad item", true)
-        .append("a")
-        .attr("target", "_blank")
-        .attr("data-tooltip", "Open this item as a separate plan.")
-        .append("svg")
-        .classed("popout", true)
-        .attr("viewBox", "0 0 24 24")
-        .attr("width", 24)
-        .attr("height", 24)
-        .append("use")
-        .attr("href", "images/icons.svg#popout")
-
-      return rows
-    })
-    .classed("nobuilding", (row: DisplayRow) => row.building === null)
-    .classed("nomodule", (row: DisplayRow) => row.moduleSpec === null)
-    .classed("noitem", (row: DisplayRow) => row.item === null)
-    .classed(
-      "target-output",
-      (row: DisplayRow) => row.item !== null && spec.buildTargets.some((target) => target.item === row.item),
-    )
-    .classed("imported-output", (row: DisplayRow) => row.item !== null && spec.ignore.has(row.item))
-    .classed("launch-limited", (row: DisplayRow) => isLaunchLimitedRow(row))
-
-  const locationCell = displayRows
-    .selectAll<HTMLTableCellElement, DisplayRow>("td.location-cell")
-    .classed("hide", !showLocations)
-  locationCell.selectAll("*").remove()
-  locationCell
-    .filter((row: DisplayRow) => row.recipe instanceof Recipe && row.recipe.isReal())
-    .append((row: DisplayRow) => makeLocationSelector(row))
-  locationCell
-    .filter((row: DisplayRow) => !(row.recipe instanceof Recipe) || !row.recipe.isReal())
-    .text((row: DisplayRow) => getLocationCellText(spec, row.recipe, row.building))
-
-  const itemRows = displayRows.filter((row: DisplayRow) => row.item !== null)
-  const itemToggle = itemRows
-    .selectAll<HTMLButtonElement, DisplayRow>("button.item-import-toggle")
-    .classed("imported", (row: DisplayRow) => spec.ignore.has(requireRowItem(row)))
-    .attr("data-tooltip", (row: DisplayRow) => {
-      const item = requireRowItem(row)
-      return spec.ignore.has(item) ? `Produce ${item.name} in this plan` : `Treat ${item.name} as imported`
-    })
-    .attr("aria-label", (row: DisplayRow) => {
-      const item = requireRowItem(row)
-      return spec.ignore.has(item) ? `Produce ${item.name} in this plan` : `Treat ${item.name} as imported`
-    })
-    .on("click", (event: Event, row: DisplayRow) => toggleIgnoreHandler(event, { item: requireRowItem(row) }))
-  const itemIcon = itemToggle.select<HTMLSpanElement>("span.item-icon")
-  itemIcon.selectAll("*").remove()
-  itemIcon
-    .append((row: DisplayRow) => {
-      const item = requireRowItem(row)
-      const icon = new ItemIcon(item)
-      icon.setText(spec.ignore.has(item) ? "Imported." : "Produced in this plan.")
-      return makeQualityIcon(icon.icon, null, {
-        label: item.name,
-        tooltip: () => icon.renderTooltip(),
-      })
-    })
-    .classed("ignore", (row: DisplayRow) => spec.ignore.has(requireRowItem(row)))
-  itemToggle.select<HTMLSpanElement>("span.item-name").text((row: DisplayRow) => requireRowItem(row).name)
-  itemToggle.select<HTMLSpanElement>("span.item-state").text((row: DisplayRow) => {
-    const item = requireRowItem(row)
-    const labels: string[] = []
-    if (spec.buildTargets.some((target) => target.item === item)) labels.push("target")
-    if (spec.ignore.has(item)) labels.push("imported")
-    if (isLaunchLimitedRow(row)) labels.push("launch-limited")
-    return labels.join(" · ")
-  })
-  itemRows.selectAll<HTMLElement, DisplayRow>("tt.item-rate").text((row: DisplayRow) => {
-    const item = requireRowItem(row)
-    const rate = requireItemRate(totals.items, item, "item")
-    const surplus = totals.surplus.get(item) ?? zero
-    return spec.format.alignRate(rate.sub(surplus))
-  })
-  itemRows
-    .selectAll<HTMLElement, DisplayRow>("tt.surplus-rate")
-    .text((row: DisplayRow) => spec.format.alignRate(totals.surplus.get(requireRowItem(row)) ?? zero))
-
-  const beltRows = itemRows.filter((row: DisplayRow) => requireRowItem(row).phase === "solid")
-  beltRows
-    .selectAll<HTMLTableCellElement, DisplayRow>("td.logistics-cell")
-    .attr("data-tooltip", (row: DisplayRow) => {
-      const item = requireRowItem(row)
-      const rate = requireItemRate(totals.items, item, "item")
-      const logistics = getLogistics(item, rate, spec)
-      if (logistics === null) throw new Error(`Missing solid logistics report for ${item.key}`)
-      const stackHeight = formatCanadianNumber(spec.getEffectiveBeltStackSize(item).toDecimal())
-      const policy = spec.getBeltStackPolicy(item)
-      const source = spec.getBeltStackPolicySource(item)
-      const policyText =
-        policy === "auto"
-          ? spec.isItemAutomaticallyBeltStacked(item)
-            ? "Auto: direct output"
-            : "Auto: unstacked"
-          : policy === "stacked"
-            ? source === "override"
-              ? "Stacked override"
-              : "Default: stacked"
-            : source === "override"
-              ? "Unstacked override"
-              : "Default: unstacked"
-      const stackLabel = logistics.stackRate.equal(one) ? "stack" : "stacks"
-      const slotLabel = logistics.bufferSlots.equal(one) ? "slot" : "slots"
-      const wagonLabel = logistics.wagonLoads.equal(one) ? "load" : "loads"
-      return `${belt.name} equivalent at ×${stackHeight} (${policyText})\n${spec.format.rate(logistics.stackRate)} inventory ${stackLabel}/${spec.format.rateName}\n${formatCanadianNumber(logistics.bufferSlots.toDecimal(0))} buffer ${slotLabel} (${formatCanadianNumber(spec.bufferMinutes.toDecimal())}m)\n${spec.format.count(logistics.wagonLoads)} wagon ${wagonLabel}/${spec.format.rateName}.`
-    })
-    .selectAll<HTMLElement, DisplayRow>("tt.belt-count")
-    .text((row: DisplayRow) => {
-      const item = requireRowItem(row)
-      return spec.format.alignCount(spec.getBeltCount(item, requireItemRate(totals.items, item, "item")))
-    })
-  beltRows
-    .selectAll<HTMLSelectElement, DisplayRow>("select.belt-stack-policy")
-    .property("hidden", false)
-    .attr("aria-label", (row: DisplayRow) => `Belt stacking for ${requireRowItem(row).name}`)
-    .property("value", (row: DisplayRow) => {
-      const item = requireRowItem(row)
-      return spec.getBeltStackPolicySource(item) === "default" ? "" : spec.getBeltStackPolicy(item)
-    })
-  beltRows
-    .selectAll<HTMLElement, DisplayRow>("span.belt-stack-height")
-    .property("hidden", false)
-    .text(
-      (row: DisplayRow) => `×${formatCanadianNumber(spec.getEffectiveBeltStackSize(requireRowItem(row)).toDecimal())}`,
-    )
-
-  const pipeRows = itemRows.filter((row: DisplayRow) => requireRowItem(row).phase === "fluid")
-  pipeRows.selectAll<HTMLSelectElement, DisplayRow>("select.belt-stack-policy").property("hidden", true)
-  pipeRows.selectAll<HTMLElement, DisplayRow>("span.belt-stack-height").property("hidden", true)
-  pipeRows
-    .selectAll<HTMLTableCellElement, DisplayRow>("td.logistics-cell")
-    .attr("data-tooltip", usesLegacyCalculation() ? "Legacy maximum pipe length" : null)
-    .selectAll<HTMLElement, DisplayRow>("tt.belt-count")
-    .text((row: DisplayRow) => pipeText(requireItemRate(totals.items, requireRowItem(row), "item")))
-
-  const itemBuildingCell = itemRows.selectAll<HTMLTableCellElement, DisplayRow>("td.building-icon")
-  itemBuildingCell.selectAll("*").remove()
-  itemBuildingCell
-    .filter(
-      (row: DisplayRow) => getItemProductionRecipes(requireRowItem(row)).length > 0 && row.recipe instanceof Recipe,
-    )
-    .append((row: DisplayRow) => {
-      const selector = makeRecipeSelector({ item: requireRowItem(row), recipe: requireRowRecipe(row) })
-      return requireNode(selector, "recipe selector")
-    })
-
-  displayRows.selectAll("td.building-icon > :not(.recipe-selector)").remove()
-  const buildingRows = displayRows.filter((row: DisplayRow) => row.building !== null && row.recipe instanceof Recipe)
-  const buildingCell = buildingRows.selectAll<HTMLTableCellElement, DisplayRow>("td.building-icon")
-  buildingCell.append((row: DisplayRow) => {
-    const recipe = requireRowRecipe(row)
-    const building = requireRowBuilding(row)
-    const compatibleBuildings = spec.getCompatibleBuildings(recipe)
-    if (!building.supportsEquipmentQuality() && compatibleBuildings.length <= 1) return building.icon.make(32)
-    return makeMachineSelector({ recipe, building }, compatibleBuildings)
-  })
-  buildingCell.append("span").text(" \u00d7")
-  buildingRows
-    .selectAll<HTMLElement, DisplayRow>("tt.building-count")
-    .attr("data-tooltip", getBuildingCountTooltip)
-    .text((row: DisplayRow) => {
-      const recipe = requireRowRecipe(row)
-      return spec.format.alignCount(spec.getCount(recipe, requireRecipeRate(totals.rates, recipe, "recipe")))
-    })
-
-  const moduleRowsSelection = displayRows.filter((row: DisplayRow) => row.moduleSpec !== null)
-  const moduleCell = moduleRowsSelection.selectAll<HTMLTableCellElement, DisplayRow>("td.module-cell")
-  moduleCell.selectAll("*").remove()
-  moduleRowsSelection.selectAll("span.beacon-container").selectAll("*").remove()
-  moduleDropdown(moduleCell, (row: DisplayRow) => row.slots)
-  moduleDropdown(
-    moduleRowsSelection.selectAll<HTMLSpanElement, DisplayRow>("span.beacon-container"),
-    (row: DisplayRow) => row.beaconModules,
-  )
-  moduleRowsSelection.selectAll<HTMLSpanElement, DisplayRow>("span.beacon-quality-selector").each(function (row) {
-    const selector = select(this)
-    const moduleSpec = requireRowModuleSpec(row)
-    const quality = moduleSpec.beaconQuality
-    selector.property(
-      "hidden",
-      spec.getAvailableQualities().length <= 1 || moduleSpec.beaconModules.every((module) => module === null),
-    )
-    selector
-      .select(".dropdownWrapper")
-      .attr("aria-label", `${quality.name} beacon quality`)
-      .attr(
-        "data-tooltip",
-        `${quality.name} Beacon\n${formatCanadianNumber(getBeaconEffect(quality).mul(Rational.from_integer(100)).toDecimal())}% distribution effectivity\n${formatCanadianNumber(quality.beaconPowerUsageMultiplier.mul(Rational.from_integer(100)).toDecimal())}% base power`,
-      )
-    selector
-      .select<HTMLSpanElement>("span.beacon-quality-trigger")
-      .selectAll<HTMLImageElement, Quality>("img")
-      .data([quality])
-      .join((enter) => enter.append((option) => option.icon.make(20, true)))
-      .each(function (option) {
-        const icon = option.icon.make(20, true)
-        this.style.cssText = icon.style.cssText
-      })
-    selector
-      .select(".equipment-quality-strip")
-      .selectAll<HTMLButtonElement, Quality>("button")
-      .data(spec.getAvailableQualities())
-      .join("button")
-      .attr("type", "button")
-      .classed("selected", (option) => option === quality)
-      .attr("title", (option) => `${option.name} quality`)
-      .each(function (option) {
-        this.replaceChildren(option.icon.make(20, true))
-      })
-      .on("click", (event: MouseEvent, option) => {
-        event.stopPropagation()
-        closeDropdowns()
-        globalThis.setTimeout(() => {
-          moduleSpec.setBeaconQuality(option)
-          if (spec.isFactoryTarget(moduleSpec.recipe)) spec.updateSolution()
-          else spec.display()
-        }, 0)
-      })
-  })
-  moduleRowsSelection
-    .selectAll<HTMLInputElement, DisplayRow>("span.beacon-count input")
-    .attr("value", (row: DisplayRow) => spec.format.count(requireRowModuleSpec(row).beaconCount))
-
-  const fuelRows = buildingRows.filter((row: DisplayRow) => requireRowBuilding(row).fuel !== null)
-  const fuelIcon = fuelRows.selectAll<HTMLSpanElement, DisplayRow>(".fuel-icon")
-  fuelIcon.selectAll("*").remove()
-  fuelIcon.append((row: DisplayRow) => {
-    const fuel = spec.getFuelForRecipe(requireRowRecipe(row))
-    if (fuel === null) throw new Error(`Missing fuel for ${requireRowRecipe(row).key}`)
-    return fuel.icon.make(24)
-  })
-  fuelIcon.append("span").text(" × ")
-  fuelRows.selectAll<HTMLElement, DisplayRow>("tt.power").text((row: DisplayRow) => {
-    const recipe = requireRowRecipe(row)
-    const rate = requireRecipeRate(totals.rates, recipe, "recipe")
-    const { power } = spec.getPowerUsage(recipe, rate)
-    const recipeFuel = spec.getFuelForRecipe(recipe)
-    if (recipeFuel === null) throw new Error(`Missing fuel for ${recipe.key}`)
-    return `${spec.format.alignRate(power.div(recipeFuel.value))}/${spec.format.rateName}`
-  })
-
-  const electricRows = buildingRows.filter((row: DisplayRow) => requireRowBuilding(row).fuel === null)
-  electricRows.selectAll(".fuel-icon").selectAll("*").remove()
-  electricRows.selectAll<HTMLElement, DisplayRow>("tt.power").text((row: DisplayRow) => {
-    const recipe = requireRowRecipe(row)
-    const rate = requireRecipeRate(totals.rates, recipe, "recipe")
-    return alignPower(spec.getPowerUsage(recipe, rate).power)
-  })
-  refreshRecipeSettings(spec)
-
-  itemRows.selectAll<HTMLAnchorElement, DisplayRow>("td.popout a").attr("href", (row: DisplayRow) => {
-    const item = requireRowItem(row)
-    const rate = requireItemRate(totals.items, item, "item")
-    const rates: readonly (readonly [Item, Rational])[] = [[item, rate]]
-    return `#${formatSettings(true, "totals", rates)}`
-  })
-
-  const rowsWithBreakdowns = displayRows.filter((row: DisplayRow) => row.breakdown !== null)
-  const breakdownContainers = rowsWithBreakdowns
-    .select<HTMLTableRowElement>(function (this: Element) {
-      const breakdown = document.createElement("tr")
-      this.parentElement?.insertBefore(breakdown, this.nextSibling)
-      return breakdown
-    })
-    .classed("breakdown", true)
-    .classed("breakdown-open", function (this: Element) {
-      return this.previousElementSibling?.classList.contains("breakdown-open") ?? false
-    })
-  breakdownContainers.append("td")
-  const breakdownRows = breakdownContainers
-    .append("td")
-    .attr("colspan", totalCols - 1)
-    .append("table")
-    .selectAll<HTMLTableRowElement, BreakdownRow>("tr")
-    .data<BreakdownRow>((row: DisplayRow) => row.breakdown ?? [])
-    .join("tr")
-    .classed("breakdown-row", true)
-    .classed("breakdown-first-output", (row: BreakdownRow) => row.divider)
-
-  const breakdownIcons = breakdownRows.append("td")
-  breakdownIcons.append((row: BreakdownRow) => row.recipe.icon.make(32)).classed("item-icon", true)
-  breakdownIcons
-    .append("svg")
-    .classed("usage-arrow", true)
-    .attr("viewBox", "0 0 18 16")
-    .attr("width", 18)
-    .attr("height", 16)
-    .append("use")
-    .attr("href", "images/icons.svg#rightarrow")
-  breakdownIcons.append((row: BreakdownRow) => row.item.icon.make(32)).classed("item-icon", true)
-  breakdownRows
-    .append("td")
-    .classed("right-align", true)
-    .append("tt")
-    .classed("item-rate pad-right", true)
-    .text((row: BreakdownRow) => spec.format.alignRate(row.rate))
-
-  const breakdownBeltRows = breakdownRows.filter((row: BreakdownRow) => row.item.phase === "solid")
-  const breakdownBeltCell = breakdownBeltRows.append("td")
-  breakdownBeltCell.append(() => belt.icon.make(32))
-  breakdownBeltCell.append("span").text(" \u00d7")
-  breakdownBeltRows
-    .append("td")
-    .classed("right-align", true)
-    .append("tt")
-    .classed("belt-count pad-right", true)
-    .text((row: BreakdownRow) => spec.format.alignCount(spec.getBeltCount(row.item, row.rate)))
-
-  const breakdownPipeRows = breakdownRows.filter((row: BreakdownRow) => row.item.phase === "fluid")
-  breakdownPipeRows.append("td").append(() => new PipeIcon().icon.make(32))
-  breakdownPipeRows.append("td")
-
-  const breakdownBuildingCell = breakdownRows
-    .append("td")
-    .filter((row: BreakdownRow) => row.building !== null)
-    .classed("building", true)
-  breakdownBuildingCell.append((row: BreakdownRow) => {
-    if (row.building === null) throw new Error("Breakdown row has no building")
-    return row.building.icon.make(32)
-  })
-  breakdownBuildingCell.append("span").text(" \u00d7")
-  breakdownRows
-    .append("td")
-    .filter((row: BreakdownRow) => row.count !== null)
-    .classed("building pad-right", true)
-    .append("tt")
-    .text((row: BreakdownRow) => {
-      if (row.count === null) throw new Error("Breakdown row has no machine count")
-      return spec.format.alignCount(row.count)
-    })
-  breakdownRows
-    .append("td")
-    .filter((row: BreakdownRow) => row.percent !== null)
-    .classed("right-align", true)
-    .append("tt")
-    .text((row: BreakdownRow) => row.percent ?? "")
-}
-// endregion results.ts
-
-// region ui.ts
-// Build targets
+// region target-model.ts
+// Production targets are plain models. React owns every rendered control.
 
 function hasRecipeCategories(recipe: Recipe | null | undefined): boolean {
   return recipe !== null && recipe !== undefined && (recipe.categories.size > 0 || recipe.category !== null)
 }
 
-const SELECTED_INPUT = "selected"
-
-// events
-
-function itemHandler(target: BuildTarget): (item: Item) => void {
-  return function (item: Item) {
-    target.setItem(item, target.getRate())
-    spec.updateSolution()
-  }
-}
-
-function removeHandler(target: BuildTarget): () => void {
-  return function () {
-    spec.removeTarget(target)
-    spec.updateSolution()
-  }
-}
-
-function changeBuildingCountHandler(target: BuildTarget): () => void {
-  return function () {
-    target.buildingsChanged()
-    spec.updateSolution()
-  }
-}
-
-function changeRateHandler(target: BuildTarget): () => void {
-  return function () {
-    target.rateChanged()
-    spec.updateSolution()
-  }
-}
-
-function changeBeltCountHandler(target: BuildTarget): () => void {
-  return function () {
-    target.beltsChanged()
-    spec.updateSolution()
-  }
-}
-
-function activateOnEnter(activate: () => void): (event: KeyboardEvent) => void {
-  return function (event: KeyboardEvent) {
-    if (event.key !== "Enter") return
-    event.preventDefault()
-    activate()
-  }
-}
-
-export function handleTargetQualityChange(target: BuildTarget, requestedQuality: number): void {
+export function handleTargetQualityChange(
+  specification: FactorySpecification,
+  target: Pick<BuildTarget, "getRate" | "qualityLevel" | "setQuality" | "setQualityStrategy">,
+  requestedQuality: number,
+): void {
   const currentRate = target.getRate()
   target.setQuality(requestedQuality)
   target.setQualityStrategy(target.qualityLevel > 0 ? "auto" : "direct", currentRate)
-  spec.updateSolution()
+  specification.updateSolution()
 }
 
-function resetSearch(dropdown: Element): void {
-  let search = dropdown.getElementsByClassName("search")[0] as HTMLInputElement | undefined
-  if (search !== undefined) {
-    search.value = ""
-  }
-
-  // unhide all child nodes
-  const elems = dropdown.querySelectorAll<HTMLElement>("label, hr")
-  for (const elem of elems) {
-    elem.style.display = ""
-  }
-}
-
-function searchTargets(this: HTMLInputElement, event: KeyboardEvent): void {
-  const search = this
-  const searchText = search.value
-  const parent = search.parentElement
-  if (parent === null) return
-  const dropdown = select(parent)
-
-  if (!searchText.trim()) {
-    resetSearch(parent)
-    return
-  }
-
-  // handle enter key press (select target if only one is visible)
-  if (event.key === "Enter") {
-    const labels = dropdown.selectAll<HTMLElement, unknown>("label").filter(function () {
-      return this.style.display !== "none"
-    })
-    // don't do anything if more than one icon is visible
-    if (labels.size() === 1) {
-      const label = labels.node()
-      if (label instanceof HTMLLabelElement) {
-        const input = document.getElementById(label.htmlFor)
-        if (input instanceof HTMLInputElement) {
-          input.checked = true
-          input.dispatchEvent(new Event("change"))
-        }
-      }
-    }
-    return
-  }
-
-  // hide non-matching labels & icons
-  let currentHrHasContent = false
-  const searchState: { lastHrWithContent: HTMLElement | null } = { lastHrWithContent: null }
-  dropdown.selectAll<HTMLElement, unknown>("hr, label").each(function (item: unknown) {
-    if (this.tagName === "HR") {
-      if (currentHrHasContent) {
-        this.style.display = ""
-        searchState.lastHrWithContent = this
-      } else {
-        this.style.display = "none"
-      }
-      currentHrHasContent = false
-    } else {
-      if (!(item instanceof Item) || !itemMatchesSearch(item, searchText)) {
-        this.style.display = "none"
-      } else {
-        this.style.display = ""
-        currentHrHasContent = true
-      }
-    }
-  })
-  if (!currentHrHasContent && searchState.lastHrWithContent !== null) {
-    searchState.lastHrWithContent.style.display = "none"
-  }
-}
-
-let targetCount = 0
-let recipeSelectorCount = 0
-
-export class BuildTarget implements FactoryBuildTarget {
-  index: number
-  itemKey: string
-  item: Item
+export class BuildTarget {
   recipe: Recipe | null = null
   defaultRecipe: Recipe | null = null
   basis: TargetBasis = "machines"
@@ -15725,455 +10438,190 @@ export class BuildTarget implements FactoryBuildTarget {
   belts = zero
   qualityLevel = 0
   qualityStrategy: QualityStrategy = "direct"
-  readonly element: HTMLElement
-  readonly recipeSelector: Selection<HTMLSpanElement, undefined, null, undefined>
-  readonly qualitySelector: HTMLSelectElement
-  readonly buildingInput: HTMLInputElement
-  readonly rateInput: HTMLInputElement
-  readonly beltInput: HTMLInputElement
-  readonly beltStackHeight: HTMLSpanElement
-  readonly rateFieldLabel: HTMLLabelElement
-  readonly locationWarning: Selection<HTMLDivElement, undefined, null, undefined>
   compatibleLocations: Planet[] = []
+  private buildingInputValue = "1"
+  private beltInputValue = ""
 
-  constructor(index: number, itemKey: string, item: Item, itemGroups: ItemGroups) {
-    this.index = index
-    this.itemKey = itemKey
-    this.item = item
-
-    let element = create("li").classed("target production-target-row", true)
-    element
-      .append("button")
-      .classed("targetButton ui", true)
-      .text("×")
-      .attr("data-tooltip", "Remove this production target.")
-      .on("click", removeHandler(this))
-    const elementNode = element.node()
-    if (!(elementNode instanceof HTMLElement)) throw new Error("Unable to create production target")
-    this.element = elementNode
-
-    const targetInputName = `target-${targetCount}`
-    let itemOptionsRendered = false
-    const itemColumn = element.append("span").classed("production-target-item", true)
-
-    const renderItemOptions = (selection: Selection<HTMLElement, unknown, null, undefined>): void => {
-      if (itemOptionsRendered) {
-        return
-      }
-      itemOptionsRendered = true
-      selection.selectAll("*").remove()
-      selection
-        .append("input")
-        .classed("search", true)
-        .attr("placeholder", "Search")
-        .on("keyup", function (this: Element, event: KeyboardEvent) {
-          if (this instanceof HTMLInputElement) searchTargets.call(this, event)
-        })
-      let group = selection.selectAll("div").data(itemGroups).join("div")
-      group.filter((_d: Item[][], i: number) => i > 0).append("hr")
-      let items = group
-        .selectAll("div")
-        .data((d: Item[][]) => d)
-        .join("div")
-        .selectAll("span")
-        .data((d: Item[]) => d)
-        .join("span")
-      let itemLabel = addInputs(items, targetInputName, (d: Item) => d === this.item, itemHandler(this))
-      itemLabel.append((d: Item) => {
-        const node = selection.node()
-        return d.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
-      })
-      itemLabel
-        .append("span")
-        .classed("target-item-name", true)
-        .text((d: Item) => d.name)
-      reapTooltips()
-    }
-
-    const dropdown = makeDropdown(
-      itemColumn,
-      (selection) => {
-        renderItemOptions(selection)
-        const search = selection.select(".search").node() as HTMLInputElement | null
-        search?.focus()
-      },
-      (selection) => {
-        const node = selection.node()
-        if (node instanceof Element) resetSearch(node)
-      },
-    )
-    dropdown.classed("itemDropdown", true)
-
-    const selectedItem = dropdown.append("span").datum(item)
-    const selectedItemLabel = addInputs(selectedItem, targetInputName, () => true, itemHandler(this))
-    selectedItemLabel.append(() => {
-      const node = dropdown.node()
-      return item.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
-    })
-    selectedItemLabel.append("span").classed("target-item-name", true).text(item.name)
-
-    targetCount++
-
-    this.recipeSelector = itemColumn.append("span").classed("production-target-recipe", true)
-    const settings = element.append("span").classed("production-target-settings", true)
-
-    const qualityPlanning = settings.append("span").classed("target-quality-planning", true)
-    const qualityInputId = `target-quality-${targetCount}`
-    const qualityField = qualityPlanning.append("span").classed("target-setting-field target-quality-field", true)
-    qualityField.append("label").classed("target-field-label", true).attr("for", qualityInputId).text("Quality")
-    this.qualitySelector = qualityField
-      .append("select")
-      .classed("target-quality", true)
-      .attr("id", qualityInputId)
-      .attr("aria-label", `Quality for ${item.name}`)
-      .attr("data-tooltip", "Set the output quality; module chances are applied automatically.")
-      .on("change", (event: Event) => {
-        const target = event.target
-        if (target instanceof HTMLSelectElement) handleTargetQualityChange(this, Number(target.value))
-      })
-      .node() as HTMLSelectElement
-    select(this.qualitySelector)
-      .selectAll("option")
-      .data(QUALITY_TIERS.map((name, level) => ({ name, level })))
-      .join("option")
-      .attr("value", (d: { readonly name: string; readonly level: number }) => d.level)
-      .text((d: { readonly name: string; readonly level: number }) => d.name)
-
-    const buildingInputId = `target-machines-${targetCount}`
-    const buildingField = settings.append("span").classed("target-setting-field target-machines-field", true)
-    buildingField.append("label").classed("target-field-label", true).attr("for", buildingInputId).text("Machines")
-    this.buildingInput = buildingField
-      .append("input")
-      .classed("target-machine-count", true)
-      .classed(SELECTED_INPUT, true)
-      .on("change", changeBuildingCountHandler(this))
-      .on("keydown", activateOnEnter(changeBuildingCountHandler(this)))
-      .attr("type", "text")
-      .attr("id", buildingInputId)
-      .attr("value", 1)
-      .attr("size", 3)
-      .attr("aria-label", "Machines")
-      .attr("title", "Set the required machine count.")
-      .node() as HTMLInputElement
-
-    const rateInputId = `target-rate-${targetCount}`
-    const rateField = settings.append("span").classed("target-setting-field target-rate-field", true)
-    this.rateFieldLabel = rateField
-      .append("label")
-      .classed("target-field-label", true)
-      .attr("for", rateInputId)
-      .node() as HTMLLabelElement
-    this.rateInput = rateField
-      .append("input")
-      .classed("target-rate", true)
-      .on("change", changeRateHandler(this))
-      .on("keydown", activateOnEnter(changeRateHandler(this)))
-      .attr("type", "text")
-      .attr("id", rateInputId)
-      .attr("value", "")
-      .attr("size", 5)
-      .attr("data-tooltip", "Set the required output rate.")
-      .node() as HTMLInputElement
-
-    const beltInputId = `target-belts-${targetCount}`
-    const beltField = settings.append("span").classed("target-setting-field target-belts-field", true)
-    beltField.append("label").classed("target-field-label", true).attr("for", beltInputId).text("Belts")
-    this.beltInput = beltField
-      .append("input")
-      .classed("target-belts", true)
-      .on("change", changeBeltCountHandler(this))
-      .on("keydown", activateOnEnter(changeBeltCountHandler(this)))
-      .attr("type", "text")
-      .attr("id", beltInputId)
-      .attr("value", "")
-      .attr("size", 3)
-      .attr("aria-label", "Belts")
-      .node() as HTMLInputElement
-    this.beltStackHeight = beltField
-      .append("span")
-      .classed("target-belt-stack-height", true)
-      .attr("aria-hidden", "true")
-      .node() as HTMLSpanElement
-    this.setQuality(0)
-    this.setRateLabel()
-    this.syncBeltInputAvailability()
-    this.syncBeltStackHeight()
-
-    this.locationWarning = element
-      .append("div")
-      .classed("location-warning", true)
-      .attr("aria-live", "polite")
-      .style("display", "none")
-    this.locationWarning.append("div").classed("location-warning-title", true)
-    this.locationWarning.append("div").classed("location-warning-message", true)
-    this.locationWarning
-      .append("button")
-      .classed("ui", true)
-      .attr("type", "button")
-      .text("Enable compatible locations")
-      .on("click", () => this.enableCompatibleLocations())
-
-    this.displayRecipes()
+  constructor(
+    readonly specification: FactorySpecification,
+    public index: number,
+    public item: Item,
+  ) {
+    this.refreshRecipes()
   }
-  getBuildingCountInput(): string {
-    return this.buildingInput.value
-  }
+
   get changedBuilding(): boolean {
     return this.basis === "machines"
   }
+
+  getBuildingCountInput(): string {
+    return this.buildingInputValue
+  }
+
   getBeltCountInput(): string {
-    return this.beltInput.value
+    return this.beltInputValue
   }
-  setRateLabel(): void {
-    this.rateInput?.setAttribute("aria-label", "Rate per " + spec.format.longRate)
-    if (this.rateFieldLabel) {
-      const unit = spec.format.rateName === "m" ? "min" : spec.format.rateName
-      this.rateFieldLabel.textContent = `Rate/${unit}`
-    }
+
+  getAvailableRecipes(): Recipe[] {
+    if (this.specification.ignore.has(this.item)) return []
+    return this.item.recipes.filter(
+      (recipe) => !this.specification.disable.has(recipe) && recipe.isNetProducer(this.item),
+    )
   }
-  setItem(item: Item, currentRate: Rational): void {
-    this.itemKey = item.key
+
+  setItem(item: Item, currentRate = this.getRate()): void {
     this.item = item
     if (this.basis === "belts" && item.phase !== "solid") {
       this.basis = "rate"
       this.rate = currentRate
       this.belts = zero
+      this.beltInputValue = ""
     }
-    this.syncSelectedInput()
-    this.syncBeltInputAvailability()
-    this.displayRecipes()
-  }
-  syncBeltInputAvailability(): void {
-    const solid = this.item.phase === "solid"
-    const rateOnly = this.qualityLevel > 0 && this.qualityStrategy !== "direct"
-    this.beltInput.disabled = !solid || rateOnly
-    if (!solid) this.beltInput.value = "N/A"
-  }
-  syncSelectedInput(): void {
-    this.buildingInput.classList.toggle(SELECTED_INPUT, this.basis === "machines")
-    this.rateInput.classList.toggle(SELECTED_INPUT, this.basis === "rate")
-    this.beltInput.classList.toggle(SELECTED_INPUT, this.basis === "belts")
-  }
-  displayLocationWarning(): void {
-    let info = getUnavailableLocationInfo(spec, this.item)
-    if (info === null) {
-      this.locationWarning.style("display", "none")
-      return
+    this.refreshRecipes()
+    if (this.basis === "machines" && !hasRecipeCategories(this.recipe)) {
+      this.basis = "rate"
+      this.rate = currentRate
+      this.buildings = zero
     }
+  }
 
-    this.compatibleLocations = info.compatibleLocations
-    let selectedLabel = info.selectedLocations.length === 1 ? "location" : "locations"
-    this.locationWarning
-      .select(".location-warning-title")
-      .text(`Unavailable on selected ${selectedLabel}: ${formatLocationList(info.selectedLocations, "and")}`)
-    this.locationWarning.select(".location-warning-message").text("Choose a compatible production location above.")
-    this.locationWarning.style("display", null)
-  }
-  enableCompatibleLocations(): void {
-    let locations = [...this.compatibleLocations]
-    for (let location of locations) {
-      if (!spec.selectedPlanets.has(location)) {
-        spec.selectPlanet(location)
-      }
-    }
-    selectAll<HTMLButtonElement, Planet>("#planet_selector .toggle")
-      .classed("selected", (location: Planet) => spec.selectedPlanets.has(location))
-      .attr("aria-pressed", (location: Planet) => String(spec.selectedPlanets.has(location)))
-    refreshRecipeSettings(spec)
-    spec.updateSolution()
-  }
-  displayRecipes(): void {
-    this.recipeSelector.selectAll("*").remove()
-    const recipes: Recipe[] = []
-    let found = false
-    if (!spec.ignore.has(this.item)) {
-      for (let recipe of this.item.recipes) {
-        if (spec.disable.has(recipe) || !recipe.isNetProducer(this.item)) {
-          continue
-        }
-        if (recipe === this.recipe) {
-          found = true
-        }
-        recipes.push(recipe)
-      }
-    }
-    if (!found) {
-      this.recipe = null
-    }
-    this.displayLocationWarning()
-    if (recipes.length > 0) {
-      this.defaultRecipe = recipes[0] ?? null
-    }
-    if (recipes.length === 0) {
-      this.defaultRecipe = null
-      return
-    } else if (recipes.length === 1) {
-      this.recipe = recipes[0] ?? null
-      return
-    }
-    // If there are multiple valid recipes, render the recipe dropdown.
-    if (this.recipe === null) {
-      this.recipe = recipes[0] ?? null
-    }
-    let self = this
-    let dropdown = makeDropdown(this.recipeSelector)
-    let inputs = dropdown.selectAll("div").data(recipes).join("div")
-    let labels = addInputs(
-      inputs,
-      "target-recipe-" + recipeSelectorCount,
-      (d: Recipe) => self.recipe === d,
-      (d: Recipe) => {
-        self.recipe = d
-        spec.updateSolution()
-      },
-    )
-    labels.append((d: Recipe) => {
-      const node = dropdown.node()
-      return d.icon.make(32, false, node instanceof HTMLElement ? node : undefined)
-    })
-    recipeSelectorCount++
-  }
-  getRate(): Rational {
-    this.setRateLabel()
-    this.syncBeltInputAvailability()
-    this.syncBeltStackHeight()
-    let rate = zero
-    let recipe = this.recipe
-    if (!hasRecipeCategories(recipe) && this.changedBuilding) {
-      this.rateChanged()
-    }
-    let baseRate = null
-    if (recipe !== null) {
-      baseRate = spec.getRecipeRate(recipe)
-      if (baseRate !== null) {
-        baseRate = baseRate.mul(recipe.gives(this.item))
-      }
-    }
-    const plannedQuality = this.qualityLevel > 0 && this.qualityStrategy !== "direct"
-    let qualityRate = baseRate
-    if (baseRate !== null && recipe !== null && this.qualityLevel > 0 && !plannedQuality) {
-      const probability = qualityProbability(
-        getRecipeQualityChance(spec, recipe),
-        this.qualityLevel,
-        spec.maxQualityLevel,
-      )
-      qualityRate = baseRate.mul(probability)
-    }
-    if (this.basis === "machines") {
-      rate = qualityRate === null ? zero : qualityRate.mul(this.buildings)
-    } else if (this.basis === "belts") {
-      rate = spec.getRateForBeltCount(this.item, this.belts, this.recipe ?? this.defaultRecipe)
-    } else {
-      rate = this.rate
-    }
-
-    if (plannedQuality) {
-      this.buildingInput.value = "Plan"
-    } else if (this.basis !== "machines") {
-      if (qualityRate !== null && !qualityRate.isZero()) {
-        const count = rate.div(qualityRate)
-        this.buildingInput.value = spec.format.count(count)
-      } else {
-        this.buildingInput.value = "N/A"
-      }
-    }
-    this.rateInput.value = spec.format.rate(rate)
-    if (this.item.phase === "solid" && this.basis !== "belts") {
-      this.beltInput.value = spec.format.count(spec.getBeltCount(this.item, rate, this.recipe ?? this.defaultRecipe))
-    }
-    return rate
-  }
-  buildingsChanged(): void {
-    this.basis = "machines"
-    this.buildings = Rational.from_string(this.buildingInput.value)
-    this.rate = zero
-    this.belts = zero
-    this.rateInput.value = ""
-    this.beltInput.value = ""
-    this.syncSelectedInput()
-  }
-  setBuildings(count: string, recipe: Recipe | null): void {
-    this.buildingInput.value = count
+  setRecipe(recipe: Recipe): void {
+    if (!this.getAvailableRecipes().includes(recipe)) return
     this.recipe = recipe
-    this.buildingsChanged()
   }
-  rateChanged(): void {
-    this.basis = "rate"
-    this.buildings = zero
-    this.rate = Rational.from_string(this.rateInput.value).div(spec.format.rateFactor)
-    this.belts = zero
-    this.buildingInput.value = ""
-    if (this.item.phase === "solid") this.beltInput.value = ""
-    this.syncSelectedInput()
+
+  displayRecipes(): void {
+    this.refreshRecipes()
   }
-  setRate(rate: string): void {
-    this.rateInput.value = rate
-    this.rateChanged()
+
+  refreshRecipes(): void {
+    const recipes = this.getAvailableRecipes()
+    this.defaultRecipe = recipes[0] ?? null
+    if (this.recipe === null || !recipes.includes(this.recipe)) this.recipe = this.defaultRecipe
+    const info = getUnavailableLocationInfo(this.specification, this.item)
+    this.compatibleLocations = info?.compatibleLocations ?? []
   }
-  beltsChanged(): void {
-    if (this.item.phase !== "solid") return
-    this.basis = "belts"
-    this.buildings = zero
-    this.rate = zero
-    this.belts = Rational.from_string(this.beltInput.value)
-    this.buildingInput.value = ""
-    this.rateInput.value = ""
-    this.syncSelectedInput()
+
+  enableCompatibleLocations(): void {
+    for (const location of this.compatibleLocations) this.specification.selectPlanet(location)
+    this.refreshRecipes()
   }
-  setBelts(belts: string): void {
-    const beltCount = Rational.from_string(belts)
-    this.beltInput.value = belts
-    if (this.item.phase === "solid") {
-      this.beltsChanged()
-      return
+
+  getRate(): Rational {
+    const recipe = this.recipe
+    let recipeRate: Rational | null = null
+    if (recipe !== null) {
+      const baseRate = this.specification.getRecipeRate(recipe)
+      if (baseRate !== null) recipeRate = baseRate.mul(recipe.gives(this.item))
     }
-    this.basis = "rate"
-    this.buildings = zero
-    this.rate = spec.getRateForBeltCount(this.item, beltCount, this.recipe ?? this.defaultRecipe)
-    this.belts = zero
-    this.rateInput.value = spec.format.rate(this.rate)
-    this.syncSelectedInput()
-    this.syncBeltInputAvailability()
-  }
-  syncBeltStackHeight(): void {
-    if (this.item.phase !== "solid") {
-      this.beltStackHeight.textContent = ""
-      return
+
+    const plannedQuality = this.qualityLevel > 0 && this.qualityStrategy !== "direct"
+    if (recipeRate !== null && recipe !== null && this.qualityLevel > 0 && !plannedQuality) {
+      recipeRate = recipeRate.mul(
+        qualityProbability(
+          getRecipeQualityChance(this.specification, recipe),
+          this.qualityLevel,
+          this.specification.maxQualityLevel,
+        ),
+      )
     }
-    const recipe = this.recipe ?? this.defaultRecipe
-    const height = formatCanadianNumber(spec.getEffectiveBeltStackSize(this.item, recipe).toDecimal())
-    const policy = spec.getBeltStackPolicy(this.item)
-    const source = spec.getBeltStackPolicySource(this.item)
-    this.beltStackHeight.textContent = `×${height}`
-    const policyText =
-      policy === "auto"
-        ? spec.isItemAutomaticallyBeltStacked(this.item, recipe)
-          ? "Auto: direct output"
-          : "Auto: unstacked"
-        : policy === "stacked"
-          ? source === "override"
-            ? "Stacked override"
-            : "Default: stacked"
-          : source === "override"
-            ? "Unstacked override"
-            : "Default: unstacked"
-    this.beltInput.setAttribute(
-      "data-tooltip",
-      `Full two-lane belts at ×${height} (${policyText}). Change item stacking in Factory.`,
+
+    if (this.basis === "machines") return recipeRate === null ? zero : recipeRate.mul(this.buildings)
+    if (this.basis === "belts") {
+      return this.specification.getRateForBeltCount(this.item, this.belts, this.recipe ?? this.defaultRecipe)
+    }
+    return this.rate
+  }
+
+  getDisplayedBuildings(): string {
+    if (this.qualityLevel > 0 && this.qualityStrategy !== "direct") return "Plan"
+    if (this.basis === "machines") return this.buildingInputValue
+    const recipe = this.recipe
+    if (recipe === null) return "N/A"
+    let outputRate = this.specification.getRecipeRate(recipe)
+    if (outputRate === null) return "N/A"
+    outputRate = outputRate.mul(recipe.gives(this.item))
+    if (this.qualityLevel > 0) {
+      outputRate = outputRate.mul(
+        qualityProbability(
+          getRecipeQualityChance(this.specification, recipe),
+          this.qualityLevel,
+          this.specification.maxQualityLevel,
+        ),
+      )
+    }
+    return outputRate.isZero() ? "N/A" : this.specification.format.count(this.getRate().div(outputRate))
+  }
+
+  getDisplayedRate(): string {
+    return this.specification.format.rate(this.getRate())
+  }
+
+  getDisplayedBelts(): string {
+    if (this.item.phase !== "solid") return "N/A"
+    if (this.basis === "belts") return this.beltInputValue
+    return this.specification.format.count(
+      this.specification.getBeltCount(this.item, this.getRate(), this.recipe ?? this.defaultRecipe),
     )
   }
-  setQuality(level: number | string): void {
-    const maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, spec.maxQualityLevel))
-    select(this.qualitySelector)
-      .selectAll("option")
-      .property("disabled", (option: { level: number }) => option.level > maxLevel)
-    this.qualityLevel = Math.max(0, Math.min(maxLevel, Number(level) || 0))
-    this.qualitySelector.value = String(this.qualityLevel)
-    if (this.qualityLevel === 0) {
-      this.qualityStrategy = "direct"
-    }
-    this.syncQualityPlanningControls()
+
+  getBeltStackHeight(): string {
+    if (this.item.phase !== "solid") return ""
+    return `×${formatCanadianNumber(
+      this.specification.getEffectiveBeltStackSize(this.item, this.recipe ?? this.defaultRecipe).toDecimal(),
+    )}`
   }
+
+  setBuildings(value: string, recipe: Recipe | null): void {
+    this.buildingInputValue = value
+    this.recipe = recipe ?? this.recipe
+    this.basis = "machines"
+    this.buildings = Rational.from_string(value)
+    this.rate = zero
+    this.belts = zero
+    this.beltInputValue = ""
+  }
+
+  setRate(value: string): void {
+    this.basis = "rate"
+    this.buildings = zero
+    this.rate = Rational.from_string(value).div(this.specification.format.rateFactor)
+    this.belts = zero
+    this.beltInputValue = ""
+  }
+
+  rateChanged(): void {
+    const currentRate = this.getRate()
+    this.basis = "rate"
+    this.buildings = zero
+    this.rate = currentRate
+    this.belts = zero
+    this.beltInputValue = ""
+  }
+
+  setBelts(value: string): void {
+    const beltCount = Rational.from_string(value)
+    if (this.item.phase === "solid") {
+      this.basis = "belts"
+      this.buildings = zero
+      this.rate = zero
+      this.belts = beltCount
+      this.beltInputValue = value
+      return
+    }
+    this.basis = "rate"
+    this.buildings = zero
+    this.rate = this.specification.getRateForBeltCount(this.item, beltCount, this.recipe ?? this.defaultRecipe)
+    this.belts = zero
+    this.beltInputValue = ""
+  }
+
+  setQuality(level: number | string): void {
+    const maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, this.specification.maxQualityLevel))
+    this.qualityLevel = Math.max(0, Math.min(maxLevel, Number(level) || 0))
+    if (this.qualityLevel === 0) this.qualityStrategy = "direct"
+  }
+
   setQualityStrategy(strategy: QualityStrategy, preservedRate: Rational | null = null): void {
     const switchToRate = strategy !== "direct" && this.qualityLevel > 0 && this.basis !== "rate"
     const currentRate = switchToRate ? (preservedRate ?? this.getRate()) : null
@@ -16183,23 +10631,11 @@ export class BuildTarget implements FactoryBuildTarget {
       this.buildings = zero
       this.rate = currentRate
       this.belts = zero
-      this.rateInput.value = spec.format.rate(currentRate)
-      this.buildingInput.value = "Plan"
-      this.beltInput.value = ""
-      this.syncSelectedInput()
+      this.beltInputValue = ""
     }
-    this.syncQualityPlanningControls()
-  }
-  syncQualityPlanningControls(): void {
-    const qualityEnabled = this.qualityLevel > 0
-    const rateOnly = qualityEnabled && this.qualityStrategy !== "direct"
-    this.element.classList.toggle("planned-quality-target", rateOnly)
-    this.recipeSelector.style("display", rateOnly ? "none" : "")
-    this.buildingInput.disabled = rateOnly
-    this.syncBeltInputAvailability()
   }
 }
-// endregion ui.ts
+// endregion target-model.ts
 
 // region quality/highs-solver.ts
 type HighsLoader = (typeof import("highs"))["default"]
@@ -16641,1480 +11077,4426 @@ export async function loadBrowserHighsQualityOptimizer(): Promise<HighsQualityOp
 }
 // endregion quality/highs-runtime.ts
 
-// region graph/types.ts
-export type GraphDirection = "down" | "right"
-export type GraphLayoutDirection = "TB" | "LR"
-export type GraphJustification = "left" | "center"
-export type LinkDirection = "forward" | "backward" | "self"
+// region react-ui.tsx
 
-export interface GraphPoint {
-  readonly x: number
-  readonly y: number
+type StyleMap = Record<string, CSSProperties>
+
+const UI = {
+  app: {
+    minHeight: "100vh",
+    padding: "0.75rem 1rem 2rem",
+    color: "var(--foreground)",
+    background: "var(--dark)",
+  },
+  page: { width: "min(1680px, 100%)", margin: "0 auto" },
+  muted: { color: "var(--muted)", fontSize: 12 },
+  panel: {
+    marginBottom: 10,
+    padding: "0.65rem 0",
+    borderTop: "1px solid var(--rule)",
+    borderBottom: "1px solid var(--rule)",
+    background: "transparent",
+  },
+  panelHeader: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    marginBottom: 6,
+  },
+  row: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 },
+  stack: { display: "grid", gap: "var(--layout-gap)" },
+  targetGrid: {
+    display: "grid",
+    gridTemplateColumns: "32px 220px 110px 72px 88px 88px",
+    gap: 8,
+    alignItems: "center",
+    width: "max-content",
+    maxWidth: "100%",
+  },
+  field: { display: "grid", gap: 3, minWidth: 0 },
+  label: { color: "var(--muted)", fontSize: 12, fontWeight: 600 },
+  control: {
+    width: "100%",
+    minHeight: 30,
+    padding: "4px 7px",
+    color: "var(--foreground)",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "var(--medium)",
+  },
+  button: {
+    minHeight: 32,
+    padding: "4px 10px",
+    color: "var(--foreground)",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "var(--medium)",
+    cursor: "pointer",
+  },
+  primaryButton: {
+    minHeight: 32,
+    padding: "4px 10px",
+    color: "var(--foreground)",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "var(--medium)",
+    cursor: "pointer",
+  },
+  dangerButton: {
+    width: 28,
+    minHeight: 32,
+    padding: 0,
+    color: "var(--foreground)",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "var(--medium)",
+    cursor: "pointer",
+  },
+  tabs: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "flex-end",
+    gap: 20,
+    marginTop: 10.4,
+    marginBottom: 10,
+    borderBottom: "1px solid var(--rule)",
+    position: "sticky",
+    top: 0,
+    zIndex: 8,
+    background: "var(--dark-overlay)",
+    backdropFilter: "blur(6px)",
+  },
+  tab: {
+    padding: "8.8px 0 7.2px",
+    color: "var(--muted)",
+    border: 0,
+    borderBottomWidth: 2,
+    borderBottomStyle: "solid",
+    borderBottomColor: "transparent",
+    background: "transparent",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  activeTab: { color: "var(--bright)", borderBottomColor: "var(--accent)", background: "transparent" },
+  summary: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 0 },
+  summaryCard: {
+    padding: "8px 12px 8px 0",
+    border: 0,
+    borderRadius: 0,
+    background: "transparent",
+  },
+  summaryValue: { color: "var(--bright)", fontFamily: "monospace", fontSize: 16, fontWeight: 650 },
+  tableWrap: { width: "100%", overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
+  th: {
+    padding: "var(--cell-padding)",
+    color: "var(--muted)",
+    borderBottom: "1px solid var(--rule)",
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: "left",
+    whiteSpace: "nowrap",
+  },
+  td: { padding: "var(--cell-padding)", borderBottom: "1px solid #30353a", verticalAlign: "middle" },
+  iconLabel: { display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 },
+  details: {
+    padding: "7px 0",
+    border: 0,
+    borderBottom: "1px solid var(--rule)",
+    borderRadius: 0,
+    background: "transparent",
+  },
+  detailsSummary: { color: "var(--bright)", fontWeight: 700, cursor: "pointer" },
+  callout: {
+    padding: "9px 11px",
+    borderLeft: "3px solid var(--accent)",
+    borderRadius: 2,
+    background: "var(--medium)",
+  },
+  error: {
+    marginBottom: 12,
+    padding: 12,
+    color: "var(--bright)",
+    border: "1px solid var(--rule)",
+    borderLeftWidth: 4,
+    borderLeftColor: "var(--danger)",
+    borderRadius: 2,
+    background: "transparent",
+  },
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "2px 5px",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "var(--medium)",
+  },
+  twoColumns: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(180px, 240px))",
+    gap: "8px 24px",
+    maxWidth: 520,
+  },
+  recipeCard: {
+    display: "grid",
+    gap: "var(--layout-gap)",
+    padding: "var(--panel-padding)",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "transparent",
+  },
+  moduleGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 6 },
+  visuallyHidden: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clipPath: "inset(50%)",
+    whiteSpace: "nowrap",
+  },
+  pipetteGhost: {
+    position: "fixed",
+    zIndex: 10000,
+    width: 36,
+    height: 36,
+    padding: 2,
+    border: "1px solid var(--accent)",
+    borderRadius: 6,
+    background: "var(--medium)",
+    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.65)",
+    opacity: 0.88,
+    pointerEvents: "none",
+  },
+  graphWrap: {
+    width: "100%",
+    minHeight: 500,
+    overflow: "auto",
+    border: "1px solid var(--rule)",
+    borderRadius: 3,
+    background: "var(--dark)",
+  },
+  help: { maxWidth: 900, lineHeight: 1.55 },
+  footer: { marginTop: 36, paddingTop: 12, borderTop: "1px solid var(--rule)", fontSize: 12 },
+} satisfies StyleMap
+
+function mergeStyles(...styles: (CSSProperties | false | null | undefined)[]): CSSProperties {
+  return Object.assign({}, ...styles.filter(Boolean))
 }
 
-export interface GraphCurve {
-  readonly points: readonly GraphPoint[]
-  path(): string
-  offset(offset: number): GraphCurve
-  transpose(): GraphCurve
+function themeVariables(key: string): CSSProperties {
+  const scheme = colorSchemes.find((candidate) => candidate.key === key) ?? colorSchemes[0]
+  return scheme.variables as CSSProperties
 }
 
-export interface GraphNodeContract {
+function runMutation(specification: FactorySpecification, operation: () => void, recalculate = true): void {
+  try {
+    operation()
+    if (recalculate) specification.updateSolution()
+    else specification.display()
+  } catch (error) {
+    specification.lastError = error
+    specification.notifyStateChanged()
+  }
+}
+
+interface SpriteIconProps {
+  readonly icon: Icon
+  readonly size?: number
+  readonly quality?: Quality | null
+  readonly dimmed?: boolean
+  readonly title?: string
+}
+
+function SpriteIcon({ icon, size = 32, quality = null, dimmed = false, title }: SpriteIconProps) {
+  const badgeSize = Math.max(12, Math.round(size / 2))
+  return (
+    <span
+      role="img"
+      aria-label={title ?? icon.name}
+      title={title ?? icon.name}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        flex: "0 0 auto",
+        verticalAlign: "middle",
+        opacity: dimmed ? 0.35 : 1,
+      }}
+    >
+      <span aria-hidden="true" style={icon.style(size)} />
+      {quality !== null && quality.level > 0 ? (
+        <span
+          title={`${quality.name} quality`}
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            right: -3,
+            bottom: -3,
+            filter: "drop-shadow(0 1px 1px var(--dark))",
+            ...quality.icon.style(badgeSize),
+          }}
+        />
+      ) : null}
+    </span>
+  )
+}
+
+interface IconLabelProps {
+  readonly icon: Icon
   readonly name: string
-  readonly recipe: SolverRecipe
-  readonly building: Building | null
-  readonly count: Rational
-  readonly rate: Rational | null
-  readonly ingredients: readonly SolverIngredient[]
-  readonly linkObjects: GraphLink[]
-  element: SVGElement | null
-  x0: number
-  y0: number
-  x1: number
-  y1: number
-  width: number
-  labelX: number
-  links(): readonly GraphLink[]
-  text(): string
-  labelWidth(text: SVGTextElement, nodeMargin: number): number
-  highlight(): void
-  unhighlight(): void
+  readonly quality?: Quality | null
+  readonly dimmed?: boolean
+  readonly size?: number
 }
 
-export interface BoxGraphLabel {
-  link: GraphLink
-  labelpos: "c"
-  width: number
-  height: number
-  text: string
-  x: number
-  y: number
+function IconLabel({ icon, name, quality = null, dimmed = false, size = 28 }: IconLabelProps) {
+  return (
+    <span style={UI.iconLabel}>
+      <SpriteIcon icon={icon} size={size} quality={quality} dimmed={dimmed} title={name} />
+      <span>{name}</span>
+    </span>
+  )
 }
 
-export interface GraphBeltLine {
+function UiGlyph({
+  name,
+  size = 18,
+  rotate = 0,
+}: {
+  readonly name: "popout" | "right" | "rightarrow"
+  readonly size?: number
+  readonly rotate?: number
+}) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox={name === "popout" ? "0 0 24 24" : "0 0 18 16"}
+      width={size}
+      height={size}
+      style={{ display: "block", transform: rotate === 0 ? undefined : `rotate(${rotate}deg)` }}
+    >
+      <use href={`images/icons.svg#${name}`} />
+    </svg>
+  )
+}
+
+function EmptyModuleIcon({ size = 32 }: { readonly size?: number }) {
+  const emptySlot = sprites.get("slot_icon_module")?.icon
+  return emptySlot === undefined ? (
+    <span aria-hidden="true" style={{ fontSize: Math.round(size * 0.65), lineHeight: 1 }}>
+      □
+    </span>
+  ) : (
+    <SpriteIcon icon={emptySlot} size={size} title="Empty module slot" />
+  )
+}
+
+interface CompactIconSelectOption {
+  readonly value: string
+  readonly label: string
+}
+
+function CompactIconSelect({
+  label,
+  value,
+  icon,
+  quality = null,
+  options,
+  onChange,
+}: {
+  readonly label: string
+  readonly value: string
+  readonly icon: Icon | null
+  readonly quality?: Quality | null
+  readonly options: readonly CompactIconSelectOption[]
+  readonly onChange: (value: string) => void
+}) {
+  const selectedLabel = options.find((option) => option.value === value)?.label ?? label
+  return (
+    <span
+      className="compact-icon-select"
+      title={`${label}: ${selectedLabel}`}
+      style={{ position: "relative", display: "inline-grid", width: 36, height: 36, verticalAlign: "middle" }}
+    >
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 36,
+          height: 36,
+          border: "1px solid var(--rule)",
+          borderRadius: 2,
+          background: "transparent",
+        }}
+      >
+        {icon === null ? (
+          <EmptyModuleIcon />
+        ) : (
+          <SpriteIcon icon={icon} quality={quality} size={32} title={selectedLabel} />
+        )}
+      </span>
+      <select
+        aria-label={label}
+        value={value}
+        title={`${label}: ${selectedLabel}`}
+        onChange={(event) => onChange(event.currentTarget.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  )
+}
+
+function IconChoice({
+  group,
+  value,
+  label,
+  icon,
+  checked,
+  type = "radio",
+  onChange,
+}: {
+  readonly group: string
+  readonly value: string
+  readonly label: string
+  readonly icon: Icon
+  readonly checked: boolean
+  readonly type?: "radio" | "checkbox"
+  readonly onChange: (checked: boolean) => void
+}) {
+  return (
+    <label
+      className="icon-choice"
+      title={label}
+      style={{
+        position: "relative",
+        display: "inline-grid",
+        width: 40,
+        height: 40,
+        justifyItems: "center",
+        alignItems: "start",
+        cursor: "pointer",
+      }}
+    >
+      <input
+        type={type}
+        name={group}
+        value={value}
+        aria-label={label}
+        checked={checked}
+        style={UI.visuallyHidden}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+      />
+      <span
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 36,
+          height: 36,
+          border: "1px solid var(--foreground)",
+          borderRadius: 2,
+          background: checked ? "var(--accent)" : "var(--light)",
+        }}
+      >
+        <SpriteIcon icon={icon} size={32} title={label} />
+      </span>
+    </label>
+  )
+}
+
+interface CommitInputProps {
+  readonly value: string
+  readonly onCommit: (value: string) => void
+  readonly ariaLabel: string
+  readonly placeholder?: string
+  readonly disabled?: boolean
+  readonly inputMode?: "decimal" | "numeric" | "text"
+  readonly style?: CSSProperties
+}
+
+function CommitInput({
+  value,
+  onCommit,
+  ariaLabel,
+  placeholder,
+  disabled = false,
+  inputMode = "decimal",
+  style,
+}: CommitInputProps) {
+  const [draft, setDraft] = useState(value)
+  const commit = () => {
+    if (draft !== value) onCommit(draft)
+  }
+  return (
+    <input
+      aria-label={ariaLabel}
+      disabled={disabled}
+      inputMode={inputMode}
+      placeholder={placeholder}
+      value={draft}
+      style={mergeStyles(UI.control, style)}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur()
+        if (event.key === "Escape") {
+          setDraft(value)
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
+
+interface FieldProps {
+  readonly label: ReactNode
+  readonly children: ReactNode
+  readonly style?: CSSProperties
+  readonly className?: string
+}
+
+function Field({ label, children, style, className }: FieldProps) {
+  return (
+    <label className={className} style={mergeStyles(UI.field, style)}>
+      <span style={UI.label}>{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function sortedByName<T extends { readonly name: string }>(values: Iterable<T>): T[] {
+  return [...values].sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function qualityName(level: number): string {
+  return QUALITY_TIERS[level] ?? `Quality ${level}`
+}
+
+function formatPower(specification: FactorySpecification, value: Rational): string {
+  if (value.isZero()) return "0 W"
+  const { power, suffix } = powerRepresentation(value)
+  return `${specification.format.count(power)} ${suffix}`
+}
+
+function formatPercent(value: Rational, precision = 1): string {
+  return `${formatCanadianNumber(value.mul(Rational.from_integer(100)).toDecimal(precision))}%`
+}
+
+interface CalculatorViewProps {
+  readonly snapshot: CalculatorSnapshot
+  readonly commands: CalculatorCommands
+}
+
+function LocationSelector({ specification }: { readonly specification: FactorySpecification }) {
+  if (specification.planets === null || specification.planets.size <= 1) return null
+  const locations = [...specification.planets.values()].sort((a, b) => a.order.localeCompare(b.order))
+  return (
+    <div
+      className="location-selector"
+      aria-label="Production locations"
+      style={{ display: "grid", gridTemplateColumns: "auto auto", alignItems: "center", gap: "1.6px 5.6px" }}
+    >
+      <span
+        style={{
+          ...UI.label,
+          gridRow: "1 / 3",
+          alignSelf: "center",
+          fontSize: 11.52,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+        }}
+      >
+        Locations
+      </span>
+      <div style={{ ...UI.row, gridColumn: 2, gap: 1, padding: 1 }}>
+        {locations.map((location) => {
+          const selected = specification.selectedPlanets.has(location)
+          return (
+            <button
+              key={location.key}
+              type="button"
+              aria-pressed={selected}
+              style={mergeStyles(
+                UI.button,
+                {
+                  height: 28,
+                  minHeight: 28,
+                  padding: "1px 5px",
+                  fontSize: "12.6px",
+                  borderColor: "transparent",
+                  background: "transparent",
+                },
+                selected && {
+                  borderColor: "var(--accent)",
+                  color: "var(--bright)",
+                  background: "rgba(233, 121, 36, 0.09)",
+                },
+              )}
+              onClick={(event) => {
+                runMutation(specification, () => {
+                  if (event.shiftKey) {
+                    if (selected && specification.selectedPlanets.size > 1) specification.unselectPlanet(location)
+                    else specification.selectPlanet(location)
+                  } else {
+                    specification.selectOnePlanet(location)
+                  }
+                  for (const target of specification.buildTargets) target.refreshRecipes()
+                })
+              }}
+            >
+              <IconLabel icon={location.icon} name={location.name} size={24} />
+            </button>
+          )
+        })}
+      </div>
+      <span style={{ ...UI.muted, gridColumn: 2, fontSize: 11.52 }}>Shift-click to combine</span>
+    </div>
+  )
+}
+
+function TargetItemPicker({
+  specification,
+  target,
+  quality,
+}: {
+  readonly specification: FactorySpecification
+  readonly target: BuildTarget
+  readonly quality: Quality | null
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const trigger = useRef<HTMLButtonElement>(null)
+  const pickerKey = `target-output:${target.index}`
+  const panelId = `target-output-picker-${target.index}`
+  const close = (restoreFocus = false) => {
+    setOpen(false)
+    setSearch("")
+    if (restoreFocus) requestAnimationFrame(() => trigger.current?.focus())
+  }
+  const groupedItems = open
+    ? specification.itemGroups
+        .map((group) =>
+          group
+            .map((subgroup) => subgroup.filter((item) => item.phase !== "abstract" && itemMatchesSearch(item, search)))
+            .filter((subgroup) => subgroup.length > 0),
+        )
+        .filter((group) => group.length > 0)
+    : []
+  const matchingItems = groupedItems.flat(2)
+  const choose = (item: Item) => {
+    close()
+    if (item !== target.item) runMutation(specification, () => target.setItem(item))
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const element =
+        event.target instanceof Element ? event.target.closest<HTMLElement>("[data-target-item-picker]") : null
+      if (element?.dataset.targetItemPicker !== pickerKey) close()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close(true)
+    }
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true)
+    window.addEventListener("keydown", closeOnEscape)
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer, true)
+      window.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [open, pickerKey])
+
+  return (
+    <div
+      data-target-item-picker={pickerKey}
+      style={{ position: "relative", display: "block", width: 217, height: 40, zIndex: open ? 60 : undefined }}
+    >
+      <button
+        ref={trigger}
+        type="button"
+        aria-label={`Choose output for target ${target.index + 1}: ${target.item.name}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={panelId}
+        title={`Output: ${target.item.name}`}
+        style={{
+          ...UI.control,
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          height: 40,
+          padding: "3px 7px 3px 3px",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <SpriteIcon icon={target.item.icon} size={32} quality={quality} title={target.item.name} />
+        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {target.item.name}
+        </span>
+      </button>
+      {open ? (
+        <div
+          id={panelId}
+          className="target-item-picker-panel"
+          role="dialog"
+          aria-label={`Choose output for target ${target.index + 1}`}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            zIndex: 70,
+            display: "grid",
+            gridTemplateRows: "32px minmax(0, 1fr)",
+            gap: 4,
+            width: 380,
+            height: 400,
+            maxWidth: "calc(100vw - 20px)",
+            maxHeight: "min(400px, calc(100vh - 24px))",
+            padding: 5,
+            border: "1px solid var(--light)",
+            borderTop: "2px solid var(--accent)",
+            borderRadius: 2,
+            background: "var(--dark)",
+            boxShadow: "0 10px 24px rgba(0, 0, 0, 0.62)",
+          }}
+        >
+          <input
+            autoFocus
+            aria-label="Search target outputs"
+            value={search}
+            placeholder="Search"
+            style={{ ...UI.control, minHeight: 32, padding: "3px 7px" }}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              const first = matchingItems[0]
+              if (event.key === "Enter" && first !== undefined) {
+                event.preventDefault()
+                choose(first)
+              }
+            }}
+          />
+          <div style={{ minHeight: 0, overflowY: "auto", scrollbarGutter: "stable" }}>
+            {groupedItems.map((group, groupIndex) => (
+              <div key={groupIndex} style={groupIndex === 0 ? undefined : { marginTop: 3 }}>
+                {group.map((subgroup, subgroupIndex) => (
+                  <div key={subgroupIndex} style={{ display: "flex", flexWrap: "wrap", gap: 2, minHeight: 34 }}>
+                    {subgroup.map((item) => {
+                      const selected = item === target.item
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          aria-label={`Select ${item.name} as output`}
+                          aria-pressed={selected}
+                          title={item.name}
+                          style={{
+                            display: "grid",
+                            placeItems: "center",
+                            width: 32,
+                            height: 32,
+                            padding: 0,
+                            border: `1px solid ${selected ? "var(--accent)" : "transparent"}`,
+                            borderRadius: 2,
+                            background: selected ? "var(--light)" : "transparent",
+                            cursor: "pointer",
+                          }}
+                          onClick={() => choose(item)}
+                        >
+                          <SpriteIcon icon={item.icon} size={32} title={item.name} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            ))}
+            {matchingItems.length === 0 ? (
+              <div role="status" style={{ ...UI.muted, padding: "8px 3px" }}>
+                No items match your search.
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const availableRecipes = target.getAvailableRecipes()
+  const qualities = specification.getAvailableQualities()
+  const rateUnit = specification.format.longRate
+  const targetRateUnit = rateUnit === "minute" ? "min" : rateUnit
+
+  return (
+    <li className="target-grid" style={{ ...UI.targetGrid, minHeight: 40, listStyle: "none", margin: "0.7px 0 0" }}>
+      <button
+        type="button"
+        aria-label={`Remove ${target.item.name} target`}
+        title="Remove target"
+        style={UI.dangerButton}
+        onClick={() => runMutation(specification, () => specification.removeTarget(target))}
+      >
+        ×
+      </button>
+
+      <div className="target-output" style={{ ...UI.field, width: 217, height: 40 }}>
+        <span style={UI.label}>Output</span>
+        <TargetItemPicker
+          specification={specification}
+          target={target}
+          quality={qualities[target.qualityLevel] ?? null}
+        />
+      </div>
+
+      <Field label="Quality" className="target-quality">
+        <select
+          aria-label={`Quality for ${target.item.name}`}
+          value={target.qualityLevel}
+          style={{ ...UI.control, height: 30, minHeight: 30 }}
+          onChange={(event) => handleTargetQualityChange(specification, target, Number(event.currentTarget.value))}
+        >
+          {qualities.map((quality, index) => (
+            <option key={quality.key} value={index}>
+              {quality.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Machines" className="target-machines">
+        <CommitInput
+          key={`machines-${snapshot.revision}-${target.getDisplayedBuildings()}`}
+          ariaLabel={`Machine count for ${target.item.name}`}
+          value={target.getDisplayedBuildings()}
+          disabled={target.recipe === null || (target.qualityLevel > 0 && target.qualityStrategy === "auto")}
+          style={{ height: 29, minHeight: 29, textAlign: "right" }}
+          onCommit={(value) => runMutation(specification, () => target.setBuildings(value, target.recipe))}
+        />
+      </Field>
+
+      <Field label={`Rate/${targetRateUnit}`} className="target-rate">
+        <CommitInput
+          key={`rate-${snapshot.revision}-${target.getDisplayedRate()}`}
+          ariaLabel={`Rate for ${target.item.name}`}
+          value={target.getDisplayedRate()}
+          style={{ height: 29, minHeight: 29, textAlign: "right" }}
+          onCommit={(value) => runMutation(specification, () => target.setRate(value))}
+        />
+      </Field>
+
+      {target.item.phase === "solid" ? (
+        <Field label="Belts" className="target-belts">
+          <span style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 3 }}>
+            <CommitInput
+              key={`belts-${snapshot.revision}-${target.getDisplayedBelts()}`}
+              ariaLabel={`Belt count for ${target.item.name}`}
+              value={target.getDisplayedBelts()}
+              style={{ height: 29, minHeight: 29, textAlign: "right" }}
+              onCommit={(value) => runMutation(specification, () => target.setBelts(value))}
+            />
+            <span style={{ ...UI.muted, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+              {target.getBeltStackHeight()}
+            </span>
+          </span>
+        </Field>
+      ) : (
+        <span />
+      )}
+
+      {availableRecipes.length > 1 ? (
+        <Field label="Recipe" className="target-recipe" style={{ gridColumn: "2 / 4" }}>
+          <select
+            aria-label={`Recipe for ${target.item.name}`}
+            value={target.recipe?.key ?? ""}
+            disabled={availableRecipes.length === 0}
+            style={UI.control}
+            onChange={(event) => {
+              const recipe = specification.recipes.get(event.currentTarget.value)
+              if (recipe !== undefined) runMutation(specification, () => target.setRecipe(recipe))
+            }}
+          >
+            {availableRecipes.length === 0 ? <option value="">No available recipe</option> : null}
+            {availableRecipes.map((recipe) => (
+              <option key={recipe.key} value={recipe.key}>
+                {recipe.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+
+      {target.qualityLevel > 0 ? (
+        <Field label="Quality strategy" className="target-strategy" style={{ gridColumn: "2 / 4" }}>
+          <select
+            value={target.qualityStrategy}
+            style={UI.control}
+            onChange={(event) => {
+              const strategy = event.currentTarget.value
+              if (isQualityStrategy(strategy)) {
+                const currentRate = target.getRate()
+                runMutation(specification, () => target.setQualityStrategy(strategy, currentRate))
+              }
+            }}
+          >
+            <option value="auto">Automatic quality factory</option>
+            <option value="direct">Direct roll only</option>
+          </select>
+        </Field>
+      ) : null}
+
+      {availableRecipes.length === 0 && target.compatibleLocations.length > 0 ? (
+        <div className="target-warning" style={{ ...UI.callout, gridColumn: "2 / -1" }}>
+          <div>No selected location can produce {target.item.name}.</div>
+          <button
+            type="button"
+            style={{ ...UI.button, marginTop: 7 }}
+            onClick={() => runMutation(specification, () => target.enableCompatibleLocations())}
+          >
+            Enable {target.compatibleLocations.map((location) => location.name).join(" + ")}
+          </button>
+        </div>
+      ) : null}
+    </li>
+  )
+}
+
+function TargetsPanel({ snapshot, commands }: CalculatorViewProps) {
+  const specification = snapshot.specification
+  return (
+    <section aria-labelledby="targets-title">
+      <strong
+        id="targets-title"
+        style={{ color: "var(--bright)", fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase" }}
+      >
+        Production targets
+      </strong>
+      <div className="target-header" style={{ ...UI.targetGrid, marginTop: 5 }} aria-hidden="true">
+        <span />
+        <span style={UI.label}>Output</span>
+        <span style={UI.label}>Quality</span>
+        <span style={UI.label}>Machines</span>
+        <span style={UI.label}>
+          Rate/{specification.format.longRate === "minute" ? "min" : specification.format.longRate}
+        </span>
+        <span style={UI.label}>Belts</span>
+      </div>
+      <ul id="targets" style={{ margin: 0, padding: 0 }}>
+        {specification.buildTargets.map((target) => (
+          <TargetRow key={`${target.index}-${target.item.key}`} target={target} snapshot={snapshot} />
+        ))}
+      </ul>
+      <button
+        type="button"
+        style={{ ...UI.button, width: 103, margin: "2.3px 0 6.4px 40px" }}
+        disabled={snapshot.status === "loading"}
+        onClick={() => commands.addTarget()}
+      >
+        + Add target
+      </button>
+
+      <div
+        className="planner-toolbar"
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "12px 13.3px",
+          padding: "4.8px 0",
+          borderBottom: "1px solid var(--rule)",
+        }}
+      >
+        <LocationSelector specification={specification} />
+        <Field
+          label="Preset"
+          style={{
+            width: 220,
+            gridTemplateColumns: "auto 158px",
+            alignItems: "center",
+            gap: 8,
+            paddingLeft: 12,
+            borderLeft: "1px solid var(--rule)",
+          }}
+        >
+          <select
+            aria-label="Apply preset"
+            defaultValue=""
+            style={{ ...UI.control, width: 158, minHeight: 30, fontSize: 13.75 }}
+            onChange={(event) => {
+              const value = event.currentTarget.value
+              if (isProgressionPreset(value)) commands.applyProgressionPreset(value)
+              else if (isQualityPreset(value)) commands.applyQualityPreset(value)
+              event.currentTarget.value = ""
+            }}
+          >
+            <option value="">Custom</option>
+            <option value="early">Early game</option>
+            <option value="pre-rocket">Pre-rocket</option>
+            <option value="first-planets">Early Space Age</option>
+            <option value="late-space-age">Late Space Age</option>
+            <option value="full-legendary" disabled={specification.getAvailableQualities().length < 5}>
+              Full Legendary
+            </option>
+          </select>
+        </Field>
+        <div className="planner-actions" style={{ ...UI.row, marginLeft: "auto" }}>
+          <span role="status" aria-live="polite" style={UI.muted}>
+            {snapshot.shareStatus}
+          </span>
+          <button type="button" style={UI.button} onClick={() => void commands.copyShareLink()}>
+            Copy plan link
+          </button>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function TabBar({ snapshot, commands }: CalculatorViewProps) {
+  const tabs: readonly [CalculatorTab, string][] = [
+    ["totals", "Factory"],
+    ["graph", "Visualize"],
+    ["resources", "Resources"],
+    ["settings", "Settings"],
+    ["help", "Help"],
+  ]
+  return (
+    <nav className="tabs" style={UI.tabs} aria-label="Calculator sections">
+      {tabs.map(([tab, label]) => (
+        <button
+          key={tab}
+          type="button"
+          aria-current={snapshot.activeTab === tab ? "page" : undefined}
+          style={mergeStyles(UI.tab, snapshot.activeTab === tab && UI.activeTab)}
+          onClick={() => commands.selectTab(tab)}
+        >
+          {label}
+        </button>
+      ))}
+      {snapshot.activeTab === "totals" ? (
+        <fieldset
+          className="density-switch"
+          aria-label="Factory row density"
+          style={{ ...UI.row, gap: 0, margin: "0 0 0 auto", padding: 0, border: 0, fontSize: 11 }}
+        >
+          <legend style={UI.visuallyHidden}>Factory row density</legend>
+          <span style={{ ...UI.muted, marginRight: 5 }}>Rows</span>
+          {(
+            [
+              ["comfortable", "Relaxed"],
+              ["compact", "Compact"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="factory-density"
+                value={value}
+                checked={snapshot.factoryDensity === value}
+                onChange={() => commands.setFactoryDensity(value)}
+              />
+              <span style={{ display: "inline-block", padding: "3.2px 6px", borderBottom: "1px solid transparent" }}>
+                {label}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+    </nav>
+  )
+}
+
+function SummaryCard({
+  label,
+  value,
+  note,
+}: {
+  readonly label: string
+  readonly value: string
+  readonly note?: string
+}) {
+  return (
+    <div style={UI.summaryCard}>
+      <div style={UI.summaryValue}>{value}</div>
+      <div>{label}</div>
+      {note === undefined ? null : <div style={UI.muted}>{note}</div>}
+    </div>
+  )
+}
+
+function FactorySummaryView({
+  specification,
+  totals,
+}: {
+  readonly specification: FactorySpecification
+  readonly totals: Totals
+}) {
+  const summary = getFactorySummary(specification, totals)
+  return (
+    <section
+      className="factory-summary"
+      style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 28, margin: "4px 0 10px" }}
+      aria-label="Factory summary"
+    >
+      <div className="factory-summary-card" style={{ display: "inline-flex", alignItems: "baseline", gap: 7 }}>
+        <span style={UI.summaryValue}>{formatCanadianNumber(String(summary.recipeCount))}</span>
+        <span style={UI.muted}>Active recipes</span>
+      </div>
+      <div className="factory-summary-card" style={{ display: "inline-flex", alignItems: "baseline", gap: 7 }}>
+        <span style={UI.summaryValue}>{specification.format.count(summary.placedMachines)}</span>
+        <span style={UI.muted}>Machines to place</span>
+      </div>
+      <div className="factory-summary-card" style={{ display: "inline-flex", alignItems: "baseline", gap: 7 }}>
+        <span style={UI.summaryValue}>
+          {formatPower(specification, summary.electricalPower.add(summary.planning.beaconPower))}
+        </span>
+        <span style={UI.muted}>Electric + beacon power</span>
+      </div>
+      <div className="factory-summary-card" style={{ display: "inline-flex", alignItems: "baseline", gap: 7 }}>
+        <span style={UI.summaryValue}>{specification.format.count(summary.planning.pollution)}</span>
+        <span style={UI.muted}>Pollution / min</span>
+      </div>
+      {[...summary.fuelRates].map(([fuel, rate]) => (
+        <div
+          key={fuel.key}
+          className="factory-summary-card"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+        >
+          <span style={UI.summaryValue}>{specification.format.rate(rate)}</span>
+          <span style={{ ...UI.muted, display: "inline-flex", alignItems: "center", gap: 3 }}>
+            <SpriteIcon icon={fuel.icon} size={18} /> {fuel.name} / {specification.format.longRate}
+          </span>
+        </div>
+      ))}
+      {summary.importedItems.length > 0 ? (
+        <div style={{ ...UI.row, flexBasis: "100%" }}>
+          <span style={UI.label}>Imported</span>
+          {summary.importedItems.map((item) => (
+            <span key={item.key} style={UI.chip}>
+              <SpriteIcon icon={item.icon} size={20} /> {item.name}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function RecipeIconPicker({
+  specification,
+  item,
+  activeRecipe,
+}: {
+  readonly specification: FactorySpecification
   readonly item: Item
-  readonly curve: GraphCurve
+  readonly activeRecipe: Recipe
+}) {
+  const recipes = getItemProductionRecipes(item)
+  if (recipes.length === 0) return <SpriteIcon icon={item.icon} size={32} title={item.name} />
+  const groups = getRecipeSelectorGroups(recipes, activeRecipe)
+  return (
+    <details className="icon-picker" style={{ position: "relative", display: "inline-block" }}>
+      <summary
+        aria-label={`Enable or disable recipes for ${item.name}`}
+        title={`Enable or disable recipes for ${item.name}`}
+        style={{ display: "block", width: 32, height: 32, cursor: "pointer", borderRadius: 3 }}
+      >
+        <SpriteIcon icon={item.icon} size={32} title={item.name} />
+      </summary>
+      <div
+        style={{
+          position: "absolute",
+          zIndex: 30,
+          top: -5,
+          left: 38,
+          width: 392,
+          maxWidth: "min(392px, 85vw)",
+          maxHeight: 308,
+          overflow: "auto",
+          padding: 7,
+          color: "var(--foreground)",
+          border: "1px solid var(--rule)",
+          borderTop: "2px solid var(--accent)",
+          borderRadius: 2,
+          background: "var(--dark)",
+          boxShadow: "0 10px 24px rgba(0, 0, 0, 0.55)",
+        }}
+      >
+        <strong style={{ display: "block", marginBottom: 5, color: "var(--bright)" }}>Recipes for {item.name}</strong>
+        {groups.map((group, groupIndex) => (
+          <section
+            key={group.key}
+            style={groupIndex === 0 ? undefined : { marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--light)" }}
+          >
+            <div
+              style={{
+                ...UI.label,
+                margin: "1px 0 3px 4px",
+                textTransform: "uppercase",
+                letterSpacing: "0.035em",
+              }}
+            >
+              {group.name}
+            </div>
+            <div>
+              {group.recipes.map((recipe) => {
+                const enabled = !specification.disable.has(recipe)
+                const recipeDetails: string[] = []
+                if (!recipe.time.isZero()) recipeDetails.push(`${formatCanadianNumber(recipe.time.toDecimal())} s`)
+                if (specification.selectedPlanets.size > 0) {
+                  const count = getRecipeLocations(specification, recipe, specification.getBuilding(recipe)).length
+                  recipeDetails.push(`${count} selected location${count === 1 ? "" : "s"}`)
+                }
+                const label = recipeDetails.length > 0 ? `${recipe.name} — ${recipeDetails.join(", ")}` : recipe.name
+                return (
+                  <label
+                    key={recipe.key}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "18px 32px minmax(0, 1fr)",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "3px 4px",
+                      borderRadius: 4,
+                      color: recipe === activeRecipe ? "var(--bright)" : undefined,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      style={{ accentColor: "var(--accent)" }}
+                      onChange={(event) =>
+                        runMutation(specification, () =>
+                          setRecipeEnabled(specification, recipe, event.currentTarget.checked),
+                        )
+                      }
+                    />
+                    <SpriteIcon icon={recipe.icon} size={32} title={recipe.name} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+                  </label>
+                )
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    </details>
+  )
 }
 
-export type GraphNode = GraphNodeContract
+interface ItemBreakdownRow {
+  readonly item: Item
+  readonly recipe: Recipe
+  readonly rate: Rational
+  readonly building: Building | null
+  readonly count: Rational | null
+  readonly percent: string | null
+  readonly divider: boolean
+}
 
-export interface GraphLink {
-  readonly source: GraphNodeContract
-  readonly target: GraphNodeContract
-  readonly value: number
+function getItemBreakdown(specification: FactorySpecification, item: Item, totals: Totals): ItemBreakdownRow[] {
+  const rows: ItemBreakdownRow[] = []
+  let foundIngredient = false
+  for (const recipe of item.recipes) {
+    if (!totals.rates.has(recipe)) continue
+    for (const ingredient of recipe.getIngredients()) {
+      if (!isItem(ingredient.item)) continue
+      const rate = totals.consumers.get(ingredient.item)?.get(recipe)
+      if (rate === undefined) continue
+      let building: Building | null = null
+      let count: Rational | null = null
+      const producers = totals.producers.get(ingredient.item)
+      if (producers?.size === 1) {
+        const producer = producers.keys().next().value
+        if (producer instanceof Recipe) {
+          const recipeRate = rate.div(producer.gives(ingredient.item))
+          building = specification.getBuilding(producer)
+          count = specification.getCount(producer, recipeRate)
+        }
+      }
+      rows.push({ item: ingredient.item, recipe, rate, building, count, percent: null, divider: false })
+      foundIngredient = true
+    }
+  }
+
+  const producers = totals.producers.get(item)
+  const singleProducer = producers?.size === 1 ? producers.keys().next().value : undefined
+  const singleRecipe = singleProducer instanceof Recipe ? singleProducer : null
+  const amount = singleRecipe?.gives(item) ?? null
+  const building = singleRecipe === null ? null : specification.getBuilding(singleRecipe)
+  const consumers = totals.consumers.get(item)
+  const itemTotal = totals.items.get(item)
+  if (consumers === undefined || itemTotal === undefined || itemTotal.isZero()) return rows
+  const hundred = Rational.from_integer(100)
+  for (const [consumer, rate] of consumers) {
+    if (!(consumer instanceof Recipe)) continue
+    const count =
+      singleRecipe === null || amount === null ? null : specification.getCount(singleRecipe, rate.div(amount))
+    const percent = rate.div(itemTotal).mul(hundred)
+    const percentText = percent.less(one) ? "<1%" : `${formatCanadianNumber(percent.toDecimal(0))}%`
+    rows.push({
+      item,
+      recipe: consumer,
+      rate,
+      building,
+      count,
+      percent: percentText,
+      divider: foundIngredient,
+    })
+    foundIngredient = false
+  }
+  return rows
+}
+
+function ItemBreakdown({
+  specification,
+  item,
+  totals,
+}: {
+  readonly specification: FactorySpecification
+  readonly item: Item
+  readonly totals: Totals
+}) {
+  const rows = getItemBreakdown(specification, item, totals)
+  const belt = specification.belt
+  const pipe = specification.items.get("pipe")
+  return (
+    <table
+      aria-label={`${item.name} production breakdown`}
+      style={{
+        width: "auto",
+        borderCollapse: "collapse",
+        borderLeft: "2px solid var(--rule)",
+        borderRight: "2px solid var(--rule)",
+        lineHeight: 0,
+      }}
+    >
+      <tbody>
+        {rows.map((row, index) => (
+          <tr key={`${row.recipe.key}-${row.item.key}-${index}`}>
+            <td style={{ width: 85, padding: "2px 1px", borderTop: row.divider ? "1px solid var(--rule)" : undefined }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 0, verticalAlign: "middle" }}>
+                <SpriteIcon icon={row.recipe.icon} size={32} title={row.recipe.name} />
+                <UiGlyph name="rightarrow" size={18} rotate={180} />
+                <SpriteIcon icon={row.item.icon} size={32} title={row.item.name} />
+              </span>
+            </td>
+            <td
+              style={{
+                width: 54,
+                minWidth: 54,
+                padding: "2px 6px",
+                borderTop: row.divider ? "1px solid var(--rule)" : undefined,
+                textAlign: "right",
+                fontFamily: "monospace",
+              }}
+            >
+              <span style={{ display: "inline-block", lineHeight: 1.42 }}>{specification.format.rate(row.rate)}</span>
+            </td>
+            <td
+              style={{
+                width: 78,
+                minWidth: 78,
+                padding: "2px 3px",
+                borderTop: row.divider ? "1px solid var(--rule)" : undefined,
+              }}
+            >
+              {row.item.phase === "solid" && belt !== null ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 2, lineHeight: 1.42 }}>
+                  <SpriteIcon icon={belt.icon} size={32} title={belt.name} /> ×
+                  <span style={{ fontFamily: "monospace" }}>
+                    {specification.format.count(specification.getBeltCount(row.item, row.rate))}
+                  </span>
+                </span>
+              ) : pipe === undefined ? null : (
+                <SpriteIcon icon={pipe.icon} size={32} title={pipe.name} />
+              )}
+            </td>
+            <td
+              style={{
+                width: 77,
+                minWidth: 77,
+                padding: "2px 3px",
+                borderTop: row.divider ? "1px solid var(--rule)" : undefined,
+              }}
+            >
+              {row.building === null || row.count === null ? null : (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 2, lineHeight: 1.42 }}>
+                  <SpriteIcon icon={row.building.icon} size={32} title={row.building.name} /> ×
+                  <span style={{ fontFamily: "monospace" }}>{specification.format.count(row.count)}</span>
+                </span>
+              )}
+            </td>
+            <td
+              style={{
+                width: 33,
+                minWidth: 33,
+                padding: "2px 0",
+                borderTop: row.divider ? "1px solid var(--rule)" : undefined,
+                textAlign: "right",
+                fontFamily: "monospace",
+              }}
+            >
+              <span style={{ display: "inline-block", lineHeight: 1.42 }}>{row.percent}</span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function ItemTable({
+  specification,
+  totals,
+  pipette,
+}: {
+  readonly specification: FactorySpecification
+  readonly totals: Totals
+  readonly pipette: ModulePipetteController
+}) {
+  const [expandedItems, setExpandedItems] = useState<ReadonlySet<string>>(() => new Set())
+  const [openEquipmentPicker, setOpenEquipmentPicker] = useState<string | null>(null)
+  const showLocations = specification.selectedPlanets.size > 1
+  const items = new Map<Item, Rational>()
+  for (const [solverItem, rate] of totals.items) if (solverItem instanceof Item) items.set(solverItem, rate)
+  for (const [solverItem, rate] of totals.products)
+    if (solverItem instanceof Item && !items.has(solverItem)) items.set(solverItem, rate)
+  const recipeGroups = topoSort(getRecipeGroups(new Set([...totals.rates.keys()].filter(isFactoryRecipe).reverse())))
+  const rows: {
+    readonly key: string
+    readonly item: Item | null
+    readonly factoryRecipe: FactoryRecipe | null
+  }[] = []
+  recipeGroups.forEach((group, groupIndex) => {
+    const groupItems = new Set<Item>()
+    for (const recipe of group) {
+      for (const product of recipe.products) {
+        if (product.item instanceof Item && items.has(product.item)) groupItems.add(product.item)
+      }
+    }
+    const groupItemList = [...groupItems]
+    const groupRecipeList = [...group]
+    if (groupItemList.length === 0) return
+    const length = Math.max(groupItemList.length, groupRecipeList.length)
+    for (let index = 0; index < length; index++) {
+      const item = groupItemList[index] ?? null
+      const factoryRecipe = groupRecipeList[index] ?? null
+      rows.push({
+        key: `${groupIndex}-${index}-${item?.key ?? factoryRecipe?.key ?? "row"}`,
+        item,
+        factoryRecipe,
+      })
+    }
+  })
+
+  const toggleExpanded = (key: string) => {
+    setExpandedItems((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const toggleEquipmentPicker = (key: string) => {
+    setOpenEquipmentPicker((current) => (current === key ? null : key))
+  }
+
+  const closeEquipmentPicker = (key: string) => {
+    setOpenEquipmentPicker(null)
+    requestAnimationFrame(() => document.getElementById(equipmentPickerTriggerId(key))?.focus())
+  }
+
+  useEffect(() => {
+    if (openEquipmentPicker === null) return
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      const picker = target instanceof Element ? target.closest<HTMLElement>("[data-inline-equipment-picker]") : null
+      if (picker?.dataset.inlineEquipmentPicker !== openEquipmentPicker) setOpenEquipmentPicker(null)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeEquipmentPicker(openEquipmentPicker)
+    }
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true)
+    window.addEventListener("keydown", closeOnEscape)
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer, true)
+      window.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [openEquipmentPicker])
+
+  return (
+    <div className="factory-table-scroll" style={UI.tableWrap}>
+      <table className="factory-table" style={{ ...UI.table, minWidth: showLocations ? 1088 : 936 }}>
+        <thead>
+          <tr>
+            <th style={{ ...UI.th, width: 24 }} />
+            <th style={{ ...UI.th, width: 284, paddingLeft: 0 }}>Item</th>
+            <th style={{ ...UI.th, width: 83, textAlign: "right" }}>Rate / {specification.format.rateName}</th>
+            <th style={{ ...UI.th, width: 214, textAlign: "right" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  width: "100%",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  gap: 5,
+                }}
+              >
+                {specification.belt === null ? null : (
+                  <SpriteIcon icon={specification.belt.icon} size={18} title={specification.belt.name} />
+                )}
+                Belts
+              </span>
+            </th>
+            <th className="factory-machine" style={{ ...UI.th, width: 181, textAlign: "center" }}>
+              Machines
+            </th>
+            {showLocations ? (
+              <th className="factory-location" style={{ ...UI.th, width: 172 }}>
+                Location
+              </th>
+            ) : null}
+            <th className="factory-modules" style={{ ...UI.th, width: 170 }}>
+              Modules
+            </th>
+            <th className="factory-beacons" style={{ ...UI.th, width: 231 }}>
+              Beacons
+            </th>
+            <th className="factory-power" style={{ ...UI.th, width: 152, textAlign: "right" }}>
+              Power
+            </th>
+            <th className="factory-action" style={{ ...UI.th, width: 46 }} />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const item = row.item
+            const recipe = row.factoryRecipe instanceof Recipe ? row.factoryRecipe : null
+            const rate = item === null ? zero : (items.get(item) ?? zero)
+            const imported = item !== null && specification.ignore.has(item)
+            const belts =
+              item !== null && item.phase === "solid" && specification.belt !== null
+                ? specification.getBeltCount(item, rate)
+                : null
+            const recipeRate = recipe === null ? zero : (totals.rates.get(recipe) ?? zero)
+            const building = recipe === null ? null : specification.getBuilding(recipe)
+            const machineQuality =
+              recipe === null ? specification.getNormalQuality() : specification.getMachineQuality(recipe)
+            const count = recipe === null || building === null ? zero : specification.getCount(recipe, recipeRate)
+            const moduleSpec = recipe === null ? null : specification.getModuleSpec(recipe)
+            const power = recipe === null ? null : specification.getPowerUsage(recipe, recipeRate)
+            const expanded = item !== null && expandedItems.has(item.key)
+            const target = item !== null && specification.buildTargets.some((candidate) => candidate.item === item)
+            return (
+              <Fragment key={row.key}>
+                <tr
+                  className={target ? "target-output-row" : undefined}
+                  data-item-key={item?.key}
+                  data-recipe-key={recipe?.key}
+                >
+                  <td style={{ ...UI.td, paddingLeft: 0, paddingRight: 0 }}>
+                    {item === null ? null : (
+                      <button
+                        type="button"
+                        aria-label={`${expanded ? "Collapse" : "Expand"} ${item.name}`}
+                        aria-expanded={expanded}
+                        style={{
+                          ...UI.button,
+                          display: "grid",
+                          placeItems: "center",
+                          minHeight: 26,
+                          width: 24,
+                          padding: 0,
+                          color: "var(--foreground)",
+                          border: 0,
+                          background: "transparent",
+                        }}
+                        onClick={() => toggleExpanded(item.key)}
+                      >
+                        <UiGlyph name="right" size={16} rotate={expanded ? 90 : 0} />
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ ...UI.td, paddingLeft: 3 }}>
+                    {item === null ? null : (
+                      <button
+                        type="button"
+                        title={imported ? "Produce this item in the factory" : "Treat this item as imported"}
+                        style={mergeStyles(UI.button, {
+                          width: "100%",
+                          minHeight: 32,
+                          padding: 0,
+                          border: 0,
+                          background: "transparent",
+                          justifyContent: "flex-start",
+                          textAlign: "left",
+                        })}
+                        onClick={() => runMutation(specification, () => specification.toggleIgnore(item))}
+                      >
+                        <span
+                          className="item-name"
+                          style={{ position: "relative", display: "inline-flex", fontWeight: 600 }}
+                        >
+                          <IconLabel icon={item.icon} name={item.name} dimmed={imported} size={32} />
+                          {target ? (
+                            <span
+                              style={{
+                                position: "absolute",
+                                top: 20,
+                                left: 39,
+                                color: "var(--accent)",
+                                fontSize: 10,
+                                lineHeight: 1.2,
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Target
+                            </span>
+                          ) : null}
+                        </span>
+                      </button>
+                    )}
+                  </td>
+                  <td style={{ ...UI.td, textAlign: "right", fontFamily: "monospace" }}>
+                    {item === null ? null : specification.format.rate(rate)}
+                  </td>
+                  <td style={UI.td}>
+                    {item === null || belts === null ? (
+                      <span style={UI.muted}>{item === null || item.phase === "fluid" ? "" : "—"}</span>
+                    ) : (
+                      <div className="belt-controls" style={{ ...UI.row, gap: 4, justifyContent: "flex-end" }}>
+                        <span style={{ fontFamily: "monospace" }}>{specification.format.count(belts)}</span>
+                        <select
+                          aria-label={`Belt stacking for ${item.name}`}
+                          value={
+                            specification.getBeltStackPolicySource(item) === "default"
+                              ? ""
+                              : specification.getBeltStackPolicy(item)
+                          }
+                          style={{ ...UI.control, width: 85, minHeight: 28, padding: "2px 4px", fontSize: 12 }}
+                          onChange={(event) => {
+                            const value = event.currentTarget.value
+                            runMutation(specification, () =>
+                              specification.setBeltStackOverride(
+                                item,
+                                value === "" ? null : (value as BeltStackPolicy),
+                              ),
+                            )
+                          }}
+                        >
+                          <option value="">Default</option>
+                          <option value="auto">Auto</option>
+                          <option value="stacked">Stacked</option>
+                          <option value="unstacked">Unstacked</option>
+                        </select>
+                        <span style={{ ...UI.muted, fontFamily: "monospace" }}>
+                          ×{specification.getEffectiveBeltStackSize(item, recipe).toDecimal()}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="factory-machine" style={UI.td}>
+                    {recipe === null || building === null ? null : (
+                      <div style={{ ...UI.row, position: "relative", left: 20, gap: 4, justifyContent: "center" }}>
+                        {item === null ? (
+                          <SpriteIcon icon={recipe.icon} size={32} title={recipe.name} />
+                        ) : (
+                          <RecipeIconPicker specification={specification} item={item} activeRecipe={recipe} />
+                        )}
+                        <InlineMachinePicker
+                          specification={specification}
+                          recipe={recipe}
+                          building={building}
+                          quality={machineQuality}
+                          pickerKey={`machine:${recipe.key}`}
+                          open={openEquipmentPicker === `machine:${recipe.key}`}
+                          onToggle={() => toggleEquipmentPicker(`machine:${recipe.key}`)}
+                          onClose={() => closeEquipmentPicker(`machine:${recipe.key}`)}
+                        />
+                        <span>× {specification.format.count(count)}</span>
+                      </div>
+                    )}
+                  </td>
+                  {showLocations ? (
+                    <td className="factory-location" style={UI.td}>
+                      {recipe === null || !recipe.isReal() ? null : (
+                        <InlineLocationSelect specification={specification} recipe={recipe} building={building} />
+                      )}
+                    </td>
+                  ) : null}
+                  <td className="factory-modules" style={UI.td}>
+                    {recipe === null || building === null || moduleSpec === null ? null : (
+                      <div style={{ ...UI.row, gap: 2 }}>
+                        {moduleSpec.modules.map((module, index) => (
+                          <InlineModulePicker
+                            key={index}
+                            specification={specification}
+                            recipe={recipe}
+                            building={building}
+                            moduleSpec={moduleSpec}
+                            index={index}
+                            module={module}
+                            quality={moduleSpec.moduleQualities[index] ?? specification.defaultModuleQuality}
+                            pipette={pipette}
+                            pickerKey={`module:${recipe.key}:${index}`}
+                            open={openEquipmentPicker === `module:${recipe.key}:${index}`}
+                            onToggle={() => toggleEquipmentPicker(`module:${recipe.key}:${index}`)}
+                            onClose={() => closeEquipmentPicker(`module:${recipe.key}:${index}`)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="factory-beacons" style={UI.td}>
+                    {recipe === null || building === null || moduleSpec === null || !building.canBeacon() ? null : (
+                      <div style={{ ...UI.row, gap: 2 }}>
+                        {moduleSpec.beaconModules.map((module, index) => (
+                          <InlineModulePicker
+                            key={index}
+                            specification={specification}
+                            recipe={recipe}
+                            building={building}
+                            moduleSpec={moduleSpec}
+                            index={index}
+                            module={module}
+                            quality={moduleSpec.beaconModuleQualities[index] ?? specification.defaultModuleQuality}
+                            pipette={pipette}
+                            beacon
+                            pickerKey={`beacon-module:${recipe.key}:${index}`}
+                            open={openEquipmentPicker === `beacon-module:${recipe.key}:${index}`}
+                            onToggle={() => toggleEquipmentPicker(`beacon-module:${recipe.key}:${index}`)}
+                            onClose={() => closeEquipmentPicker(`beacon-module:${recipe.key}:${index}`)}
+                          />
+                        ))}
+                        {specification.getAvailableQualities().length > 1 &&
+                        moduleSpec.beaconModules.some((module) => module !== null) ? (
+                          <InlineBeaconQualityPicker
+                            specification={specification}
+                            recipe={recipe}
+                            moduleSpec={moduleSpec}
+                            pickerKey={`beacon-quality:${recipe.key}`}
+                            open={openEquipmentPicker === `beacon-quality:${recipe.key}`}
+                            onToggle={() => toggleEquipmentPicker(`beacon-quality:${recipe.key}`)}
+                            onClose={() => closeEquipmentPicker(`beacon-quality:${recipe.key}`)}
+                          />
+                        ) : null}
+                        <span>×</span>
+                        <CommitInput
+                          key={`${recipe.key}-${moduleSpec.beaconCount.toString()}`}
+                          ariaLabel={`Beacon count for ${recipe.name}`}
+                          value={moduleSpec.beaconCount.toString()}
+                          style={{ width: 58, minHeight: 28, padding: "2px 4px" }}
+                          onCommit={(value) =>
+                            runMutation(specification, () => moduleSpec.setBeaconCount(Rational.from_string(value)))
+                          }
+                        />
+                      </div>
+                    )}
+                  </td>
+                  <td className="factory-power" style={{ ...UI.td, textAlign: "right", fontFamily: "monospace" }}>
+                    {power === null || power.fuel === null
+                      ? null
+                      : power.fuel === "electric"
+                        ? formatPower(specification, power.power)
+                        : (() => {
+                            const fuel = recipe === null ? null : specification.getFuelForRecipe(recipe)
+                            return fuel === null ? null : (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                                <SpriteIcon icon={fuel.icon} size={24} /> ×{" "}
+                                {specification.format.rate(power.power.div(fuel.value))} /
+                                {specification.format.rateName}
+                              </span>
+                            )
+                          })()}
+                  </td>
+                  <td className="factory-action" style={{ ...UI.td, textAlign: "center" }}>
+                    {item === null ? null : (
+                      <button
+                        type="button"
+                        aria-label={`Add ${item.name} as a production target`}
+                        title={`Add ${item.name} as a production target`}
+                        style={{
+                          ...UI.button,
+                          display: "grid",
+                          placeItems: "center",
+                          minHeight: 28,
+                          padding: "0 5px",
+                          color: "var(--accent)",
+                          opacity: 0.45,
+                          border: 0,
+                          background: "transparent",
+                        }}
+                        onClick={() =>
+                          runMutation(specification, () => {
+                            specification.addTarget(item.key)
+                          })
+                        }
+                      >
+                        <UiGlyph name="popout" size={24} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {expanded && item !== null ? (
+                  <tr>
+                    <td
+                      colSpan={showLocations ? 10 : 9}
+                      style={{
+                        ...UI.td,
+                        padding: "0 12px 8px 29px",
+                        background: "transparent",
+                        whiteSpace: "normal",
+                      }}
+                    >
+                      <div style={{ ...UI.stack, width: "max-content", maxWidth: "100%" }}>
+                        <ItemBreakdown specification={specification} item={item} totals={totals} />
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+interface ModulePipetteSelection {
+  readonly module: Module
+  readonly quality: Quality
+}
+
+interface ModulePipetteController {
+  readonly selection: ModulePipetteSelection | null
+  readonly sample: (selection: ModulePipetteSelection | null) => void
+  readonly setHovered: (selection: ModulePipetteSelection | null | undefined) => void
+  readonly setMessage: (message: string) => void
+}
+
+function qualifiedModuleName(selection: ModulePipetteSelection, normalQuality: Quality): string {
+  return selection.quality === normalQuality
+    ? selection.module.name
+    : `${selection.quality.name} ${selection.module.name}`
+}
+
+type InlineEquipmentPopoverAlignment = "left" | "machine" | "right"
+
+function equipmentPickerPanelId(pickerKey: string): string {
+  return `${pickerKey.replace(/[^a-z0-9_-]/gi, "-")}-picker`
+}
+
+function equipmentPickerTriggerId(pickerKey: string): string {
+  return `${pickerKey.replace(/[^a-z0-9_-]/gi, "-")}-trigger`
+}
+
+function InlineEquipmentPopover({
+  pickerKey,
+  open,
+  label,
+  trigger,
+  children,
+  width,
+  align = "left",
+}: {
+  readonly pickerKey: string
+  readonly open: boolean
+  readonly label: string
+  readonly trigger: ReactNode
+  readonly children: ReactNode
+  readonly width: number | string
+  readonly align?: InlineEquipmentPopoverAlignment
+}) {
+  return (
+    <span
+      data-inline-equipment-picker={pickerKey}
+      style={{ position: "relative", display: "inline-flex", zIndex: open ? 40 : undefined }}
+    >
+      {trigger}
+      {open ? (
+        <span
+          id={equipmentPickerPanelId(pickerKey)}
+          role="dialog"
+          aria-label={label}
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            ...(align === "right"
+              ? { right: 0 }
+              : align === "machine"
+                ? { left: "50%", transform: "translateX(-30%)" }
+                : { left: 0 }),
+            zIndex: 50,
+            display: "grid",
+            width,
+            maxWidth: "calc(100vw - 24px)",
+            maxHeight: "min(430px, calc(100vh - 24px))",
+            padding: 6,
+            overflow: "auto",
+            color: "var(--foreground)",
+            whiteSpace: "normal",
+            textAlign: "left",
+            border: "1px solid var(--light)",
+            borderTop: "2px solid var(--accent)",
+            borderRadius: 2,
+            background: "var(--dark)",
+            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.72)",
+          }}
+        >
+          {children}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
+function EquipmentQualityStrip({
+  qualities,
+  selected,
+  label,
+  onChoose,
+}: {
+  readonly qualities: readonly Quality[]
+  readonly selected: Quality
+  readonly label: string
+  readonly onChoose: (quality: Quality) => void
+}) {
+  if (qualities.length <= 1) return null
+  return (
+    <span
+      role="group"
+      aria-label={label}
+      style={{ display: "flex", gap: 4, marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--rule)" }}
+    >
+      {qualities.map((quality) => {
+        const chosen = quality === selected
+        return (
+          <button
+            key={quality.key}
+            type="button"
+            aria-label={`${quality.name} quality`}
+            aria-pressed={chosen}
+            title={`${quality.name} quality`}
+            style={{
+              display: "grid",
+              placeItems: "center",
+              width: 32,
+              height: 32,
+              padding: 2,
+              border: `1px solid ${chosen ? "var(--accent)" : "var(--light)"}`,
+              borderRadius: 3,
+              background: chosen ? "var(--light)" : "var(--medium)",
+              cursor: "pointer",
+            }}
+            onClick={() => onChoose(quality)}
+          >
+            <SpriteIcon icon={quality.icon} size={20} title={`${quality.name} quality`} />
+          </button>
+        )
+      })}
+    </span>
+  )
+}
+
+interface MachinePickerOption {
+  readonly building: Building | null
+  readonly displayBuilding: Building
+  readonly label: string
+}
+
+function machinePickerLabel(building: Building): string {
+  const details: string[] = []
+  if (!building.speed.isZero()) details.push(`speed ${formatCanadianNumber(building.speed.toDecimal())}`)
+  details.push(`${building.moduleSlots} module slot${building.moduleSlots === 1 ? "" : "s"}`)
+  return `${building.name} — ${details.join(", ")}`
+}
+
+function InlineMachinePicker({
+  specification,
+  recipe,
+  building,
+  quality,
+  pickerKey,
+  open,
+  onToggle,
+  onClose,
+}: {
+  readonly specification: FactorySpecification
+  readonly recipe: Recipe
+  readonly building: Building
+  readonly quality: Quality
+  readonly pickerKey: string
+  readonly open: boolean
+  readonly onToggle: () => void
+  readonly onClose: () => void
+}) {
+  const automaticBuilding = specification.getAutomaticBuilding(recipe) ?? building
+  const override = specification.getBuildingOverride(recipe)
+  const compatibleBuildings = specification.getCompatibleBuildings(recipe, false)
+  const qualities = building.supportsEquipmentQuality() ? specification.getAvailableQualities() : []
+  const hasQualityChoices = qualities.length > 1
+  const hasMachineChoices = compatibleBuildings.length > 1 || override !== null
+  if (!hasQualityChoices && !hasMachineChoices) {
+    return <SpriteIcon icon={building.icon} size={32} title={building.name} />
+  }
+  const options: MachinePickerOption[] = [
+    {
+      building: null,
+      displayBuilding: automaticBuilding,
+      label: `Automatic (${machinePickerLabel(automaticBuilding)})`,
+    },
+    ...(hasMachineChoices
+      ? compatibleBuildings.map((candidate) => ({
+          building: candidate,
+          displayBuilding: candidate,
+          label: machinePickerLabel(candidate),
+        }))
+      : []),
+  ]
+  const selectedLabel = options.find((option) => option.building === override)?.label ?? building.name
+  return (
+    <InlineEquipmentPopover
+      pickerKey={pickerKey}
+      open={open}
+      label={`Machine and quality for ${recipe.name}`}
+      width="max-content"
+      align="machine"
+      trigger={
+        <button
+          id={equipmentPickerTriggerId(pickerKey)}
+          type="button"
+          aria-label={`Choose a machine for ${recipe.name}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={equipmentPickerPanelId(pickerKey)}
+          title={`Choose a machine for ${recipe.name}: ${selectedLabel}`}
+          style={{
+            display: "grid",
+            placeItems: "center",
+            width: 36,
+            height: 36,
+            padding: 2,
+            border: `1px solid ${open ? "var(--accent)" : "var(--rule)"}`,
+            borderRadius: 2,
+            background: "transparent",
+            cursor: "pointer",
+          }}
+          onClick={onToggle}
+        >
+          <SpriteIcon icon={building.icon} quality={quality} size={32} title={building.name} />
+        </button>
+      }
+    >
+      <EquipmentQualityStrip
+        qualities={qualities}
+        selected={quality}
+        label={`Machine quality for ${recipe.name}`}
+        onChoose={(nextQuality) => {
+          runMutation(specification, () => specification.setMachineQuality(recipe, nextQuality))
+          onClose()
+        }}
+      />
+      <span style={{ display: "grid", gap: 1 }}>
+        {options.map((option) => {
+          const chosen = option.building === override
+          return (
+            <button
+              key={option.building?.key ?? "automatic"}
+              type="button"
+              aria-label={option.label}
+              aria-pressed={chosen}
+              title={option.label}
+              style={{
+                display: "flex",
+                width: "100%",
+                minHeight: 38,
+                alignItems: "center",
+                gap: 7,
+                padding: "2px 6px",
+                color: "var(--foreground)",
+                border: "1px solid transparent",
+                borderRadius: 3,
+                background: chosen ? "var(--light)" : "transparent",
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+              onClick={() => {
+                runMutation(specification, () => specification.setBuildingOverride(recipe, option.building))
+                onClose()
+              }}
+            >
+              <SpriteIcon
+                icon={option.displayBuilding.icon}
+                quality={hasQualityChoices && chosen ? quality : null}
+                size={32}
+                title={option.displayBuilding.name}
+              />
+              <span style={{ fontSize: 13, lineHeight: 1.25, whiteSpace: "nowrap" }}>{option.label}</span>
+            </button>
+          )
+        })}
+      </span>
+    </InlineEquipmentPopover>
+  )
+}
+
+function InlineLocationSelect({
+  specification,
+  recipe,
+  building,
+}: {
+  readonly specification: FactorySpecification
+  readonly recipe: Recipe
+  readonly building: Building | null
+}) {
+  const compatible = getRecipeLocations(specification, recipe, building)
+  const configured = specification.recipeLocations.get(recipe) ?? null
+  const assigned = configured !== null && compatible.includes(configured) ? configured : null
+  const automatic = getAssignedLocation(specification, recipe, building)
+  return (
+    <select
+      aria-label={`Choose production location for ${recipe.name}`}
+      value={assigned?.key ?? ""}
+      title={`Production location for ${recipe.name}`}
+      style={{ ...UI.control, minWidth: 146, minHeight: 28, padding: "2px 5px", fontSize: 12 }}
+      onChange={(event) =>
+        runMutation(specification, () => {
+          const location =
+            event.currentTarget.value === "" ? null : (specification.planets?.get(event.currentTarget.value) ?? null)
+          specification.setRecipeLocation(recipe, location)
+        })
+      }
+    >
+      <option value="">Automatic ({automatic?.name ?? "unavailable"})</option>
+      {compatible.map((location) => (
+        <option key={location.key} value={location.key}>
+          {location.name}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function InlineModulePicker({
+  specification,
+  recipe,
+  building,
+  moduleSpec,
+  index,
+  module,
+  quality,
+  pipette,
+  pickerKey,
+  open,
+  onToggle,
+  onClose,
+  beacon = false,
+}: {
+  readonly specification: FactorySpecification
+  readonly recipe: Recipe
+  readonly building: Building
+  readonly moduleSpec: ModuleSpec
+  readonly index: number
+  readonly module: Module | null | undefined
+  readonly quality: Quality
+  readonly pipette: ModulePipetteController
+  readonly pickerKey: string
+  readonly open: boolean
+  readonly onToggle: () => void
+  readonly onClose: () => void
+  readonly beacon?: boolean
+}) {
+  const normalQuality = specification.getNormalQuality()
+  const currentSelection = module === null || module === undefined ? null : { module, quality }
+  const pipetteName =
+    pipette.selection === null ? null : qualifiedModuleName(pipette.selection, specification.getNormalQuality())
+  const label = beacon
+    ? `${recipe.name} beacon module ${index + 1}`
+    : index === 0
+      ? `${recipe.name} module 1 — changes matching slots`
+      : `${recipe.name} module ${index + 1}`
+  const compatibleRows = moduleRows
+    .map((row) =>
+      row.filter(
+        (candidate) => candidate === null || (candidate.canUse(recipe, building) && (!beacon || candidate.canBeacon())),
+      ),
+    )
+    .filter((row) => row.length > 0)
+  const compatibleModules = new Set(compatibleRows.flatMap((row) => row.filter((candidate) => candidate !== null)))
+  const handleQ = (event: {
+    readonly key: string
+    readonly repeat: boolean
+    readonly altKey: boolean
+    readonly ctrlKey: boolean
+    readonly metaKey: boolean
+    preventDefault(): void
+    stopPropagation(): void
+  }) => {
+    if (event.key.toLowerCase() !== "q" || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+    event.preventDefault()
+    event.stopPropagation()
+    pipette.sample(currentSelection)
+  }
+  const chooseModule = (nextModule: Module | null) => {
+    const modules = beacon ? moduleSpec.beaconModules : moduleSpec.modules
+    const oldModule = modules[index]
+    const indices = [index]
+    if (index === 0) {
+      for (let candidateIndex = 1; candidateIndex < modules.length; candidateIndex++) {
+        if (modules[candidateIndex] === oldModule) indices.push(candidateIndex)
+      }
+    }
+    runMutation(specification, () => {
+      for (const candidateIndex of indices) {
+        if (beacon) moduleSpec.setBeaconModule(nextModule, candidateIndex)
+        else void moduleSpec.setModule(candidateIndex, nextModule)
+      }
+    })
+    onClose()
+  }
+  const chooseQuality = (nextQuality: Quality) => {
+    const modules = beacon ? moduleSpec.beaconModules : moduleSpec.modules
+    const qualities = beacon ? moduleSpec.beaconModuleQualities : moduleSpec.moduleQualities
+    const oldModule = modules[index]
+    const oldQuality = qualities[index] ?? specification.defaultModuleQuality
+    const indices = [index]
+    if (index === 0) {
+      for (let candidateIndex = 1; candidateIndex < modules.length; candidateIndex++) {
+        const candidateQuality = qualities[candidateIndex] ?? specification.defaultModuleQuality
+        if (modules[candidateIndex] === oldModule && candidateQuality === oldQuality) indices.push(candidateIndex)
+      }
+    }
+    runMutation(specification, () => {
+      for (const candidateIndex of indices) {
+        if (beacon) moduleSpec.setBeaconModuleQuality(nextQuality, candidateIndex)
+        else void moduleSpec.setModuleQuality(candidateIndex, nextQuality)
+      }
+    })
+    if (module !== null && module !== undefined) onClose()
+  }
+  const applyPipette = (selection: ModulePipetteSelection) => {
+    if (!compatibleModules.has(selection.module)) {
+      pipette.setMessage(
+        `${qualifiedModuleName(selection, normalQuality)} cannot be used ${beacon ? "in a beacon" : "in this machine"} for ${recipe.name}.`,
+      )
+      return
+    }
+    runMutation(specification, () => {
+      if (beacon) {
+        moduleSpec.setBeaconModule(selection.module, index)
+        moduleSpec.setBeaconModuleQuality(selection.quality, index)
+      } else {
+        void moduleSpec.setModule(index, selection.module)
+        void moduleSpec.setModuleQuality(index, selection.quality)
+      }
+    })
+    pipette.setMessage(`Pipette applied to ${label}; click another compatible slot or press Q or Esc to clear.`)
+  }
+  return (
+    <InlineEquipmentPopover
+      pickerKey={pickerKey}
+      open={open}
+      label={`${beacon ? "Beacon module" : "Module"} ${index + 1} and quality for ${recipe.name}`}
+      width="max-content"
+      align={beacon ? "right" : "left"}
+      trigger={
+        <button
+          id={equipmentPickerTriggerId(pickerKey)}
+          type="button"
+          data-module-pipette-target="true"
+          aria-label={`${label}. ${currentSelection === null ? "Empty" : qualifiedModuleName(currentSelection, normalQuality)}`}
+          aria-keyshortcuts="Q"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={equipmentPickerPanelId(pickerKey)}
+          title={
+            pipetteName === null
+              ? `${label}. Press Q to sample; click to choose module and quality.`
+              : `Place ${pipetteName}`
+          }
+          style={{
+            display: "grid",
+            placeItems: "center",
+            width: 36,
+            height: 36,
+            padding: 2,
+            color: "var(--foreground)",
+            border: `1px solid ${open ? "var(--accent)" : "var(--rule)"}`,
+            borderRadius: 2,
+            background: "transparent",
+            cursor: pipette.selection === null ? "pointer" : "copy",
+          }}
+          onPointerEnter={() => pipette.setHovered(currentSelection)}
+          onPointerLeave={() => pipette.setHovered(undefined)}
+          onFocus={() => pipette.setHovered(currentSelection)}
+          onBlur={() => pipette.setHovered(undefined)}
+          onKeyDown={handleQ}
+          onClick={() => {
+            if (pipette.selection === null) onToggle()
+            else applyPipette(pipette.selection)
+          }}
+        >
+          {module === null || module === undefined ? (
+            <EmptyModuleIcon />
+          ) : (
+            <SpriteIcon icon={module.icon} quality={quality} size={32} title={module.name} />
+          )}
+        </button>
+      }
+    >
+      <EquipmentQualityStrip
+        qualities={specification.getAvailableQualities()}
+        selected={quality}
+        label={`${beacon ? "Beacon module" : "Module"} ${index + 1} quality for ${recipe.name}`}
+        onChoose={chooseQuality}
+      />
+      <span style={{ display: "grid", gap: 3 }}>
+        {compatibleRows.map((row, rowIndex) => (
+          <span key={rowIndex} style={{ display: "flex", gap: 3 }}>
+            {row.map((candidate) => {
+              const chosen = candidate === module || (candidate === null && (module === null || module === undefined))
+              const selection = candidate === null ? null : { module: candidate, quality }
+              const name =
+                candidate === null
+                  ? "Empty module slot"
+                  : qualifiedModuleName({ module: candidate, quality }, normalQuality)
+              return (
+                <button
+                  key={candidate?.key ?? "empty"}
+                  type="button"
+                  aria-label={`${name} for ${label}`}
+                  aria-pressed={chosen}
+                  title={name}
+                  style={{
+                    display: "grid",
+                    placeItems: "center",
+                    width: 36,
+                    height: 36,
+                    padding: 2,
+                    border: `1px solid ${chosen ? "var(--accent)" : "var(--light)"}`,
+                    borderRadius: 3,
+                    background: chosen ? "var(--light)" : "var(--medium)",
+                    cursor: "pointer",
+                  }}
+                  onPointerEnter={() => pipette.setHovered(selection)}
+                  onPointerLeave={() => pipette.setHovered(undefined)}
+                  onFocus={() => pipette.setHovered(selection)}
+                  onBlur={() => pipette.setHovered(undefined)}
+                  onClick={() => chooseModule(candidate)}
+                >
+                  {candidate === null ? (
+                    <EmptyModuleIcon />
+                  ) : (
+                    <SpriteIcon
+                      icon={candidate.icon}
+                      quality={chosen ? quality : null}
+                      size={32}
+                      title={candidate.name}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </span>
+        ))}
+      </span>
+    </InlineEquipmentPopover>
+  )
+}
+
+function InlineBeaconQualityPicker({
+  specification,
+  recipe,
+  moduleSpec,
+  pickerKey,
+  open,
+  onToggle,
+  onClose,
+}: {
+  readonly specification: FactorySpecification
+  readonly recipe: Recipe
+  readonly moduleSpec: ModuleSpec
+  readonly pickerKey: string
+  readonly open: boolean
+  readonly onToggle: () => void
+  readonly onClose: () => void
+}) {
+  const quality = moduleSpec.beaconQuality
+  return (
+    <InlineEquipmentPopover
+      pickerKey={pickerKey}
+      open={open}
+      label={`Beacon quality for ${recipe.name}`}
+      width="max-content"
+      align="right"
+      trigger={
+        <button
+          id={equipmentPickerTriggerId(pickerKey)}
+          type="button"
+          aria-label={`${quality.name} beacon quality for ${recipe.name}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={equipmentPickerPanelId(pickerKey)}
+          title={`${quality.name} beacon quality`}
+          style={{
+            display: "grid",
+            placeItems: "center",
+            width: 26,
+            height: 26,
+            padding: 2,
+            border: `1px solid ${open ? "var(--accent)" : "var(--light)"}`,
+            borderRadius: 3,
+            background: "var(--medium)",
+            cursor: "pointer",
+          }}
+          onClick={onToggle}
+        >
+          <SpriteIcon icon={quality.icon} size={20} title={`${quality.name} quality`} />
+        </button>
+      }
+    >
+      <EquipmentQualityStrip
+        qualities={specification.getAvailableQualities()}
+        selected={quality}
+        label={`Beacon quality for ${recipe.name}`}
+        onChoose={(nextQuality) => {
+          runMutation(specification, () => moduleSpec.setBeaconQuality(nextQuality))
+          onClose()
+        }}
+      />
+    </InlineEquipmentPopover>
+  )
+}
+
+function QualifiedAmountList({
+  specification,
+  values,
+}: {
+  readonly specification: FactorySpecification
+  readonly values: readonly QualifiedItemAmount[]
+}) {
+  if (values.length === 0) return <span style={UI.muted}>None</span>
+  return (
+    <div style={UI.row}>
+      {values.map((entry) => (
+        <span key={`${entry.item.key}-${entry.qualityLevel}`} style={UI.chip}>
+          <SpriteIcon
+            icon={entry.item.icon}
+            size={22}
+            quality={specification.getAvailableQualities()[entry.qualityLevel] ?? null}
+          />
+          {specification.format.rate(entry.amount)} {qualityName(entry.qualityLevel)} {entry.item.name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function QualityPlanView({
+  specification,
+  plan,
+}: {
+  readonly specification: FactorySpecification
+  readonly plan: QualityTargetPlan
+}) {
+  return (
+    <details open style={UI.details}>
+      <summary style={UI.detailsSummary}>
+        {qualityName(plan.qualityLevel)} {plan.item.name} · {plan.planetKey}
+      </summary>
+      <div style={{ ...UI.stack, marginTop: 9 }}>
+        <div style={UI.summary}>
+          <SummaryCard
+            label="Requested"
+            value={`${specification.format.rate(plan.requested)}/${specification.format.longRate}`}
+          />
+          <SummaryCard label="First-pass chance" value={formatPercent(plan.firstPassChance, 3)} />
+          <SummaryCard label="Machine count" value={specification.format.count(plan.totalMachineCount)} />
+          <SummaryCard label="Power" value={formatPower(specification, plan.totalPower)} />
+          <SummaryCard label="Crafts" value={specification.format.rate(plan.totalCrafts)} />
+          <SummaryCard label="Recycles" value={specification.format.rate(plan.totalRecycles)} />
+        </div>
+        <div>
+          <strong>Fresh inputs</strong>
+          <QualifiedAmountList specification={specification} values={plan.freshInputs} />
+        </div>
+        {plan.importedInputs.length > 0 ? (
+          <div>
+            <strong>Imported inputs</strong>
+            <QualifiedAmountList specification={specification} values={plan.importedInputs} />
+          </div>
+        ) : null}
+        <div style={UI.tableWrap}>
+          <table style={UI.table}>
+            <thead>
+              <tr>
+                <th style={UI.th}>Operation</th>
+                <th style={UI.th}>Quality</th>
+                <th style={{ ...UI.th, textAlign: "right" }}>Rate</th>
+                <th style={{ ...UI.th, textAlign: "right" }}>Machines</th>
+                <th style={{ ...UI.th, textAlign: "right" }}>Power</th>
+                <th style={UI.th}>Equipment</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plan.operations.map((operation, index) => (
+                <tr key={`${operation.recipe.key}-${operation.qualityLevel}-${operation.kind}-${index}`}>
+                  <td style={UI.td}>
+                    <IconLabel
+                      icon={operation.recipe.icon}
+                      name={`${operation.kind}: ${operation.recipe.name}`}
+                      size={24}
+                    />
+                  </td>
+                  <td style={UI.td}>{qualityName(operation.qualityLevel)}</td>
+                  <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.rate(operation.rate)}</td>
+                  <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.count(operation.machineCount)}</td>
+                  <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, operation.power)}</td>
+                  <td style={UI.td}>
+                    <div style={UI.row}>
+                      {operation.configuration.building === null ? null : (
+                        <SpriteIcon
+                          icon={operation.configuration.building.icon}
+                          quality={operation.configuration.machineQuality}
+                          size={24}
+                          title={operation.configuration.building.name}
+                        />
+                      )}
+                      {operation.configuration.modules.map((module, moduleIndex) =>
+                        module === null ? null : (
+                          <SpriteIcon
+                            key={`${module.key}-${moduleIndex}`}
+                            icon={module.icon}
+                            quality={operation.configuration.moduleQualities[moduleIndex] ?? null}
+                            size={22}
+                            title={module.name}
+                          />
+                        ),
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {plan.surplusOutputs.length > 0 ? (
+          <div>
+            <strong>Surplus outputs</strong>
+            <QualifiedAmountList specification={specification} values={plan.surplusOutputs} />
+          </div>
+        ) : null}
+        {plan.warnings.map((warning) => (
+          <div key={warning} style={UI.callout}>
+            {warning}
+          </div>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+function PlanningDetails({
+  specification,
+  totals,
+}: {
+  readonly specification: FactorySpecification
+  readonly totals: Totals
+}) {
+  const planning = getPlanningSummary(specification, totals)
+  const hasDetails =
+    (specification.selectedPlanets.size > 1 && planning.perLocation.length > 0) ||
+    planning.transport.length > 0 ||
+    planning.freshness.length > 0 ||
+    planning.asteroidConstraints.length > 0 ||
+    planning.qualityPlans.length > 0
+  if (!hasDetails) return null
+  return (
+    <section style={{ ...UI.stack, marginTop: 10 }}>
+      {planning.qualityPlans.map((plan) => (
+        <QualityPlanView
+          key={`${plan.item.key}-${plan.qualityLevel}-${plan.planetKey}`}
+          specification={specification}
+          plan={plan}
+        />
+      ))}
+      <details style={UI.details}>
+        <summary style={UI.detailsSummary}>Planning diagnostics</summary>
+        <div style={{ ...UI.stack, marginTop: 9 }}>
+          <div style={UI.summary}>
+            <SummaryCard label="Beacon power" value={formatPower(specification, planning.beaconPower)} />
+            <SummaryCard label="Pollution/min" value={specification.format.count(planning.pollution)} />
+            <SummaryCard label="Spores/min" value={specification.format.count(planning.spores)} />
+            <SummaryCard label="Aquilo heat" value={formatPower(specification, planning.aquiloHeat)} />
+          </div>
+          {specification.selectedPlanets.size > 1 && planning.perLocation.length > 0 ? (
+            <div className="settings-columns" style={UI.twoColumns}>
+              {planning.perLocation.map((entry) => (
+                <div key={entry.location.key} style={UI.summaryCard}>
+                  <IconLabel icon={entry.location.icon} name={entry.location.name} size={24} />
+                  <div>{specification.format.count(entry.machines)} machines</div>
+                  <div>{formatPower(specification, entry.electricPower.add(entry.beaconPower))}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {planning.transport.length > 0 ? (
+            <div>
+              <strong>Interplanetary flows</strong>
+              {planning.transport.map((flow, index) => (
+                <div
+                  key={`${flow.item.key}-${flow.from.key}-${flow.to.key}-${index}`}
+                  style={{ ...UI.row, marginTop: 5 }}
+                >
+                  <SpriteIcon icon={flow.item.icon} size={22} />
+                  {flow.from.name} → {flow.to.name}: {specification.format.rate(flow.rate)}/
+                  {specification.format.longRate}
+                  {flow.fuel ? " fuel" : ""}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {planning.freshness.map((entry) => (
+            <div key={entry.item.key} style={entry.expired ? UI.callout : UI.row}>
+              <SpriteIcon icon={entry.item.icon} size={22} />
+              {entry.item.name}: {formatPercent(entry.remaining)} freshness,{" "}
+              {specification.format.rate(entry.effectiveRate)} effective
+            </div>
+          ))}
+          {planning.asteroidConstraints.map((entry) => (
+            <div key={entry.item.key} style={entry.exceeded ? UI.callout : UI.row}>
+              <SpriteIcon icon={entry.item.icon} size={22} />
+              {entry.item.name}: {specification.format.rate(entry.required)} required /{" "}
+              {specification.format.rate(entry.limit)} cap
+            </div>
+          ))}
+        </div>
+      </details>
+    </section>
+  )
+}
+
+function FactoryPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const [pipetteSelection, setPipetteSelection] = useState<ModulePipetteSelection | null>(null)
+  const [hoveredPipetteSource, setHoveredPipetteSource] = useState<ModulePipetteSelection | null | undefined>(undefined)
+  const [pipetteMessage, setPipetteMessage] = useState("")
+  const [pointerPosition, setPointerPosition] = useState({ x: 16, y: 16 })
+  const normalQuality = snapshot.specification.getNormalQuality()
+  const samplePipette = (selection: ModulePipetteSelection | null) => {
+    setPipetteSelection(selection)
+    setPipetteMessage(
+      selection === null
+        ? "Module pipette cleared."
+        : `Pipette: ${qualifiedModuleName(selection, normalQuality)}. Click compatible module slots to apply; press Q or Esc to clear.`,
+    )
+  }
+  const pipette: ModulePipetteController = {
+    selection: pipetteSelection,
+    sample: samplePipette,
+    setHovered: setHoveredPipetteSource,
+    setMessage: setPipetteMessage,
+  }
+
+  useEffect(() => {
+    setPipetteSelection(null)
+    setHoveredPipetteSource(undefined)
+    setPipetteMessage("")
+  }, [snapshot.specification])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && pipetteSelection !== null) {
+        samplePipette(null)
+        return
+      }
+      if (
+        event.defaultPrevented ||
+        event.repeat ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.key.toLowerCase() !== "q"
+      ) {
+        return
+      }
+      const target = event.target
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return
+      }
+      event.preventDefault()
+      samplePipette(hoveredPipetteSource ?? null)
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [hoveredPipetteSource, pipetteSelection, normalQuality])
+
+  if (snapshot.status === "loading") return <div style={UI.panel}>Loading calculator data…</div>
+  if (snapshot.status === "error" || snapshot.totals === null) {
+    return (
+      <div style={UI.error} role="alert">
+        <strong>Unable to calculate this factory.</strong>
+        <div style={{ marginTop: 6, fontFamily: "monospace" }}>
+          {snapshot.errorMessage ?? "Unknown calculation error"}
+        </div>
+        <div style={{ marginTop: 6 }}>Check targets, selected locations, recipes, and quality settings.</div>
+      </div>
+    )
+  }
+  return (
+    <div
+      id="totals_tab"
+      style={UI.stack}
+      onPointerMove={
+        pipetteSelection === null
+          ? undefined
+          : (event) => {
+              const gap = 12
+              const ghostSize = 40
+              setPointerPosition({
+                x:
+                  event.clientX + gap + ghostSize <= window.innerWidth
+                    ? event.clientX + gap
+                    : Math.max(4, event.clientX - ghostSize),
+                y:
+                  event.clientY + gap + ghostSize <= window.innerHeight
+                    ? event.clientY + gap
+                    : Math.max(4, event.clientY - ghostSize),
+              })
+            }
+      }
+    >
+      <div id="module_pipette_status" role="status" aria-live="polite" style={UI.visuallyHidden}>
+        {pipetteMessage}
+      </div>
+      {pipetteSelection === null ? null : (
+        <div
+          id="module_pipette_ghost"
+          aria-hidden="true"
+          style={{ ...UI.pipetteGhost, left: pointerPosition.x, top: pointerPosition.y }}
+        >
+          <SpriteIcon
+            icon={pipetteSelection.module.icon}
+            quality={pipetteSelection.quality}
+            title={qualifiedModuleName(pipetteSelection, normalQuality)}
+          />
+        </div>
+      )}
+      <FactorySummaryView specification={snapshot.specification} totals={snapshot.totals} />
+      <ItemTable specification={snapshot.specification} totals={snapshot.totals} pipette={pipette} />
+      <PlanningDetails specification={snapshot.specification} totals={snapshot.totals} />
+    </div>
+  )
+}
+
+interface GraphNode {
+  readonly recipe: FactoryRecipe
+  readonly rate: Rational
+  readonly column: number
+  readonly row: number
+}
+
+interface GraphLink {
+  readonly key: string
+  readonly from: GraphNode
+  readonly to: GraphNode
   readonly item: Item
   readonly rate: Rational
   readonly fuel: boolean
-  readonly beltCount: Rational | null
-  readonly extra: boolean
-  readonly elements: Element[]
-  readonly nodeHighlighters: Set<GraphNodeContract>
-  index: number
-  label: BoxGraphLabel
-  points: GraphPoint[]
-  width: number
-  y0: number
-  y1: number
-  direction: LinkDirection
-  curve: GraphCurve
-  belts: GraphBeltLine[]
-  highlight(node: GraphNodeContract): void
-  unhighlight(node: GraphNodeContract): void
 }
 
-export interface GraphData {
-  readonly nodes: GraphNodeContract[]
-  readonly links: GraphLink[]
-}
-
-export interface IconCoordinates {
-  readonly icon_col: number
-  readonly icon_row: number
-}
-
-export type ItemColorMap = Map<Item, number>
-export type RecipeColorMap = Map<SolverRecipe, number>
-// endregion graph/types.ts
-
-// region graph.ts
-// Graph interactions
-
-let clickedNode: GraphNodeContract | null = null
-
-export function graphClickHandler(_event: Event, node: GraphNodeContract): void {
-  if (node === clickedNode) {
-    node.unhighlight()
-    clickedNode = null
-  } else {
-    clickedNode?.unhighlight()
-    clickedNode = node
+export function buildDeclarativeGraph(totals: Totals): { readonly nodes: GraphNode[]; readonly links: GraphLink[] } {
+  const rates = [...totals.rates].filter((entry): entry is [FactoryRecipe, Rational] => isFactoryRecipe(entry[0]))
+  const recipeSet = new Set(rates.map(([recipe]) => recipe))
+  const dependencies = new Map<FactoryRecipe, FactoryRecipe[]>()
+  for (const link of totals.proportionate) {
+    const from = link.from as FactoryRecipe
+    const to = link.to as FactoryRecipe
+    if (!recipeSet.has(from) || !recipeSet.has(to)) continue
+    const values = dependencies.get(from) ?? []
+    if (!values.includes(to)) values.push(to)
+    dependencies.set(from, values)
   }
-}
-
-export function graphMouseOverHandler(_event: Event, node: GraphNodeContract): void {
-  node.highlight()
-}
-
-export function graphMouseLeaveHandler(_event: Event, node: GraphNodeContract): void {
-  if (node !== clickedNode) {
-    node.unhighlight()
-  }
-}
-
-// Circular graph paths
-
-export type Vector2 = readonly [number, number]
-
-type CurveInputPoint = Pick<GraphPoint, "x" | "y">
-
-type Sweep = 0 | 1 | null
-
-interface CirclePoint extends GraphPoint {
-  readonly nx: number
-  readonly ny: number
-  readonly r: number | null
-  readonly sweep: Sweep
-}
-
-export class CirclePath implements GraphCurve {
-  points: CirclePoint[]
-
-  constructor(nx: number, ny: number, pairs: readonly CurveInputPoint[]) {
-    const first = pairs[0]
-    if (first === undefined) throw new Error("A graph curve requires at least one point")
-    let { x, y } = first
-    const points: CirclePoint[] = [{ x, y, nx, ny, r: null, sweep: null }]
-    let prevX = x
-    let prevY = y
-    for (const pair of pairs.slice(1)) {
-      ;({ x, y } = pair)
-      const dx = (x - prevX) / 2
-      const dy = (y - prevY) / 2
-      const tangentProjection = nx * dx + ny * dy
-      let normalProjection = -ny * dx + nx * dy
-      if (-0.5 < normalProjection && normalProjection < 0.5) {
-        const [normalX, normalY] = norm([dx, dy])
-        const dot = nx * normalX + ny * normalY
-        nx = 2 * dot * normalX - nx
-        ny = 2 * dot * normalY - ny
-        points.push({ x, y, nx, ny, r: null, sweep: null })
-        prevX = x
-        prevY = y
-        continue
-      }
-      let sweep: Exclude<Sweep, null> = 1
-      let normalX = -ny
-      let normalY = nx
-      if (normalProjection < 0) {
-        sweep = 0
-        normalProjection = -normalProjection
-        normalX = -normalX
-        normalY = -normalY
-      }
-      const radius = normalProjection + tangentProjection ** 2 / normalProjection
-      const centerX = normalX * radius
-      const centerY = normalY * radius
-      normalX = (centerX - 2 * dx) / radius
-      normalY = (centerY - 2 * dy) / radius
-      nx = normalY
-      ny = -normalX
-      if (sweep === 0) {
-        nx = -nx
-        ny = -ny
-      }
-      points.push({ x, y, nx, ny, r: radius, sweep })
-      prevX = x
-      prevY = y
+  const depths = new Map<FactoryRecipe, number>()
+  const dependencyDepth = (recipe: FactoryRecipe, visiting: ReadonlySet<FactoryRecipe>): number => {
+    const cached = depths.get(recipe)
+    if (cached !== undefined) return cached
+    if (visiting.has(recipe)) return 0
+    const nextVisiting = new Set(visiting).add(recipe)
+    let depth = 0
+    for (const dependency of dependencies.get(recipe) ?? []) {
+      depth = Math.max(depth, dependencyDepth(dependency, nextVisiting) + 1)
     }
-    this.points = points
+    depths.set(recipe, depth)
+    return depth
   }
-
-  path(): string {
-    const first = this.points[0]
-    if (first === undefined) return ""
-    const parts = [`M ${first.x},${first.y}`]
-    for (const { x, y, r, sweep } of this.points.slice(1)) {
-      if (r === null || Number.isNaN(r)) {
-        parts.push(`L ${x},${y}`)
-      } else {
-        parts.push(`A ${r} ${r} 0 0 ${sweep ?? 0} ${x} ${y}`)
-      }
-    }
-    return parts.join(" ")
-  }
-
-  offset(offset: number): CirclePath {
-    const first = this.points[0]
-    if (first === undefined) throw new Error("Cannot offset an empty graph curve")
-    const points = this.points.map(({ x, y, nx, ny }) => ({ x: x + -ny * offset, y: y + nx * offset }))
-    return new CirclePath(first.nx, first.ny, points)
-  }
-
-  transpose(): CirclePath {
-    const first = this.points[0]
-    if (first === undefined) throw new Error("Cannot transpose an empty graph curve")
-    const points: CirclePoint[] = this.points.map(({ x, y, nx, ny, r, sweep }) => ({
-      x: y,
-      y: x,
-      nx: ny,
-      ny: nx,
-      r,
-      sweep: sweep === 0 ? 1 : sweep === 1 ? 0 : null,
-    }))
-    const transposed = new CirclePath(first.ny, first.nx, points)
-    transposed.points = points
-    return transposed
-  }
-}
-
-function norm([x, y]: Vector2): Vector2 {
-  const distance = Math.sqrt(x ** 2 + y ** 2)
-  return [x / distance, y / distance]
-}
-
-const MIN_RADIUS = 10
-
-// Paths come in four kinds. All mentioned slopes are within the frame of
-// reference of the initial tangent vector.
-// (E.g. when t is <1, 0>, slopes have the usual meaning.)
-// 1) Straight line
-//      Used when slope == 0.
-// 2) Double arcs
-//      Used when slope of overall line is in the range [-0.75, 0.75],
-//      excluding 0.
-//
-//      Consists of two circular arcs, one beginning at the start point and
-//      terminating at the middle, the other beginning at the middle and
-//      terminating at the end point.
-// 3) Initial adjustment w/ double arcs
-//      Used with steeper slopes than the previous, so long as the first
-//      critical point is located before the line crossing through the center
-//      with double the slope.
-//
-//      Similar to the double arcs, but with a short initial curve on either
-//      end to permit the slope at the middle point to equal double the
-//      overall slope (similar to a cubic Bezier curve).
-// 4) Initial adjustment w/ straight line
-//      Used as final fallback in all other cases.
-//
-//      Generally only needed when the overall slope is too steep for other
-//      approaches to be feasible.
-
-// Vector from start point to end point in reference frame of tangent vector.
-function toFrame(tx: number, ty: number, x: number, y: number): Vector2 {
-  let dotx = tx * x + ty * y
-  let doty = -ty * x + tx * y
-  return [dotx, doty]
-}
-
-function fromFrame(tx: number, ty: number, x: number, y: number): Vector2 {
-  return toFrame(tx, -ty, x, y)
-}
-
-function frameSlope(tx: number, ty: number, x1: number, y1: number, x2: number, y2: number): number | null {
-  let dx = x2 - x1
-  let dy = y2 - y1
-  let [fx, fy] = toFrame(tx, ty, dx, dy)
-  if (fx === 0) {
-    return null
-  }
-  return fy / fx
-}
-
-function linePath(tx: number, ty: number, x1: number, y1: number, x2: number, y2: number): CirclePath {
-  return new CirclePath(tx, ty, [
-    { x: x1, y: y1 },
-    { x: x2, y: y2 },
-  ])
-}
-
-function doubleArcPath(tx: number, ty: number, x1: number, y1: number, x2: number, y2: number): CirclePath {
-  let midx = (x1 + x2) / 2
-  let midy = (y1 + y2) / 2
-  return new CirclePath(tx, ty, [
-    { x: x1, y: y1 },
-    { x: midx, y: midy },
-    { x: x2, y: y2 },
-  ])
-}
-
-// Vector transpose functions in SVG coord space (i.e. inverted y axis).
-function R(x: number, y: number): Vector2 {
-  return [-y, x]
-}
-function L(x: number, y: number): Vector2 {
-  return [y, -x]
-}
-
-function doubleArcAdjustPath(
-  tx: number,
-  ty: number,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  width: number,
-): CirclePath {
-  let dx = x2 - x1
-  let dy = y2 - y1
-  let [fx, fy] = toFrame(tx, ty, dx, dy)
-  let T
-  if (fy > 0) {
-    // Curving to right.
-    T = R
-  } else {
-    // Curving to left.
-    T = L
-  }
-  let [nx, ny] = T(tx, ty)
-  // radius of first circle
-  let r = width / 2 + MIN_RADIUS
-  // center point of first circle
-  let cx = x1 + nx * r
-  let cy = y1 + ny * r
-  // center point of whole curve
-  let p3x = (x1 + x2) / 2
-  let p3y = (y1 + y2) / 2
-  // desired tangent vector at center point
-  let [ctx, cty] = fromFrame(tx, ty, fx / 2, fy)
-  // unit vector normal to tangent at center point
-  // (points at center of second circle)
-  let [cnx, cny] = norm(T(ctx, cty))
-  // proceed from p3, r units towards center of circle 2
-  let midx = p3x + cnx * r
-  let midy = p3y + cny * r
-  // vector pointing from center of circle 1, to that point
-  let crossx = midx - cx
-  let crossy = midy - cy
-  // unit vector pointing from midpoint of that cross-vector, to center of
-  // circle 2
-  let [mx, my] = norm(T(crossx, crossy))
-  // reflect cn over m; gives unit vector pointing from center of circle 1
-  // to center of circle 2
-  let dot = cnx * mx + cny * my
-  let ox = 2 * dot * mx - cnx
-  let oy = 2 * dot * my - cny
-  // calculate points 2 and 4
-  let p2x = cx + -ox * r
-  let p2y = cy + -oy * r
-  let p4x = x2 - (p2x - x1)
-  let p4y = y2 - (p2y - y1)
-  return new CirclePath(tx, ty, [
-    { x: x1, y: y1 },
-    { x: p2x, y: p2y },
-    { x: p3x, y: p3y },
-    { x: p4x, y: p4y },
-    { x: x2, y: y2 },
-  ])
-}
-
-function lineAdjustPath(
-  tx: number,
-  ty: number,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  width: number,
-): CirclePath {
-  let dx = x2 - x1
-  let dy = y2 - y1
-  let [fx, fy] = toFrame(tx, ty, dx, dy)
-  let T
-  if (fy > 0) {
-    // Curving to right.
-    T = R
-  } else {
-    // Curving to left.
-    T = L
-  }
-  let [nx, ny] = T(tx, ty)
-  // radius of both circles
-  let r = width / 2 + MIN_RADIUS
-  // center points of both circles
-  let r1x = x1 + nx * r
-  let r1y = y1 + ny * r
-  let r2x = x2 - nx * r
-  let r2y = y2 - ny * r
-  // center point of whole curve
-  let cx = (x1 + x2) / 2
-  let cy = (y1 + y2) / 2
-  // distance between circle center and curve center
-  let d = Math.sqrt((cx - r1x) ** 2 + (cy - r1y) ** 2)
-  // unit vector from circle center to curve center
-  let ax = (cx - r1x) / d
-  let ay = (cy - r1y) / d
-  // normal pointing towards inflection point
-  let [bx, by] = T(-ax, -ay)
-  // A wee spot o' trig.
-  let d1 = r ** 2 / d
-  let h = r ** 2 - Math.sqrt(r ** 2 - r ** 4 / d ** 2)
-  let px = ax * d1 + bx * h
-  let py = ay * d1 + by * h
-
-  return new CirclePath(tx, ty, [
-    { x: x1, y: y1 },
-    { x: r1x + px, y: r1y + py },
-    { x: r2x - px, y: r2y - py },
-    { x: x2, y: y2 },
-  ])
-}
-
-export function makeCurve(
-  tx: number,
-  ty: number,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  width = 0,
-): CirclePath {
-  let dx = x2 - x1
-  let dy = y2 - y1
-  let [fx, fy] = toFrame(tx, ty, dx, dy)
-  if (fy === 0) {
-    return linePath(tx, ty, x1, y1, x2, y2)
-  }
-  let slope = fy / fx
-  if (-0.75 <= slope && slope <= 0.75) {
-    return doubleArcPath(tx, ty, x1, y1, x2, y2)
-  }
-  return doubleArcAdjustPath(tx, ty, x1, y1, x2, y2, width)
-}
-
-// Shared graph primitives
-
-// Code common between the Sankey and boxline visualizations.
-
-export const colorList = [
-  "#1f77b4", // blue
-  "#8c564b", // brown
-  "#2ca02c", // green
-  "#d62728", // red
-  "#9467bd", // purple
-  "#e377c2", // pink
-  "#17becf", // cyan
-  "#7f7f7f", // gray
-  "#bcbd22", // yellow
-  "#ff7f0e", // orange
-]
-
-export const iconSize = 32
-export const colonWidth = 12
-
-function itemNeighbors(item: Item): Set<Item> {
-  const touching = new Set<Item>()
-  let recipes = item.recipes.concat(item.uses)
-  for (let recipe of recipes) {
-    let ingredients = recipe.getIngredients().concat(recipe.products)
-    for (let ing of ingredients) {
-      if (ing.item instanceof Item) touching.add(ing.item)
-    }
-  }
-  return touching
-}
-
-function itemDegree(item: Item): number {
-  return itemNeighbors(item).size
-}
-
-export function getColorMaps(
-  nodes: readonly GraphNodeContract[],
-  links: readonly GraphLink[],
-): readonly [ItemColorMap, RecipeColorMap] {
-  const itemColors: ItemColorMap = new Map()
-  const recipeColors: RecipeColorMap = new Map()
-  const items: Item[] = []
-  for (let link of links) {
-    items.push(link.item)
-  }
-  items.sort(function (a, b) {
-    return itemDegree(b) - itemDegree(a)
+  for (const [recipe] of rates) dependencyDepth(recipe, new Set())
+  const maximumDepth = Math.max(0, ...depths.values())
+  const rowsByColumn = new Map<number, number>()
+  const nodes = rates
+    .sort(
+      ([a], [b]) =>
+        maximumDepth - (depths.get(a) ?? 0) - (maximumDepth - (depths.get(b) ?? 0)) || a.name.localeCompare(b.name),
+    )
+    .map(([recipe, rate]) => {
+      const column = maximumDepth - (depths.get(recipe) ?? 0)
+      const row = rowsByColumn.get(column) ?? 0
+      rowsByColumn.set(column, row + 1)
+      return { recipe, rate, column, row }
+    })
+  const nodeMap = new Map(nodes.map((node) => [node.recipe, node]))
+  const links = totals.proportionate.flatMap((link, index): GraphLink[] => {
+    if (!(link.item instanceof Item)) return []
+    const from = nodeMap.get(link.from as FactoryRecipe)
+    const to = nodeMap.get(link.to as FactoryRecipe)
+    if (from === undefined || to === undefined) return []
+    return [
+      {
+        key: `${from.recipe.key}-${to.recipe.key}-${link.item.key}-${index}`,
+        from,
+        to,
+        item: link.item,
+        rate: link.rate,
+        fuel: link.fuel,
+      },
+    ]
   })
-  const remainingItems = new Set<Item>(items)
-  while (remainingItems.size > 0) {
-    let chosenItem: Item | null = null
-    let usedColors: Set<number> = new Set()
-    let max = -1
-    for (let item of remainingItems) {
-      let neighbors = itemNeighbors(item)
-      const colors = new Set<number>()
-      for (let neighbor of neighbors) {
-        if (itemColors.has(neighbor)) {
-          const neighborColor = itemColors.get(neighbor)
-          if (neighborColor !== undefined) colors.add(neighborColor)
-        }
-      }
-      if (colors.size > max) {
-        max = colors.size
-        usedColors = colors
-        chosenItem = item
-      }
-    }
-    if (chosenItem === null) break
-    remainingItems.delete(chosenItem)
-    let color = 0
-    while (usedColors.has(color)) {
-      color++
-    }
-    itemColors.set(chosenItem, color)
-  }
-  // This is intended to be taken modulo the number of colors when it is
-  // actually used.
-  let recipeColor = 0
-  for (let node of nodes) {
-    const recipe = node.recipe
-    const onlyProduct = recipe.products.length === 1 ? recipe.products[0] : undefined
-    const productColor =
-      onlyProduct !== undefined && onlyProduct.item instanceof Item ? itemColors.get(onlyProduct.item) : undefined
-    if (productColor !== undefined) {
-      recipeColors.set(recipe, productColor)
-    } else {
-      recipeColors.set(recipe, recipeColor++)
-    }
-  }
-  return [itemColors, recipeColors]
-}
-
-export function imageViewBox(obj: IconCoordinates): string {
-  var x1 = obj.icon_col * PX_WIDTH + 0.5
-  var y1 = obj.icon_row * PX_HEIGHT + 0.5
-  return `${x1} ${y1} ${PX_WIDTH - 1} ${PX_HEIGHT - 1}`
-}
-
-function colorIndex<TKey>(colors: ReadonlyMap<TKey, number>, key: TKey): number {
-  return colors.get(key) ?? 0
-}
-
-function darkenColor(value: string): string {
-  return color(value)?.darker().toString() ?? value
-}
-
-function recipeIcon(node: GraphNodeContract): IconCoordinates {
-  if (!(node.recipe instanceof Recipe)) throw new Error(`Graph node ${node.name} has no recipe icon`)
-  return node.recipe
-}
-
-export function renderNode<GElement extends BaseType, PElement extends BaseType, PDatum>(
-  rects: Selection<GElement, GraphNodeContract, PElement, PDatum>,
-  nodeMargin: number,
-  justification: GraphJustification,
-  recipeColors: RecipeColorMap,
-  ignore: ReadonlySet<unknown>,
-): void {
-  rects.each((d: GraphNodeContract) => {
-    if (justification === "left") {
-      d.labelX = d.x0
-    } else {
-      d.labelX = (d.x0 + d.x1) / 2 - d.width / 2
-    }
-  })
-  // main rect
-  rects
-    .append("rect")
-    .attr("x", (d: GraphNodeContract) => d.x0)
-    .attr("y", (d: GraphNodeContract) => d.y0)
-    .attr("height", (d: GraphNodeContract) => d.y1 - d.y0)
-    .attr("width", (d: GraphNodeContract) => d.x1 - d.x0)
-    .attr("fill", (d: GraphNodeContract) => {
-      const value = colorList[colorIndex(recipeColors, d.recipe) % colorList.length] ?? colorList[0] ?? "#000"
-      return darkenColor(value)
-    })
-    .attr(
-      "stroke",
-      (d: GraphNodeContract) => colorList[colorIndex(recipeColors, d.recipe) % colorList.length] ?? "#000",
-    )
-    .each(function (this: Element, d: GraphNodeContract) {
-      if (this instanceof SVGElement) d.element = this
-    })
-  // plain text node (output, surplus)
-  rects
-    .filter((d: GraphNodeContract) => d.rate === null)
-    .append("text")
-    .attr("x", (d: GraphNodeContract) => (d.x0 + d.x1) / 2)
-    .attr("y", (d: GraphNodeContract) => (d.y0 + d.y1) / 2)
-    .attr("dy", "0.35em")
-    .attr("text-anchor", "middle")
-    .text((d: GraphNodeContract) => d.text())
-  let labeledNode = rects.filter((d: GraphNodeContract) => d.rate !== null)
-  // recipe icon
-  labeledNode
-    .append("svg")
-    .attr("viewBox", (d: GraphNodeContract) => imageViewBox(recipeIcon(d)))
-    .attr("x", (d: GraphNodeContract) => d.labelX + nodeMargin + 0.5)
-    .attr("y", (d: GraphNodeContract) => (d.y0 + d.y1) / 2 - iconSize / 2 + 0.5)
-    .attr("width", iconSize)
-    .attr("height", iconSize)
-    .append("image")
-    .classed("ignore", (d: GraphNodeContract) => ignore.has(d.recipe))
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
-    .attr("width", sheetWidth)
-    .attr("height", sheetHeight)
-  // node text (building count, or plain rate if no building)
-  labeledNode
-    .append("text")
-    .attr(
-      "x",
-      (d: GraphNodeContract) =>
-        d.labelX + nodeMargin + iconSize + (d.building === null ? 0 : colonWidth + iconSize) /*+ 5*/,
-    )
-    .attr("y", (d: GraphNodeContract) => (d.y0 + d.y1) / 2)
-    .attr("dy", "0.35em")
-    .text((d: GraphNodeContract) => d.text())
-  let buildingNode = rects.filter((d: GraphNodeContract) => d.building !== null)
-  // colon
-  buildingNode
-    .append("circle")
-    .classed("colon", true)
-    .attr("cx", (d: GraphNodeContract) => d.labelX + nodeMargin + iconSize + colonWidth / 2)
-    .attr("cy", (d: GraphNodeContract) => (d.y0 + d.y1) / 2 - 4)
-    .attr("r", 1)
-  buildingNode
-    .append("circle")
-    .classed("colon", true)
-    .attr("cx", (d: GraphNodeContract) => d.labelX + nodeMargin + iconSize + colonWidth / 2)
-    .attr("cy", (d: GraphNodeContract) => (d.y0 + d.y1) / 2 + 4)
-    .attr("r", 1)
-  // building icon
-  buildingNode
-    .append("svg")
-    .attr("viewBox", (d: GraphNodeContract) => imageViewBox(d.building ?? recipeIcon(d)))
-    .attr("x", (d: GraphNodeContract) => d.labelX + iconSize + colonWidth + nodeMargin + 0.5)
-    .attr("y", (d: GraphNodeContract) => (d.y0 + d.y1) / 2 - iconSize / 2 + 0.5)
-    .attr("width", iconSize)
-    .attr("height", iconSize)
-    .append("image")
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
-    .attr("width", sheetWidth)
-    .attr("height", sheetHeight)
-}
-
-// Sankey graph
-
-const nodePadding = 36
-const sankeyNodeMargin = 2
-
-const columnWidth = 200
-const maxNodeHeight = 175
-
-function selfPath(d: GraphLink): CirclePath {
-  let x0 = d.source.x1
-  let y0 = d.y0
-  let x1 = d.source.x1
-  let y1 = d.source.y1 + d.width / 2 + 10
-  let r1 = (y1 - y0) / 2
-  let x2 = d.target.x0
-  let y2 = d.target.y1 + d.width / 2 + 10
-  let x3 = d.target.x0
-  let y3 = d.y1
-  let r2 = (y3 - y2) / 2
-  return new CirclePath(1, 0, [
-    { x: x0, y: y0 },
-    { x: x1, y: y1 },
-    { x: x2, y: y2 },
-    { x: x3, y: y3 },
-  ])
-}
-
-function backwardPath(d: GraphLink): CirclePath {
-  // start point
-  let x0 = d.source.x1
-  let y0 = d.y0
-  // end point
-  let x3 = d.target.x0
-  let y3 = d.y1
-  let y2a = d.source.y0 - d.width / 2 - 10
-  let y2b = d.source.y1 + d.width / 2 + 10
-  let y3a = d.target.y0 - d.width / 2 - 10
-  let y3b = d.target.y1 + d.width / 2 + 10
-  let points = [{ x: x0, y: y0 }]
-  let starty
-  let endy
-  if (y2b < y3a) {
-    // draw start arc down, end arc up
-    starty = y2b
-    endy = y3a
-  } else if (y2a > y3b) {
-    // draw start arc up, end arc down
-    starty = y2a
-    endy = y3b
-  } else {
-    // draw both arcs down
-    starty = y2b
-    endy = y3b
-  }
-  let curve = makeCurve(-1, 0, x0, starty, x3, endy)
-  for (let { x, y } of curve.points) {
-    points.push({ x, y })
-  }
-  points.push({ x: x3, y: y3 })
-  return new CirclePath(1, 0, points)
-}
-
-function linkPath(d: GraphLink): CirclePath {
-  if (d.direction === "self") {
-    return selfPath(d)
-  } else if (d.direction === "backward") {
-    return backwardPath(d)
-  }
-  let x0 = d.source.x1
-  let y0 = d.y0
-  let x1 = d.target.x0
-  let y1 = d.y1
-  return makeCurve(1, 0, x0, y0, x1, y1, d.width)
-}
-
-function createSankey<Node, Link>(): SankeyGenerator<Node, Link> {
-  const raw = d3sankey.sankey()
-  function generator(graph: SankeyGraph<Node, Link>): SankeyGraph<Node, Link> {
-    return Reflect.apply(raw, undefined, [graph]) as SankeyGraph<Node, Link>
-  }
-  generator.update = (graph: SankeyGraph<Node, Link>): SankeyGraph<Node, Link> => raw.update(graph)
-  generator.nodeWidth = (value: number): SankeyGenerator<Node, Link> => {
-    raw.nodeWidth(value)
-    return generator
-  }
-  generator.nodePadding = (value: number): SankeyGenerator<Node, Link> => {
-    raw.nodePadding(value)
-    return generator
-  }
-  generator.nodeAlign = (value: (node: Node, columns: number) => number): SankeyGenerator<Node, Link> => {
-    raw.nodeAlign(value)
-    return generator
-  }
-  generator.maxNodeHeight = (value: number): SankeyGenerator<Node, Link> => {
-    raw.maxNodeHeight(value)
-    return generator
-  }
-  generator.linkLength = (value: number): SankeyGenerator<Node, Link> => {
-    raw.linkLength(value)
-    return generator
-  }
-  return generator
-}
-
-export function renderSankey(data: GraphData, direction: GraphDirection, ignore: ReadonlySet<unknown>): void {
-  let maxNodeWidth = 0
-  let testSVG = select("body").append("svg").classed("sankey test", true)
-  const text = testSVG.append("text")
-  const textNode = text.node()
-  if (!(textNode instanceof SVGTextElement)) throw new Error("Unable to create graph measurement text")
-  for (const node of data.nodes) {
-    const nodeWidth = node.labelWidth(textNode, sankeyNodeMargin)
-    if (nodeWidth > maxNodeWidth) {
-      maxNodeWidth = nodeWidth
-    }
-    node.width = nodeWidth
-  }
-  text.remove()
-  testSVG.remove()
-
-  const [nw, np] = direction === "down" ? [nodePadding, maxNodeWidth] : [maxNodeWidth, nodePadding]
-  let sankey = createSankey<GraphNodeContract, GraphLink>()
-  sankey = sankey
-    .nodeWidth(nw)
-    .nodePadding(np)
-    .nodeAlign(d3sankey.sankeyRight)
-    .maxNodeHeight(maxNodeHeight)
-    .linkLength(columnWidth)
-  const { nodes, links } = sankey(data)
-  let [itemColors, recipeColors] = getColorMaps(nodes, links)
-
-  for (let link of links) {
-    link.curve = linkPath(link)
-    if (direction === "down") {
-      link.curve = link.curve.transpose()
-    }
-    const belts: GraphLink["belts"] = []
-    if (link.beltCount !== null) {
-      let dy = link.width / link.beltCount.toFloat()
-      // Only render belts if there are at least three pixels per belt.
-      if (dy > 3) {
-        for (let i = one; i.less(link.beltCount); i = i.add(one)) {
-          let offset = i.toFloat() * dy - link.width / 2
-          let beltCurve = link.curve.offset(offset)
-          belts.push({ item: link.item, curve: beltCurve })
-        }
-      }
-    }
-    link.belts = belts
-  }
-
-  if (direction === "down") {
-    for (let node of nodes) {
-      ;[node.x0, node.y0] = [node.y0, node.x0]
-      ;[node.x1, node.y1] = [node.y1, node.x1]
-    }
-  }
-
-  let svg = select("svg#graph").classed("sankey", true)
-  svg.selectAll("g").remove()
-
-  // Node rects
-  let rects = svg
-    .append("g")
-    .classed("nodes", true)
-    .selectAll<SVGGElement, GraphNodeContract>("g")
-    .data(nodes)
-    .join("g")
-    .classed("node", true)
-
-  let nodeJust: GraphJustification = "left"
-  if (direction === "down") {
-    nodeJust = "center"
-  }
-  renderNode(rects, sankeyNodeMargin, nodeJust, recipeColors, ignore)
-
-  // Link paths
-  let link = svg
-    .append("g")
-    .classed("links", true)
-    .selectAll<SVGGElement, GraphLink>("g")
-    .data(links)
-    .join("g")
-    .classed("link", true)
-    .each(function (d: GraphLink) {
-      d.elements.push(this)
-    })
-  //.style("mix-blend-mode", "multiply")
-  link
-    .append("path")
-    .attr("fill", "none")
-    .attr("stroke-opacity", 0.3)
-    .attr("d", (d: GraphLink) => d.curve.path())
-    .attr("stroke", (d: GraphLink) => colorList[colorIndex(itemColors, d.item) % colorList.length] ?? "#000")
-    .attr("stroke-width", (d: GraphLink) => Math.max(1, d.width))
-  link
-    .append("g")
-    .selectAll("path")
-    .data((d: GraphLink) => [d.curve.offset(-d.width / 2), d.curve.offset(d.width / 2)])
-    .join("path")
-    .classed("highlighter", true)
-    .attr("fill", "none")
-    .attr("d", (curve: GraphCurve) => curve.path())
-    .attr("stroke", "none")
-    .attr("stroke-width", 1)
-  link
-    .append("g")
-    .classed("belts", true)
-    .selectAll("path")
-    .data((d: GraphLink) => d.belts)
-    .join("path")
-    .classed("belt", true)
-    .attr("fill", "none")
-    .attr("stroke-opacity", 0.3)
-    .attr("d", (belt: GraphBeltLine) => belt.curve.path())
-    .attr("stroke", (belt: GraphBeltLine) => colorList[colorIndex(itemColors, belt.item) % colorList.length] ?? "#000")
-    .attr("stroke-width", 1)
-  link.append("title").text((d: GraphLink) => `${d.source.name} \u2192 ${d.target.name}\n${spec.format.rate(d.rate)}`)
-  let linkIcon = link
-    .filter((d: GraphLink) => d.extra)
-    .append("svg")
-    .attr("viewBox", (d: GraphLink) => imageViewBox(d.item))
-    .attr("x", (d: GraphLink) => d.source.x1 + 2.25)
-    .attr("y", (d: GraphLink) => d.y0 - iconSize / 4 + 0.25)
-    .attr("width", iconSize / 2)
-    .attr("height", iconSize / 2)
-  linkIcon
-    .append("image")
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
-    .attr("width", sheetWidth)
-    .attr("height", sheetHeight)
-  if (direction === "down") {
-    linkIcon.attr("x", (d: GraphLink) => d.y0 - iconSize / 4 + 0.25).attr("y", (d: GraphLink) => d.source.y1 + 2.25)
-  }
-  let linkLabel = link
-    .append("text")
-    .attr("x", (d: GraphLink) => d.source.x1 + 2 + (d.extra ? iconSize / 2 : 0))
-    .attr("y", (d: GraphLink) => d.y0)
-    .attr("dy", "0.35em")
-    .attr("text-anchor", "start")
-    .text((d: GraphLink) => (d.extra ? "\u00d7 " : "") + spec.format.rate(d.rate) + "/" + spec.format.rateName)
-  if (direction === "down") {
-    linkLabel
-      .attr("x", null)
-      .attr("y", null)
-      .attr("transform", (d: GraphLink) => {
-        let x = d.y0
-        let y = d.source.y1 + 2 + (d.extra ? 16 : 0)
-        return `translate(${x},${y}) rotate(90)`
-      })
-  }
-
-  // Overlay transparent rect on top of each node, for click events.
-  const rectElements = svg.selectAll<SVGGraphicsElement, GraphNodeContract>("g.node rect").nodes()
-  const overlayData: { readonly rect: DOMRect; readonly node: GraphNodeContract }[] = []
-  // Flash the graph tab to be visible, so that the graph is laid out and
-  // the BBox is not empty.
-  let graphTab = select("#graph_tab")
-  const graphTabNode = graphTab.node()
-  if (!(graphTabNode instanceof Element)) throw new Error("Graph tab is unavailable")
-  const origDisplay = style(graphTabNode, "display")
-  graphTab.style("display", "block")
-  for (let i = 0; i < nodes.length; i++) {
-    const rectElement = rectElements[i]
-    const node = nodes[i]
-    if (rectElement === undefined || node === undefined) continue
-    const rect = rectElement.getBBox()
-    overlayData.push({ rect, node })
-  }
-  graphTab.style("display", origDisplay)
-  svg
-    .append("g")
-    .classed("overlay", true)
-    .selectAll("rect")
-    .data(overlayData)
-    .join("rect")
-    .attr("stroke", "none")
-    .attr("fill", "transparent")
-    .attr("x", (d: (typeof overlayData)[number]) => d.rect.x)
-    .attr("y", (d: (typeof overlayData)[number]) => d.rect.y)
-    .attr("width", (d: (typeof overlayData)[number]) => d.rect.width)
-    .attr("height", (d: (typeof overlayData)[number]) => d.rect.height)
-    .on("mouseover", (event: Event, d: (typeof overlayData)[number]) => graphMouseOverHandler(event, d.node))
-    .on("mouseleave", (event: Event, d: (typeof overlayData)[number]) => graphMouseLeaveHandler(event, d.node))
-    .on("click", (event: Event, d: (typeof overlayData)[number]) => graphClickHandler(event, d.node))
-    .append("title")
-    .text(
-      (d: (typeof overlayData)[number]) =>
-        d.node.name +
-        (d.node.count.isZero() || d.node.building === null
-          ? ""
-          : `\n${d.node.building.name} \u00d7 ${spec.format.count(d.node.count)}`),
-    )
-}
-// endregion graph.ts
-
-// region visualization.ts
-type DagreRuntime = (typeof import("@dagrejs/dagre"))["default"]
-
-let dagreRuntime: DagreRuntime | null = null
-
-function requireDagre(): DagreRuntime {
-  if (dagreRuntime === null) throw new Error("Graph layout has not loaded")
-  return dagreRuntime
-}
-
-// Graph viewport
-
-const ZOOM_SCALE = 100
-const MAX_SCALE = 10
-const ASPECT_RATIO = 16 / 9
-
-export function installSVGEvents<PElement extends BaseType, PDatum>(
-  svg: Selection<SVGSVGElement, unknown, PElement, PDatum>,
-): void {
-  const selectedNode = svg.node()
-  if (!(selectedNode instanceof SVGSVGElement)) throw new Error("Graph SVG is unavailable")
-  const node: SVGSVGElement = selectedNode
-  const tab = select("#graph_tab")
-  const style = tab.style("display")
-  tab.style("display", "block")
-  svg.selectAll("image").style("display", "none")
-  let { x, y, width, height } = node.getBBox()
-  svg.selectAll("image").style("display", null)
-  tab.style("display", style)
-
-  const [diagramX, diagramY, diagramWidth, diagramHeight] = [x, y, width, height]
-  if (width / height < ASPECT_RATIO) {
-    const newWidth = height * ASPECT_RATIO
-    x -= (newWidth - width) / 2
-    width = newWidth
-  } else if (width / height > ASPECT_RATIO) {
-    const newHeight = width / ASPECT_RATIO
-    y -= (newHeight - height) / 2
-    height = newHeight
-  }
-
-  const [origWidth, origHeight] = [width, height]
-  y = diagramY
-  let scale = MAX_SCALE
-  let clickPoint: DOMPoint | null = null
-
-  function clamp(): void {
-    const midX = x + width / 2
-    const midY = y + height / 2
-    if (diagramX > midX) {
-      x = diagramX - width / 2
-    } else if (diagramX + diagramWidth < midX) {
-      x = diagramX + diagramWidth - width / 2
-    }
-    if (diagramY > midY) {
-      y = diagramY - height / 2
-    } else if (diagramY + diagramHeight < midY) {
-      y = diagramY + diagramHeight - height / 2
-    }
-  }
-
-  function setViewBox(): void {
-    clamp()
-    svg.attr("viewBox", `${x} ${y} ${width} ${height}`)
-  }
-
-  function point(event: MouseEvent): DOMPoint {
-    const clientPoint = new DOMPointReadOnly(event.clientX, event.clientY)
-    const matrix = node.getScreenCTM()
-    if (matrix === null) throw new Error("Graph SVG has no screen transform")
-    return clientPoint.matrixTransform(matrix.inverse())
-  }
-
-  function zoom(event: WheelEvent): void {
-    event.preventDefault()
-    const originalScale = scale
-    if (event.deltaY < 0) {
-      if (scale === 1) return
-      scale--
-    } else if (event.deltaY > 0) {
-      if (scale === MAX_SCALE + 2) return
-      scale++
-    }
-    const cursor = point(event)
-    const dx = cursor.x - x
-    const dy = cursor.y - y
-    x = cursor.x - (dx / originalScale) * scale
-    y = cursor.y - (dy / originalScale) * scale
-    width = origWidth * (scale / MAX_SCALE)
-    height = origHeight * (scale / MAX_SCALE)
-    setViewBox()
-  }
-
-  function mouseDown(event: MouseEvent): void {
-    clickPoint = point(event)
-    event.preventDefault()
-  }
-
-  function mouseMove(event: MouseEvent): void {
-    if (clickPoint === null) return
-    const cursor = point(event)
-    x -= cursor.x - clickPoint.x
-    y -= cursor.y - clickPoint.y
-    setViewBox()
-    event.preventDefault()
-  }
-
-  function mouseUp(event: MouseEvent): void {
-    clickPoint = null
-    event.preventDefault()
-  }
-
-  setViewBox()
-  svg.on("wheel", zoom)
-  svg.on("mousedown", mouseDown)
-  svg.on("mousemove", mouseMove)
-  svg.on("mouseup", mouseUp)
-}
-
-// Box-line graph
-
-const boxlineNodeMargin = 10
-
-function edgePath(edge: GraphLink): string | null {
-  const path = line<GraphPoint>()
-    .x((point) => point.x)
-    .y((point) => point.y)
-    .curve(curveBasis)
-  return path(edge.points)
-}
-
-function edgeName(link: GraphLink): string {
-  return `link-${link.index}`
-}
-
-function itemColor(itemColors: ReadonlyMap<Item, number>, item: Item): string {
-  return colorList[(itemColors.get(item) ?? 0) % colorList.length] ?? "#000"
-}
-
-function darkenedItemColor(itemColors: ReadonlyMap<Item, number>, item: Item): string {
-  const value = itemColor(itemColors, item)
-  return color(value)?.darker().toString() ?? value
-}
-
-export function renderBoxGraph(
-  { nodes, links }: GraphData,
-  direction: GraphDirection,
-  ignore: ReadonlySet<unknown>,
-  callback: () => void,
-): void {
-  let [itemColors, recipeColors] = getColorMaps(nodes, links)
-  const layoutDirection: GraphLayoutDirection = direction === "down" ? "TB" : "LR"
-  const dagre = requireDagre()
-  const g = new dagre.graphlib.Graph({ multigraph: true })
-  g.setGraph({ rankdir: layoutDirection })
-  g.setDefaultEdgeLabel(() => {})
-
-  let testSVG = select("body").append("svg").classed("test", true)
-  const text = testSVG.append("text")
-  const textNode = text.node()
-  if (!(textNode instanceof SVGTextElement)) throw new Error("Unable to create graph measurement text")
-  for (const node of nodes) {
-    const width = node.labelWidth(textNode, boxlineNodeMargin)
-    let height = 52
-    let label = { node, width, height }
-    g.setNode(node.name, label)
-  }
-
-  for (let [i, link] of links.entries()) {
-    link.index = i
-    let s = `\u00a0\u00d7 ${spec.format.rate(link.rate)}/${spec.format.rateName}`
-    text.text(s)
-    const textWidth = textNode.getBBox().width
-    let width = 32 + 10 + textWidth
-    let height = 32 + 10
-    let label = {
-      link: link,
-      labelpos: "c",
-      width: width,
-      height: height,
-      text: s,
-      x: 0,
-      y: 0,
-    } satisfies BoxGraphLabel
-    link.label = label
-    g.setEdge(link.source.name, link.target.name, label, edgeName(link))
-  }
-  text.remove()
-  testSVG.remove()
-
-  dagre.layout(g)
-  for (let nodeName of g.nodes()) {
-    let dagreNode = g.node(nodeName)
-    let node = dagreNode.node
-    node.x0 = dagreNode.x - dagreNode.width / 2
-    node.y0 = dagreNode.y - dagreNode.height / 2
-    node.x1 = node.x0 + dagreNode.width
-    node.y1 = node.y0 + dagreNode.height
-  }
-  for (let edgeName of g.edges()) {
-    let dagreEdge = g.edge(edgeName)
-    let link = dagreEdge.link
-    link.points = dagreEdge.points
-  }
-
-  let { width, height } = g.graph()
-  let svg = select("svg#graph").classed("sankey", false)
-  //.attr("viewBox", `-25,-25,${width+50},${height+50}`)
-  //.style("width", width+50)
-  //.style("height", height+50)
-  svg.selectAll("g").remove()
-
-  let edges = svg
-    .append("g")
-    .classed("edges", true)
-    .selectAll<SVGGElement, GraphLink>("g")
-    .data(links)
-    .join("g")
-    .classed("edge", true)
-    .classed("fuel", (d: GraphLink) => d.fuel)
-    .each(function (d: GraphLink) {
-      d.elements.push(this)
-    })
-  edges
-    .append("path")
-    .classed("highlighter", true)
-    .attr("fill", "none")
-    .attr("stroke", (d: GraphLink) => itemColor(itemColors, d.item))
-    .attr("stroke-width", 3)
-    .attr("d", edgePath)
-    .attr("marker-end", (d: GraphLink) => `url(#arrowhead-${edgeName(d)})`)
-  edges
-    .append("defs")
-    .append("marker")
-    .attr("id", (d: GraphLink) => "arrowhead-" + edgeName(d))
-    .attr("viewBox", "0 0 10 10")
-    .attr("refX", "9")
-    .attr("refY", "5")
-    .attr("markerWidth", "16")
-    .attr("markerHeight", "12")
-    .attr("markerUnits", "userSpaceOnUse")
-    .attr("orient", "auto")
-    .append("path")
-    .classed("highlighter", true)
-    .attr("d", "M 0,0 L 10,5 L 0,10 z")
-    .attr("stroke-width", 1)
-    .attr("stroke", (d: GraphLink) => itemColor(itemColors, d.item))
-    .attr("fill", (d: GraphLink) => darkenedItemColor(itemColors, d.item))
-
-  let edgeLabels = svg
-    .append("g")
-    .classed("edgeLabels", true)
-    .selectAll<SVGGElement, GraphLink>("g")
-    .data(links)
-    .join("g")
-    .classed("edgeLabel", true)
-    .each(function (d: GraphLink) {
-      d.elements.push(this)
-    })
-  edgeLabels
-    .append("rect")
-    .classed("highlighter", true)
-    .attr("x", (d: GraphLink) => {
-      let edge = d.label
-      return edge.x - edge.width / 2
-    })
-    .attr("y", (d: GraphLink) => {
-      let edge = d.label
-      return edge.y - edge.height / 2
-    })
-    .attr("width", (d: GraphLink) => d.label.width)
-    .attr("height", (d: GraphLink) => d.label.height)
-    .attr("rx", 6)
-    .attr("ry", 6)
-    .attr("fill", (d: GraphLink) => darkenedItemColor(itemColors, d.item))
-    .attr("fill-opacity", 0)
-    .attr("stroke", "none")
-  edgeLabels
-    .append("svg")
-    .attr("viewBox", (d: GraphLink) => imageViewBox(d.item))
-    .attr("x", (d: GraphLink) => {
-      let edge = d.label
-      return edge.x - edge.width / 2 + 5 + 0.5
-    })
-    .attr("y", (d: GraphLink) => {
-      let edge = d.label
-      return edge.y - iconSize / 2 + 0.5
-    })
-    .attr("width", iconSize)
-    .attr("height", iconSize)
-    .append("image")
-    .attr("xlink:href", "images/sprite-sheet-" + sheetHash + ".webp")
-    .attr("width", sheetWidth)
-    .attr("height", sheetHeight)
-  edgeLabels
-    .append("text")
-    .attr("x", (d: GraphLink) => {
-      let edge = d.label
-      return edge.x - edge.width / 2 + 5 + iconSize
-    })
-    .attr("y", (d: GraphLink) => d.label.y)
-    .attr("dy", "0.35em")
-    .text((d: GraphLink) => d.label.text)
-
-  let rects = svg
-    .append("g")
-    .classed("nodes", true)
-    .selectAll<SVGGElement, GraphNodeContract>("g")
-    .data(nodes)
-    .join("g")
-    .classed("node", true)
-  renderNode(rects, boxlineNodeMargin, "left", recipeColors, ignore)
-
-  svg
-    .append("g")
-    .classed("overlay", true)
-    .selectAll("rect")
-    .data(nodes)
-    .join("rect")
-    .attr("stroke", "none")
-    .attr("fill", "transparent")
-    .attr("x", (d: GraphNodeContract) => d.x0)
-    .attr("y", (d: GraphNodeContract) => d.y0)
-    .attr("width", (d: GraphNodeContract) => d.x1 - d.x0)
-    .attr("height", (d: GraphNodeContract) => d.y1 - d.y0)
-    .on("mouseover", (event: Event, node: GraphNodeContract) => graphMouseOverHandler(event, node))
-    .on("mouseout", (event: Event, node: GraphNodeContract) => graphMouseLeaveHandler(event, node))
-    .on("click", (event: Event, node: GraphNodeContract) => graphClickHandler(event, node))
-    .append("title")
-    .text((d: GraphNodeContract) => d.name)
-  callback()
-}
-
-// Visualization orchestration
-
-class GraphEdge implements GraphLink {
-  readonly elements: Element[] = []
-  readonly nodeHighlighters = new Set<GraphNodeContract>()
-  index = 0
-  label: BoxGraphLabel
-  points: GraphPoint[] = []
-  width = 0
-  y0 = 0
-  y1 = 0
-  direction: LinkDirection = "forward"
-  curve: GraphCurve = new CirclePath(1, 0, [
-    { x: 0, y: 0 },
-    { x: 0, y: 0 },
-  ])
-  belts: GraphLink["belts"] = []
-
-  constructor(
-    readonly source: GraphLayoutNode,
-    readonly target: GraphLayoutNode,
-    readonly value: number,
-    readonly item: Item,
-    readonly rate: Rational,
-    readonly fuel: boolean,
-    readonly beltCount: Rational | null,
-    readonly extra: boolean,
-  ) {
-    this.label = { link: this, labelpos: "c", width: 0, height: 0, text: "", x: 0, y: 0 }
-    source.linkObjects.push(this)
-    target.linkObjects.push(this)
-  }
-
-  hasHighlighters(): boolean {
-    return this.nodeHighlighters.size > 0
-  }
-
-  highlight(node: GraphNodeContract): void {
-    if (!this.hasHighlighters()) {
-      for (const element of this.elements) element.classList.add("edgePathHighlight")
-    }
-    this.nodeHighlighters.add(node)
-  }
-
-  unhighlight(node: GraphNodeContract): void {
-    this.nodeHighlighters.delete(node)
-    if (!this.hasHighlighters()) {
-      for (const element of this.elements) element.classList.remove("edgePathHighlight")
-    }
-  }
-}
-
-class GraphLayoutNode implements GraphNodeContract {
-  readonly ingredients
-  readonly linkObjects: GraphLink[] = []
-  element: SVGElement | null = null
-  x0 = 0
-  y0 = 0
-  x1 = 0
-  y1 = 0
-  width = 0
-  labelX = 0
-
-  constructor(
-    readonly name: string,
-    readonly recipe: SolverRecipe,
-    readonly building: Building | null,
-    readonly count: Rational,
-    readonly rate: Rational | null,
-  ) {
-    this.ingredients = recipe.getIngredients()
-  }
-
-  links(): readonly GraphLink[] {
-    return this.linkObjects
-  }
-
-  text(): string {
-    if (this.rate === null) return this.name
-    return this.count.isZero()
-      ? ` × ${spec.format.rate(this.rate)}/${spec.format.rateName}`
-      : ` × ${spec.format.count(this.count)}`
-  }
-
-  labelWidth(text: SVGTextElement, nodeMargin: number): number {
-    text.textContent = this.text()
-    const textWidth = text.getBBox().width
-    let nodeWidth = textWidth + nodeMargin * 2
-    if (this.building !== null) {
-      nodeWidth += iconSize * 2 + colonWidth
-    } else if (this.rate !== null) {
-      nodeWidth += iconSize
-    }
-    return nodeWidth
-  }
-
-  highlight(): void {
-    this.element?.classList.add("nodeHighlight")
-    for (const edge of this.links()) edge.highlight(this)
-  }
-
-  unhighlight(): void {
-    this.element?.classList.remove("nodeHighlight")
-    for (const edge of this.links()) edge.unhighlight(this)
-  }
-}
-
-function makeGraph(totals: Totals): GraphData {
-  const nodes: GraphLayoutNode[] = []
-  const nodeMap = new Map<SolverRecipe, GraphLayoutNode>()
-
-  for (let [recipe, rate] of totals.rates) {
-    let node: GraphLayoutNode
-    if (recipe.isReal()) {
-      if (!(recipe instanceof Recipe)) throw new Error(`Unsupported real graph recipe: ${recipe.name}`)
-      const building = spec.getBuilding(recipe)
-      const count = spec.getCount(recipe, rate)
-      node = new GraphLayoutNode(recipe.name, recipe, building, count, rate)
-    } else {
-      node = new GraphLayoutNode(recipe.name, recipe, null, zero, null)
-    }
-    nodes.push(node)
-    nodeMap.set(recipe, node)
-  }
-
-  const links: GraphEdge[] = []
-  for (const { item, from, to, rate, fuel } of totals.proportionate) {
-    if (!(item instanceof Item)) throw new Error("Graph flow contains an unsupported item")
-    const source = nodeMap.get(from)
-    const target = nodeMap.get(to)
-    if (source === undefined || target === undefined) throw new Error("Graph flow references a missing process node")
-    let value = rate.toFloat()
-    if (item.phase === "fluid") {
-      // Fluids operate on a different scale.
-      value /= 10
-    }
-    let beltCount = null
-    if (item.phase === "solid" && spec.belt !== null) {
-      beltCount = spec.getBeltCount(item, rate)
-    }
-    const extra = from.products.length > 1
-    links.push(new GraphEdge(source, target, value, item, rate, fuel, beltCount, extra))
-  }
   return { nodes, links }
 }
 
-export function renderTotals(totals: Totals, ignore: ReadonlySet<Item>): void {
-  const data = makeGraph(totals)
-  let processCount = data.nodes.filter((node) => node.recipe?.isReal?.()).length
-  let summary = document.getElementById("visualization_summary")
-  if (summary !== null) {
-    summary.textContent = `${formatCanadianNumber(String(processCount))} processes · ${formatCanadianNumber(String(data.links.length))} flows`
-  }
-
-  const callback = (): void => {
-    const svg = select<SVGSVGElement, unknown>("svg#graph")
-    let tab = select("#graph_tab")
-    if (visualizerRender === "zoom") {
-      tab.style("min-width", 0)
-      svg.attr("width", null)
-      svg.attr("height", null)
-      svg.style("border", null)
-      installSVGEvents(svg)
-    } else {
-      tab.style("min-width", "max-content")
-      let style = tab.style("display")
-      tab.style("display", "block")
-      // Hide images so the sprite sheet doesn't throw off the bounding
-      // box.
-      svg.selectAll("image").style("display", "none")
-      const svgNode = svg.node()
-      if (!(svgNode instanceof SVGSVGElement)) throw new Error("Graph SVG is unavailable")
-      const { x, y, width, height } = svgNode.getBBox()
-      svg.selectAll("image").style("display", null)
-      tab.style("display", style)
-      svg
-        .attr("viewBox", `${x} ${y} ${width} ${height}`)
-        .attr("width", width)
-        .attr("height", height)
-        .style("border", null)
-      svg.on("wheel", null)
-      svg.on("mousedown", null)
-      svg.on("mousemove", null)
-      svg.on("mouseup", null)
-    }
-  }
-
-  if (visualizerType === "sankey") {
-    const direction: GraphDirection = visualizerDirection === "down" ? "down" : "right"
-    renderSankey(data, direction, ignore)
-    callback()
-  } else {
-    const direction: GraphDirection = visualizerDirection === "down" ? "down" : "right"
-    renderBoxGraph(data, direction, ignore, callback)
-  }
+function SvgSprite({
+  icon,
+  x,
+  y,
+  size,
+}: {
+  readonly icon: Icon
+  readonly x: number
+  readonly y: number
+  readonly size: number
+}) {
+  return (
+    <svg
+      x={x}
+      y={y}
+      width={size}
+      height={size}
+      viewBox={`${icon.obj.icon_col * PX_WIDTH} ${icon.obj.icon_row * PX_HEIGHT} ${PX_WIDTH} ${PX_HEIGHT}`}
+      aria-hidden="true"
+    >
+      <image href={`images/sprite-sheet-${sheetHash}.webp`} width={sheetWidth} height={sheetHeight} />
+    </svg>
+  )
 }
-// endregion visualization.ts
+
+function graphColour(key: string, lightness: number): string {
+  let hash = 0
+  for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  return `hsl(${hash % 360} 52% ${lightness}%)`
+}
+
+function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const { specification, totals, visualizerType, visualizerRender, visualizerDirection } = snapshot
+  const [hovered, setHovered] = useState<FactoryRecipe | null>(null)
+  if (totals === null) return <div style={UI.panel}>No graph is available until the calculation succeeds.</div>
+  const graph = buildDeclarativeGraph(totals)
+  const horizontal = visualizerDirection === "right"
+  const nodeWidth = visualizerType === "sankey" ? 92 : 180
+  const nodeHeight = visualizerType === "sankey" ? 60 : 58
+  const rowGap = 18
+  const width = 1390
+  const height = 780
+  const columns = Math.max(1, ...graph.nodes.map((node) => node.column + 1))
+  const nodesPerColumn = new Map<number, number>()
+  for (const node of graph.nodes) nodesPerColumn.set(node.column, (nodesPerColumn.get(node.column) ?? 0) + 1)
+  const columnStep = columns <= 1 ? 0 : (width - nodeWidth - 40) / (columns - 1)
+  const position = (node: GraphNode) => {
+    const count = nodesPerColumn.get(node.column) ?? 1
+    const centeredRow = node.row - (count - 1) / 2
+    return horizontal
+      ? { x: 20 + node.column * columnStep, y: height * 0.34 - nodeHeight / 2 + centeredRow * (nodeHeight + rowGap) }
+      : {
+          x: width / 2 - nodeWidth / 2 + centeredRow * (nodeWidth + rowGap),
+          y: 20 + node.column * ((height - nodeHeight - 40) / Math.max(1, columns - 1)),
+        }
+  }
+  const connected = (recipe: FactoryRecipe) =>
+    hovered === null ||
+    recipe === hovered ||
+    graph.links.some(
+      (link) =>
+        (link.from.recipe === hovered && link.to.recipe === recipe) ||
+        (link.to.recipe === hovered && link.from.recipe === recipe),
+    )
+
+  return (
+    <div id="graph_tab" style={UI.stack}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+          gap: 30,
+          padding: "4px 0 12px",
+          borderBottom: "1px solid var(--rule)",
+        }}
+      >
+        <fieldset className="density-switch" style={{ ...UI.row, gap: 8, margin: 0, padding: 0, border: 0 }}>
+          <legend style={{ ...UI.label, marginBottom: 3, textTransform: "uppercase" }}>View</legend>
+          {(
+            [
+              ["sankey", "Flow"],
+              ["boxline", "Recipe graph"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="graph-view"
+                value={value}
+                checked={visualizerType === value}
+                onChange={() =>
+                  runMutation(
+                    specification,
+                    () => {
+                      setVisualizerType(value)
+                      setVisualizerDirection(getDefaultVisualizerDirection())
+                    },
+                    false,
+                  )
+                }
+              />
+              <span style={{ display: "inline-block", padding: "3px 5px", borderBottom: "1px solid transparent" }}>
+                {label}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="density-switch" style={{ ...UI.row, gap: 8, margin: 0, padding: 0, border: 0 }}>
+          <legend style={{ ...UI.label, marginBottom: 3, textTransform: "uppercase" }}>Viewport</legend>
+          {(
+            [
+              ["zoom", "Zoom & pan"],
+              ["fix", "Fit"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="graph-viewport"
+                value={value}
+                checked={visualizerRender === value}
+                onChange={() => runMutation(specification, () => setVisualizerRender(value), false)}
+              />
+              <span style={{ display: "inline-block", padding: "3px 5px", borderBottom: "1px solid transparent" }}>
+                {label}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <fieldset className="density-switch" style={{ ...UI.row, gap: 8, margin: 0, padding: 0, border: 0 }}>
+          <legend style={{ ...UI.label, marginBottom: 3, textTransform: "uppercase" }}>Direction</legend>
+          {(
+            [
+              ["right", "Left to right"],
+              ["down", "Top to bottom"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} style={{ cursor: "pointer" }}>
+              <input
+                type="radio"
+                name="graph-direction"
+                value={value}
+                checked={visualizerDirection === value}
+                onChange={() => runMutation(specification, () => setVisualizerDirection(value), false)}
+              />
+              <span style={{ display: "inline-block", padding: "3px 5px", borderBottom: "1px solid transparent" }}>
+                {label}
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <span style={{ ...UI.muted, marginLeft: "auto" }}>
+          {graph.nodes.length} processes · {graph.links.length} flows · Width = rate; fluids use a 10:1 scale. Dashed =
+          fuel. Hover = isolate.
+        </span>
+      </div>
+      <div style={{ ...UI.graphWrap, minHeight: height }}>
+        <svg
+          id="graph"
+          role="img"
+          aria-label="Factory recipe flow graph"
+          viewBox={`0 0 ${width} ${height}`}
+          width={visualizerRender === "zoom" ? width : "100%"}
+          height={height}
+          style={{ display: "block", minWidth: visualizerRender === "zoom" ? width : undefined }}
+        >
+          <title>Factory recipe flow graph</title>
+          {graph.links.map((link) => {
+            const from = position(link.from)
+            const to = position(link.to)
+            const active = hovered === null || link.from.recipe === hovered || link.to.recipe === hovered
+            const startX = horizontal ? from.x + nodeWidth : from.x + nodeWidth / 2
+            const startY = horizontal ? from.y + nodeHeight / 2 : from.y + nodeHeight
+            const endX = horizontal ? to.x : to.x + nodeWidth / 2
+            const endY = horizontal ? to.y + nodeHeight / 2 : to.y
+            const path = horizontal
+              ? `M ${startX} ${startY} C ${(startX + endX) / 2} ${startY}, ${(startX + endX) / 2} ${endY}, ${endX} ${endY}`
+              : `M ${startX} ${startY} C ${startX} ${(startY + endY) / 2}, ${endX} ${(startY + endY) / 2}, ${endX} ${endY}`
+            const scaledRate =
+              link.rate.mul(specification.format.rateFactor).toFloat() / (link.item.phase === "fluid" ? 10 : 1)
+            const widthValue = visualizerType === "sankey" ? Math.max(2, Math.min(48, Math.sqrt(scaledRate) * 5)) : 2
+            return (
+              <path
+                key={link.key}
+                d={path}
+                fill="none"
+                stroke={active ? graphColour(link.item.key, 43) : "var(--light)"}
+                strokeOpacity={active ? 0.5 : 0.1}
+                strokeWidth={widthValue}
+                strokeDasharray={link.fuel ? "8 5" : undefined}
+              >
+                <title>{`${link.item.name}: ${specification.format.rate(link.rate)}/${specification.format.longRate}`}</title>
+              </path>
+            )
+          })}
+          {graph.nodes.map((node) => {
+            const point = position(node)
+            const active = connected(node.recipe)
+            const building = node.recipe instanceof Recipe ? specification.getBuilding(node.recipe) : null
+            const machineQuality =
+              node.recipe instanceof Recipe
+                ? specification.getMachineQuality(node.recipe)
+                : specification.getNormalQuality()
+            const product = node.recipe.products.find((candidate) => candidate.item instanceof Item)?.item
+            const fill = product instanceof Item ? graphColour(product.key, 27) : "var(--medium)"
+            return (
+              <g
+                key={node.recipe.key}
+                transform={`translate(${point.x} ${point.y})`}
+                opacity={active ? 1 : 0.22}
+                onMouseEnter={() => setHovered(node.recipe)}
+                onMouseLeave={() => setHovered(null)}
+                style={{ cursor: "default" }}
+              >
+                <rect
+                  width={nodeWidth}
+                  height={nodeHeight}
+                  rx={visualizerType === "sankey" ? 0 : 3}
+                  fill={fill}
+                  stroke={hovered === node.recipe ? "var(--accent)" : "var(--rule)"}
+                  strokeWidth={hovered === node.recipe ? 2 : 1}
+                />
+                <SvgSprite icon={node.recipe.icon} x={6} y={14} size={30} />
+                {building === null ? null : <SvgSprite icon={building.icon} x={38} y={14} size={30} />}
+                {visualizerType === "boxline" ? (
+                  <text x={74} y={24} fill="var(--bright)" fontSize={12}>
+                    {node.recipe.name.length > 17 ? `${node.recipe.name.slice(0, 16)}…` : node.recipe.name}
+                  </text>
+                ) : null}
+                <text
+                  x={visualizerType === "sankey" ? 70 : 74}
+                  y={visualizerType === "sankey" ? 34 : 43}
+                  fill="var(--bright)"
+                  fontSize={visualizerType === "sankey" ? 9 : 11}
+                  fontFamily="monospace"
+                >
+                  {building === null || !(node.recipe instanceof Recipe)
+                    ? specification.format.rate(node.rate)
+                    : `× ${specification.format.count(specification.getCount(node.recipe, node.rate))}`}
+                </text>
+                {machineQuality.level > 0 ? <circle cx={66} cy={43} r={4} fill={machineQuality.color} /> : null}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+    </div>
+  )
+}
+
+function PriorityPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const priorities = specification.priority.priorities
+  const moveResource = (resourceKey: string, levelIndex: number) => {
+    const resource = priorities
+      .flatMap((level) => level.resources)
+      .find((candidate) => candidate.recipe.key === resourceKey)
+    if (resource === undefined) return
+    runMutation(specification, () => {
+      let targetLevel = priorities[levelIndex]
+      if (targetLevel === undefined) targetLevel = specification.priority.addPriorityBefore(null)
+      specification.priority.setPriority(resource, targetLevel)
+    })
+  }
+  return (
+    <div id="resources_tab">
+      <p style={{ maxWidth: 370, margin: "18px 0 14px" }}>
+        Drag resources between tiers to choose what your factory should conserve. Higher tiers are preferred.
+      </p>
+      <div style={{ width: "min(100%, 720px)", border: "1px solid var(--rule)", background: "var(--dark)" }}>
+        <div style={{ padding: "2px 4px", color: "var(--foreground)", background: "var(--rule)" }}>less valuable</div>
+        {priorities.map((level, levelIndex) => (
+          <div
+            key={levelIndex}
+            aria-label={`Priority tier ${levelIndex + 1}`}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, 65px)",
+              gap: 5,
+              minHeight: 92,
+              padding: 5,
+              borderTop: levelIndex === 0 ? 0 : "10px solid var(--rule)",
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault()
+              moveResource(event.dataTransfer.getData("text/plain"), levelIndex)
+            }}
+          >
+            {level.resources.map((resource) => (
+              <div
+                key={resource.recipe.key}
+                draggable
+                title={`${resource.recipe.name}. Drag to another tier.`}
+                style={{ position: "relative", display: "grid", gap: 3, width: 65 }}
+                onDragStart={(event) => event.dataTransfer.setData("text/plain", resource.recipe.key)}
+              >
+                <span style={{ display: "grid", placeItems: "center", height: 48 }}>
+                  <SpriteIcon icon={resource.recipe.icon} size={48} title={resource.recipe.name} />
+                </span>
+                <select
+                  aria-label={`Priority tier for ${resource.recipe.name}`}
+                  value={levelIndex}
+                  title={`Priority tier for ${resource.recipe.name}`}
+                  style={{ position: "absolute", inset: "0 0 auto", width: 65, height: 48, opacity: 0, cursor: "grab" }}
+                  onChange={(event) => moveResource(resource.recipe.key, Number(event.currentTarget.value))}
+                >
+                  {priorities.map((_, index) => (
+                    <option key={index} value={index}>
+                      Tier {index + 1}
+                    </option>
+                  ))}
+                  <option value={priorities.length}>New lowest tier</option>
+                </select>
+                <CommitInput
+                  key={`${snapshot.revision}-${resource.weight.toString()}`}
+                  ariaLabel={`Weight for ${resource.recipe.name}`}
+                  value={resource.weight.toString()}
+                  style={{ minHeight: 30, padding: "3px 4px" }}
+                  onCommit={(value) =>
+                    runMutation(specification, () =>
+                      specification.priority.setWeight(resource, Rational.from_string(value)),
+                    )
+                  }
+                />
+              </div>
+            ))}
+          </div>
+        ))}
+        <div style={{ padding: "2px 4px", color: "var(--foreground)", background: "var(--rule)" }}>more valuable</div>
+      </div>
+      <button
+        type="button"
+        style={{ ...UI.button, marginTop: 10 }}
+        onClick={() => runMutation(specification, () => specification.setDefaultPriority())}
+      >
+        Restore defaults
+      </button>
+    </div>
+  )
+}
+
+function SettingSection({
+  title,
+  children,
+  wide = false,
+}: {
+  readonly title: string
+  readonly children: ReactNode
+  readonly wide?: boolean
+}) {
+  return (
+    <section style={{ width: wide ? "min(90rem, 100%)" : "min(65rem, 100%)", maxWidth: "100%", marginTop: 25 }}>
+      <h3
+        style={{
+          margin: "0 0 13px",
+          paddingBottom: 6,
+          color: "var(--bright)",
+          borderBottom: "1px solid var(--rule)",
+          fontSize: 13,
+        }}
+      >
+        {title}
+      </h3>
+      <div>{children}</div>
+    </section>
+  )
+}
+
+function SettingsRow({
+  label,
+  children,
+  style,
+}: {
+  readonly label: ReactNode
+  readonly children: ReactNode
+  readonly style?: CSSProperties
+}) {
+  return (
+    <div
+      className="settings-row"
+      style={mergeStyles({ display: "grid", gap: 5, width: "min(30rem, 100%)", marginBottom: 15 }, style)}
+    >
+      <div style={{ color: "var(--foreground)", fontSize: 13, fontWeight: 500 }}>{label}</div>
+      <div>{children}</div>
+    </div>
+  )
+}
+
+function SettingsPair({ children }: { readonly children: ReactNode }) {
+  return (
+    <div
+      className="settings-columns"
+      style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 15rem))", gap: "0 24px", maxWidth: 504 }}
+    >
+      {children}
+    </div>
+  )
+}
+
+const compactSettingControl: CSSProperties = {
+  ...UI.control,
+  width: "auto",
+  minWidth: 122,
+  minHeight: 30,
+  padding: 3.5,
+}
+
+function GeneralSettings({ snapshot, commands }: CalculatorViewProps) {
+  const specification = snapshot.specification
+  return (
+    <Fragment>
+      <SettingSection title="Data">
+        <SettingsRow label="Use recipe set" style={{ width: 240 }}>
+          <select
+            value={snapshot.datasetKey}
+            aria-label="Recipe set"
+            style={{ ...compactSettingControl, maxWidth: 240 }}
+            onChange={(event) => commands.setDataset(event.currentTarget.value)}
+          >
+            {[...MODIFICATIONS].map(([key, modification]) => (
+              <option key={key} value={key}>
+                {modification.name}
+              </option>
+            ))}
+          </select>
+        </SettingsRow>
+      </SettingSection>
+      <SettingSection title="Display">
+        <SettingsRow label="Title" style={{ width: 232 }}>
+          <CommitInput
+            key={snapshot.title}
+            value={snapshot.title === "Factorio Calculator" ? "" : snapshot.title}
+            ariaLabel="Plan title"
+            placeholder="Factorio Calculator"
+            inputMode="text"
+            style={{ width: 232 }}
+            onCommit={(value) => runMutation(specification, () => setTitle(value), false)}
+          />
+        </SettingsRow>
+        <SettingsRow label="Display rates as">
+          <fieldset style={{ display: "grid", gap: 2, margin: 0, padding: 0, border: 0 }}>
+            {(
+              [
+                ["s", "items/second"],
+                ["m", "items/minute"],
+                ["h", "items/hour"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} style={{ display: "inline-flex", alignItems: "center" }}>
+                <input
+                  type="radio"
+                  name="display-rate"
+                  value={value}
+                  aria-label={label}
+                  checked={specification.format.rateName === value}
+                  onChange={() =>
+                    runMutation(
+                      specification,
+                      () => {
+                        specification.format.rateName = value
+                      },
+                      false,
+                    )
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+        </SettingsRow>
+        <SettingsPair>
+          <SettingsRow label="Rate precision" style={{ width: 240 }}>
+            <CommitInput
+              key={specification.format.ratePrecision}
+              value={String(specification.format.ratePrecision)}
+              ariaLabel="Rate precision"
+              inputMode="numeric"
+              style={{ width: 56 }}
+              onCommit={(value) => {
+                const precision = Number(value)
+                if (Number.isInteger(precision) && precision >= 0) {
+                  runMutation(
+                    specification,
+                    () => {
+                      specification.format.ratePrecision = precision
+                    },
+                    false,
+                  )
+                }
+              }}
+            />
+          </SettingsRow>
+          <SettingsRow label="Count precision" style={{ width: 240 }}>
+            <CommitInput
+              key={specification.format.countPrecision}
+              value={String(specification.format.countPrecision)}
+              ariaLabel="Count precision"
+              inputMode="numeric"
+              style={{ width: 56 }}
+              onCommit={(value) => {
+                const precision = Number(value)
+                if (Number.isInteger(precision) && precision >= 0) {
+                  runMutation(
+                    specification,
+                    () => {
+                      specification.format.countPrecision = precision
+                    },
+                    false,
+                  )
+                }
+              }}
+            />
+          </SettingsRow>
+        </SettingsPair>
+        <SettingsRow label="Format values as">
+          <fieldset style={{ display: "grid", gap: 2, margin: 0, padding: 0, border: 0 }}>
+            {(
+              [
+                ["decimal", "Decimals"],
+                ["rational", "Rationals"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={value} style={{ display: "inline-flex", alignItems: "center" }}>
+                <input
+                  type="radio"
+                  name="number-format"
+                  value={value}
+                  checked={specification.format.displayFormat === value}
+                  onChange={() =>
+                    runMutation(
+                      specification,
+                      () => {
+                        specification.format.displayFormat = value
+                      },
+                      false,
+                    )
+                  }
+                />
+                {label}
+              </label>
+            ))}
+          </fieldset>
+        </SettingsRow>
+        <SettingsRow label="Color scheme" style={{ width: 150 }}>
+          <select
+            value={snapshot.colorSchemeKey}
+            aria-label="Color scheme"
+            style={compactSettingControl}
+            onChange={(event) => runMutation(specification, () => setColorScheme(event.currentTarget.value), false)}
+          >
+            {colorSchemes.map((scheme) => (
+              <option key={scheme.key} value={scheme.key}>
+                {scheme.name}
+              </option>
+            ))}
+          </select>
+        </SettingsRow>
+      </SettingSection>
+    </Fragment>
+  )
+}
+
+function LogisticsSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const fuels = specification.fuels === null ? [] : [...specification.fuels.values()]
+  return (
+    <SettingSection title="Factory">
+      <SettingsRow label="Belt">
+        <div style={{ ...UI.row, gap: 0 }}>
+          {[...specification.belts.values()].map((belt) => (
+            <IconChoice
+              key={belt.key}
+              group="preferred-belt"
+              value={belt.key}
+              label={belt.name}
+              icon={belt.icon}
+              checked={specification.belt === belt}
+              onChange={(checked) => {
+                if (!checked) return
+                runMutation(specification, () => {
+                  specification.belt = belt
+                })
+              }}
+            />
+          ))}
+        </div>
+      </SettingsRow>
+      <SettingsRow label="Maximum belt stack" style={{ width: 504, minHeight: 75 }}>
+        <select
+          aria-label="Maximum belt stack"
+          value={specification.beltStackSize.toString()}
+          style={compactSettingControl}
+          onChange={(event) =>
+            applyPlanningSetting(specification, { id: "belt_stack_size", value: event.currentTarget.value })
+          }
+        >
+          <option value="1">×1 — No belt stacking</option>
+          <option value="2">×2 — Stack inserter research</option>
+          <option value="3">×3 — Belt capacity 1</option>
+          <option value="4">×4 — Belt capacity 2</option>
+        </select>
+        <div style={UI.muted}>Research sets the maximum; items still need a stacking source.</div>
+      </SettingsRow>
+      <SettingsRow label="Default item stacking" style={{ width: 240, minHeight: 94 }}>
+        <select
+          aria-label="Default item stacking"
+          value={specification.beltStackDefaultPolicy}
+          style={compactSettingControl}
+          onChange={(event) =>
+            applyPlanningSetting(specification, { id: "belt_stack_default_policy", value: event.currentTarget.value })
+          }
+        >
+          <option value="auto">Auto — direct output only</option>
+          <option value="stacked">Stacked — use maximum</option>
+          <option value="unstacked">Unstacked — use ×1</option>
+        </select>
+        <div style={{ ...UI.muted, maxWidth: 230 }}>
+          Auto detects big drills. Override items stacked by inserters or recyclers.
+        </div>
+      </SettingsRow>
+      <SettingsPair>
+        <SettingsRow label="Logistics buffer" style={{ width: 205 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <CommitInput
+              key={specification.bufferMinutes.toString()}
+              value={specification.bufferMinutes.toString()}
+              ariaLabel="Buffer minutes"
+              style={{ width: 168 }}
+              onCommit={(value) => applyPlanningSetting(specification, { id: "buffer_minutes", value })}
+            />
+            minutes
+          </span>
+        </SettingsRow>
+        <SettingsRow label="Freshness delay" style={{ width: 205 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <CommitInput
+              key={specification.freshnessDelayMinutes.toString()}
+              value={specification.freshnessDelayMinutes.toString()}
+              ariaLabel="Freshness delay"
+              style={{ width: 168 }}
+              onCommit={(value) => applyPlanningSetting(specification, { id: "freshness_delay", value })}
+            />
+            minutes
+          </span>
+        </SettingsRow>
+      </SettingsPair>
+      <SettingsRow label="Quality progression" style={{ width: 200 }}>
+        <select
+          aria-label="Quality progression"
+          value={specification.maxQualityLevel}
+          style={compactSettingControl}
+          onChange={(event) =>
+            applyPlanningSetting(specification, { id: "max_quality", value: event.currentTarget.value })
+          }
+        >
+          {specification.qualityTiers.map((quality, index) =>
+            index === 1 ? null : (
+              <option key={quality.key} value={index}>
+                {quality.name} {index === 0 ? "only" : "unlocked"}
+              </option>
+            ),
+          )}
+        </select>
+      </SettingsRow>
+      <ResourceYieldSettings snapshot={snapshot} />
+      <SettingsRow label="Preferred fuel" style={{ width: 504 }}>
+        <div style={{ ...UI.row, gap: 0 }}>
+          {fuels.map((fuel) => (
+            <IconChoice
+              key={fuel.key}
+              group="preferred-fuel"
+              value={fuel.key}
+              label={`${fuel.name} · ${fuel.valueString()}`}
+              icon={fuel.icon}
+              checked={specification.fuel === fuel}
+              onChange={(checked) => {
+                if (!checked) return
+                runMutation(specification, () => {
+                  specification.fuel = fuel
+                })
+              }}
+            />
+          ))}
+        </div>
+      </SettingsRow>
+      <DefaultEquipmentSettings snapshot={snapshot} plannerSettings={<QualityPlannerSettings snapshot={snapshot} />} />
+      <BuildingSettings snapshot={snapshot} />
+    </SettingSection>
+  )
+}
+
+function DefaultEquipmentSettings({
+  snapshot,
+  plannerSettings,
+}: {
+  readonly snapshot: CalculatorSnapshot
+  readonly plannerSettings: ReactNode
+}) {
+  const specification = snapshot.specification
+  const modules = sortedByName(specification.modules.values())
+  const qualities = specification.getAvailableQualities()
+  const moduleOptions = [
+    { value: "", label: "Empty" },
+    ...modules.map((module) => ({ value: module.key, label: module.name })),
+  ]
+  const beaconOptions = [
+    { value: "", label: "Empty" },
+    ...modules.filter((module) => module.canBeacon()).map((module) => ({ value: module.key, label: module.name })),
+  ]
+  const setDefaultModule = (value: string, secondary = false) => {
+    const module = specification.modules.get(value) ?? null
+    runMutation(specification, () =>
+      secondary ? specification.setSecondaryDefaultModule(module) : specification.setDefaultModule(module),
+    )
+  }
+  return (
+    <Fragment>
+      {qualities.length <= 1 ? null : (
+        <SettingsRow label="Equipment quality defaults" style={{ width: 520 }}>
+          <div style={{ ...UI.row, alignItems: "flex-end", gap: 12 }}>
+            <label style={{ display: "inline-grid", gridTemplateColumns: "auto 104px", alignItems: "center", gap: 6 }}>
+              <span style={UI.muted}>Machine</span>
+              <select
+                aria-label="Default machine quality"
+                value={specification.defaultMachineQuality.key}
+                style={{
+                  ...compactSettingControl,
+                  width: 104,
+                  minWidth: 104,
+                  minHeight: 26,
+                  height: 26,
+                  padding: 0,
+                  fontSize: 12.5,
+                }}
+                onChange={(event) => {
+                  const quality = specification.qualities.get(event.currentTarget.value)
+                  if (quality !== undefined)
+                    runMutation(specification, () => specification.setDefaultMachineQuality(quality))
+                }}
+              >
+                {qualities.map((quality) => (
+                  <option key={quality.key} value={quality.key}>
+                    {quality.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "inline-grid", gridTemplateColumns: "auto 104px", alignItems: "center", gap: 6 }}>
+              <span style={UI.muted}>Module</span>
+              <select
+                aria-label="Default module quality"
+                value={specification.defaultModuleQuality.key}
+                style={{
+                  ...compactSettingControl,
+                  width: 104,
+                  minWidth: 104,
+                  minHeight: 26,
+                  height: 26,
+                  padding: 0,
+                  fontSize: 12.5,
+                }}
+                onChange={(event) => {
+                  const quality = specification.qualities.get(event.currentTarget.value)
+                  if (quality !== undefined)
+                    runMutation(specification, () => specification.setDefaultModuleQuality(quality))
+                }}
+              >
+                {qualities.map((quality) => (
+                  <option key={quality.key} value={quality.key}>
+                    {quality.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "inline-grid", gridTemplateColumns: "auto 104px", alignItems: "center", gap: 6 }}>
+              <span style={UI.muted}>Beacon</span>
+              <select
+                aria-label="Default beacon quality"
+                value={specification.defaultBeaconQuality.key}
+                style={{
+                  ...compactSettingControl,
+                  width: 104,
+                  minWidth: 104,
+                  minHeight: 26,
+                  height: 26,
+                  padding: 0,
+                  fontSize: 12.5,
+                }}
+                onChange={(event) => {
+                  const quality = specification.qualities.get(event.currentTarget.value)
+                  if (quality !== undefined)
+                    runMutation(specification, () => specification.setDefaultBeaconQuality(quality))
+                }}
+              >
+                {qualities.map((quality) => (
+                  <option key={quality.key} value={quality.key}>
+                    {quality.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </SettingsRow>
+      )}
+      {plannerSettings}
+      <SettingsRow label="Default module (all eligible slots)" style={{ width: 300 }}>
+        <CompactIconSelect
+          label="Default module"
+          value={specification.defaultModule?.key ?? ""}
+          icon={specification.defaultModule?.icon ?? null}
+          quality={specification.defaultModuleQuality}
+          options={moduleOptions}
+          onChange={(value) => setDefaultModule(value)}
+        />
+      </SettingsRow>
+      <SettingsRow label="Secondary default module" style={{ width: 300 }}>
+        <CompactIconSelect
+          label="Secondary default module"
+          value={specification.secondaryDefaultModule?.key ?? ""}
+          icon={specification.secondaryDefaultModule?.icon ?? null}
+          quality={specification.defaultModuleQuality}
+          options={moduleOptions}
+          onChange={(value) => setDefaultModule(value, true)}
+        />
+      </SettingsRow>
+      <SettingsRow label="Default beacon" style={{ width: 300 }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+          {specification.defaultBeacon.map((module, index) => (
+            <CompactIconSelect
+              key={index}
+              label={`Default beacon slot ${index + 1}`}
+              value={module?.key ?? ""}
+              icon={module?.icon ?? null}
+              quality={specification.defaultModuleQuality}
+              options={beaconOptions}
+              onChange={(value) =>
+                runMutation(specification, () =>
+                  specification.setDefaultBeacon(specification.modules.get(value) ?? null, index),
+                )
+              }
+            />
+          ))}
+          <span aria-hidden="true">×</span>
+          <CommitInput
+            key={specification.defaultBeaconCount.toString()}
+            value={specification.defaultBeaconCount.toString()}
+            ariaLabel="Default beacon count"
+            style={{ width: 56, minHeight: 30 }}
+            onCommit={(value) =>
+              runMutation(specification, () => specification.setDefaultBeaconCount(Rational.from_string(value)))
+            }
+          />
+        </span>
+      </SettingsRow>
+    </Fragment>
+  )
+}
+
+function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const qualityModules = sortedByName(specification.modules.values()).filter((module) => module.hasQualityEffect())
+  const prodModules = sortedByName(specification.modules.values()).filter((module) => module.hasProdEffect())
+  const qualities = specification.getAvailableQualities()
+  const plannerSelectStyle: CSSProperties = {
+    ...UI.control,
+    width: "auto",
+    minWidth: 144,
+    minHeight: 26,
+    height: 26,
+    padding: 0,
+    fontSize: 12.5,
+  }
+  return (
+    <SettingsRow label="Quality factory" style={{ width: 520, minHeight: 190 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: "7px 13px", maxWidth: 504 }}>
+        <Field label="Quality module" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory quality module"
+            value={specification.qualityPlannerModule?.key ?? ""}
+            style={{ ...plannerSelectStyle, width: 203 }}
+            onChange={(event) =>
+              runMutation(specification, () => {
+                specification.qualityPlannerModule = specification.modules.get(event.currentTarget.value) ?? null
+              })
+            }
+          >
+            <option value="">Best compatible quality module</option>
+            {qualityModules.map((module) => (
+              <option key={module.key} value={module.key}>
+                {module.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Quality module quality" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory quality module quality"
+            value={specification.qualityPlannerModuleQuality.key}
+            style={{ ...plannerSelectStyle, width: 144 }}
+            onChange={(event) => {
+              const quality = specification.qualities.get(event.currentTarget.value)
+              if (quality !== undefined)
+                runMutation(specification, () => {
+                  specification.qualityPlannerModuleQuality = quality
+                })
+            }}
+          >
+            {qualities.map((quality) => (
+              <option key={quality.key} value={quality.key}>
+                {quality.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Productivity module" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory productivity module"
+            value={specification.qualityPlannerProductivityModule?.key ?? ""}
+            style={{ ...plannerSelectStyle, width: 231 }}
+            onChange={(event) =>
+              runMutation(specification, () => {
+                specification.qualityPlannerProductivityModule =
+                  specification.modules.get(event.currentTarget.value) ?? null
+              })
+            }
+          >
+            <option value="">Best compatible productivity module</option>
+            {prodModules.map((module) => (
+              <option key={module.key} value={module.key}>
+                {module.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Productivity module quality" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory productivity module quality"
+            value={specification.qualityPlannerProductivityModuleQuality.key}
+            style={{ ...plannerSelectStyle, width: 144 }}
+            onChange={(event) => {
+              const quality = specification.qualities.get(event.currentTarget.value)
+              if (quality !== undefined)
+                runMutation(specification, () => {
+                  specification.qualityPlannerProductivityModuleQuality = quality
+                })
+            }}
+          >
+            {qualities.map((quality) => (
+              <option key={quality.key} value={quality.key}>
+                {quality.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div style={{ ...UI.muted, marginTop: 5, maxWidth: 510 }}>
+        Quality-producing stages and recyclers use the quality selection. Guaranteed target-quality crafting uses the
+        productivity selection where compatible.
+      </div>
+      <details style={{ marginTop: 6 }}>
+        <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>Advanced priority</summary>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 6 }}>
+          <span>Prefer</span>
+          <select
+            aria-label="Quality factory optimization objective"
+            value={specification.qualityPlannerObjective}
+            style={compactSettingControl}
+            onChange={(event) =>
+              applyPlanningSetting(specification, { id: "quality_planner_objective", value: event.currentTarget.value })
+            }
+          >
+            <option value="practical">Practical factory (recommended)</option>
+            <option value="materials">Fewer raw resources</option>
+            <option value="machines">Fewer machines</option>
+            <option value="power">Lower power</option>
+          </select>
+        </label>
+        <div style={{ ...UI.muted, marginTop: 4 }}>
+          Used as a route tiebreaker after meeting the target and preferring local resources.
+        </div>
+      </details>
+    </SettingsRow>
+  )
+}
+
+function BuildingSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const groups = [...new Set(specification.buildings.values())]
+    .filter((group) => group.buildings.length > 1)
+    .sort((a, b) => (a.getDefault()?.name ?? "").localeCompare(b.getDefault()?.name ?? ""))
+  return (
+    <SettingsRow label="Machines" style={{ width: 504, minHeight: 184 }}>
+      <div style={{ display: "grid", gridAutoRows: 40 }}>
+        {groups.map((group, groupIndex) => (
+          <span key={groupIndex} style={{ display: "inline-flex", gap: 0 }}>
+            {group.buildings.map((building) => (
+              <IconChoice
+                key={building.key}
+                group={`automatic-machine-${groupIndex}`}
+                value={building.key}
+                label={building.name}
+                icon={building.icon}
+                checked={group.selectedBuildings.has(building)}
+                type="checkbox"
+                onChange={(checked) =>
+                  runMutation(specification, () => {
+                    specification.setAutomaticBuildingEnabled(building, checked)
+                  })
+                }
+              />
+            ))}
+          </span>
+        ))}
+      </div>
+      <div style={{ ...UI.muted, marginTop: 4, maxWidth: 510 }}>
+        Select one or more preferred machines. Automatic uses the fastest compatible selection; choose a machine in a
+        Factory row for an exact override.
+      </div>
+    </SettingsRow>
+  )
+}
+
+function ProductivityResearchSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const miningIcon = specification.items.get("electric-mining-drill") ?? specification.items.get("burner-mining-drill")
+  const research = [...specification.recipeProductivityResearch.values()].sort((a, b) => a.name.localeCompare(b.name))
+  return (
+    <SettingSection title="Research">
+      <SettingsRow label="Productivity" style={{ width: 504 }}>
+        <div style={{ display: "grid", gap: 5.5 }}>
+          <label
+            style={{ display: "grid", gridTemplateColumns: "26px minmax(0, 1fr) auto", alignItems: "center", gap: 6 }}
+          >
+            {miningIcon === undefined ? (
+              <span />
+            ) : (
+              <SpriteIcon icon={miningIcon.icon} size={24} title="Mining productivity" />
+            )}
+            <span>Mining productivity</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <CommitInput
+                key={specification.miningProd.toString()}
+                value={specification.miningProd.mul(Rational.from_integer(100)).toString()}
+                ariaLabel="Mining productivity bonus percentage"
+                inputMode="numeric"
+                style={{ width: 44, minHeight: 27, height: 27, padding: 0, fontSize: 12.5 }}
+                onCommit={(value) =>
+                  runMutation(specification, () => {
+                    specification.miningProd = Rational.from_string(value || "0").div(Rational.from_integer(100))
+                  })
+                }
+              />
+              <span aria-hidden="true">%</span>
+            </span>
+          </label>
+          {research.map((entry) => {
+            const level = specification.getRecipeProductivityLevel(entry.key)
+            return (
+              <label
+                key={entry.key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "26px minmax(0, 1fr) auto",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <SpriteIcon icon={entry.icon} size={24} title={entry.name} />
+                <span>{entry.name}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <CommitInput
+                    key={`${entry.key}-${level}`}
+                    ariaLabel={`${entry.name} bonus percentage`}
+                    value={recipeProductivityPercent(entry, level) ?? "0"}
+                    inputMode="numeric"
+                    style={{ width: 44, minHeight: 27, height: 27, padding: 0, fontSize: 12.5 }}
+                    onCommit={(value) =>
+                      runMutation(specification, () => {
+                        specification.setRecipeProductivityLevel(
+                          entry.key,
+                          recipeProductivityLevelFromPercent(entry, value),
+                        )
+                      })
+                    }
+                  />
+                  <span aria-hidden="true">%</span>
+                </span>
+              </label>
+            )
+          })}
+        </div>
+        <div style={{ ...UI.muted, marginTop: 5 }}>
+          Enter the bonus percentages shown in-game. Recipe productivity is capped at +300% total; mining productivity
+          is uncapped.
+        </div>
+      </SettingsRow>
+    </SettingSection>
+  )
+}
+
+function RecipeSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const [search, setSearch] = useState("")
+  const [showUnavailable, setShowUnavailable] = useState(false)
+  const [showChangedOnly, setShowChangedOnly] = useState(false)
+  const specification = snapshot.specification
+  const allRecipes = getConfigurableRecipes(specification)
+  const overrides = specification.getNetDisable()
+  const changedRecipes = new Set([...overrides.disable, ...overrides.enable])
+  const displayRecipes = allRecipes.filter(
+    (recipe) =>
+      recipeMatchesSettingsSearch(specification, recipe, search) && (!showChangedOnly || changedRecipes.has(recipe)),
+  )
+  const recipes = displayRecipes.filter((recipe) => showUnavailable || !isRecipeUnavailable(specification, recipe))
+  const productionRecipes = displayRecipes.filter((recipe) => !isRecyclingRecipe(recipe))
+  const recyclingRecipes = allRecipes.filter(isRecyclingRecipe)
+  const visibleRecyclingRecipes = recipes.filter(isRecyclingRecipe)
+  const displayRecyclingRecipes = displayRecipes.filter(isRecyclingRecipe)
+  const groups = groupRecipesForSettings(productionRecipes)
+  const renderRecipeTile = (recipe: Recipe) => {
+    const unavailable = isRecipeUnavailable(specification, recipe)
+    const enabled = !specification.disable.has(recipe)
+    return (
+      <button
+        key={recipe.key}
+        type="button"
+        className="recipe-tile"
+        aria-label={`${enabled ? "Disable" : "Enable"} ${recipe.name}`}
+        aria-pressed={enabled}
+        disabled={unavailable}
+        title={`${recipe.name}${unavailable ? " — unavailable at the selected location" : ""}`}
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: 40,
+          height: 40,
+          padding: 2,
+          border: `2px solid ${enabled ? "var(--accent)" : "var(--rule)"}`,
+          borderRadius: 3,
+          background: "var(--dark)",
+          cursor: unavailable ? "not-allowed" : "pointer",
+        }}
+        onClick={() => runMutation(specification, () => setRecipeEnabled(specification, recipe, !enabled))}
+      >
+        <SpriteIcon icon={recipe.icon} size={32} dimmed={!enabled || unavailable} title={recipe.name} />
+      </button>
+    )
+  }
+  return (
+    <SettingSection title="Recipes" wide>
+      <SettingsRow label="Recipes" style={{ width: "min(90vw, 90rem)", maxWidth: "none" }}>
+        <div style={{ ...UI.row, alignItems: "center", gap: 8 }}>
+          <input
+            aria-label="Search recipes"
+            value={search}
+            placeholder="Search recipes, items, ingredients, or machines"
+            style={{ ...UI.control, flex: "0 1 448px" }}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+          />
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <input
+              type="checkbox"
+              checked={showUnavailable}
+              onChange={(event) => setShowUnavailable(event.currentTarget.checked)}
+            />
+            Show unavailable recipes
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <input
+              type="checkbox"
+              checked={showChangedOnly}
+              onChange={(event) => setShowChangedOnly(event.currentTarget.checked)}
+            />
+            Changed only
+          </label>
+          <button
+            type="button"
+            style={{ ...UI.button, marginLeft: "auto" }}
+            disabled={changedRecipes.size === 0}
+            onClick={() =>
+              runMutation(specification, () => {
+                specification.setDefaultDisable()
+                syncLocationDisabledRecipes(specification)
+              })
+            }
+          >
+            Reset recipe changes
+          </button>
+        </div>
+        <div style={{ ...UI.muted, marginTop: 4 }}>Orange: enabled · Dimmed: disabled · Click to toggle</div>
+        <div style={{ ...UI.muted, margin: "3px 0 6px" }} aria-live="polite">
+          {recipes.length} {search.trim() === "" ? "recipes" : `matching recipe${recipes.length === 1 ? "" : "s"}`}
+        </div>
+        <h4 style={{ margin: "0 0 2px", color: "var(--bright)", fontSize: 13 }}>Production recipes</h4>
+        {groups.map((group) => (
+          <details key={group.name} open style={{ border: 0 }}>
+            <summary style={{ ...UI.detailsSummary, margin: "5px 0 2px", paddingLeft: 14, fontSize: 13 }}>
+              {group.name}
+            </summary>
+            <div style={{ ...UI.row, gap: 4, marginLeft: 2 }}>{group.recipes.map(renderRecipeTile)}</div>
+          </details>
+        ))}
+        {displayRecyclingRecipes.length === 0 ? null : (
+          <details style={{ marginTop: 8 }}>
+            <summary style={{ ...UI.detailsSummary, fontSize: 13 }}>
+              Recycling recipes{visibleRecyclingRecipes.length === 0 ? "" : ` (${visibleRecyclingRecipes.length})`}
+            </summary>
+            <div style={{ marginTop: 7 }}>
+              <button
+                type="button"
+                title="Disable recycling"
+                style={{ ...UI.button, marginBottom: 7 }}
+                disabled={
+                  recyclingRecipes.length === 0 || recyclingRecipes.every((recipe) => specification.disable.has(recipe))
+                }
+                onClick={(event) => {
+                  event.preventDefault()
+                  runMutation(specification, () => {
+                    for (const recipe of recyclingRecipes) specification.setDisable(recipe)
+                  })
+                }}
+              >
+                Disable all recycling recipes
+              </button>
+              <div style={{ ...UI.row, gap: 4, marginLeft: 2 }}>{displayRecyclingRecipes.map(renderRecipeTile)}</div>
+            </div>
+          </details>
+        )}
+        {recipes.length === 0 ? <div style={{ ...UI.muted, marginTop: 8 }}>No recipes match your search.</div> : null}
+      </SettingsRow>
+    </SettingSection>
+  )
+}
+
+function ResourceYieldSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
+  const specification = snapshot.specification
+  const resources = [...specification.recipes.values()].filter((recipe) => recipe.categories.has("basic-fluid"))
+  const asteroidItems = [...specification.items.values()].filter((item) => item.key.endsWith("asteroid-chunk"))
+  if (resources.length === 0 && asteroidItems.length === 0) return null
+  return (
+    <SettingsRow label="Resource assumptions" style={{ width: 504 }}>
+      <details style={{ border: "1px solid var(--rule)", padding: "7px 9px" }}>
+        <summary style={{ cursor: "pointer", color: "var(--foreground)" }}>Fluid yields and asteroid limits</summary>
+        <div style={{ display: "grid", gap: 14, paddingTop: 10 }}>
+          {resources.length === 0 ? null : (
+            <section>
+              <h4 style={{ margin: "0 0 3px", color: "var(--bright)" }}>Fluid resource yields</h4>
+              <p style={{ ...UI.muted, margin: "0 0 7px" }}>
+                Adjust each pumpjack resource relative to its nominal yield.
+              </p>
+              <div className="settings-columns" style={UI.twoColumns}>
+                {resources.map((recipe) => (
+                  <Field key={recipe.key} label={recipe.name}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <CommitInput
+                        key={`${recipe.key}-${specification.getResourceYield(recipe).toString()}`}
+                        ariaLabel={`${recipe.name} yield percent`}
+                        value={specification.getResourceYield(recipe).mul(Rational.from_integer(100)).toString()}
+                        style={{ width: 82 }}
+                        onCommit={(value) =>
+                          applyPlanningSetting(specification, { id: "resource_yield", value, resourceKey: recipe.key })
+                        }
+                      />
+                      <span aria-hidden="true">%</span>
+                    </span>
+                  </Field>
+                ))}
+              </div>
+            </section>
+          )}
+          {asteroidItems.length === 0 ? null : (
+            <section>
+              <h4 style={{ margin: "0 0 3px", color: "var(--bright)" }}>Asteroid collection limits</h4>
+              <p style={{ ...UI.muted, margin: "0 0 7px" }}>
+                Leave a field blank for unlimited collection. Values use the selected display rate.
+              </p>
+              <div className="settings-columns" style={UI.twoColumns}>
+                {asteroidItems.map((item) => (
+                  <Field key={item.key} label={item.name}>
+                    <CommitInput
+                      key={`${item.key}-${specification.asteroidLimits.get(item.key)?.toString() ?? ""}`}
+                      ariaLabel={`${item.name} cap`}
+                      value={
+                        specification.asteroidLimits.get(item.key)?.mul(specification.format.rateFactor).toString() ??
+                        ""
+                      }
+                      placeholder="Unlimited"
+                      onCommit={(value) =>
+                        applyPlanningSetting(specification, { id: "asteroid_cap", value, itemKey: item.key })
+                      }
+                    />
+                  </Field>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </details>
+    </SettingsRow>
+  )
+}
+
+function SettingsPanel({ snapshot, commands }: CalculatorViewProps) {
+  return (
+    <div id="settings_tab" style={UI.stack}>
+      <GeneralSettings snapshot={snapshot} commands={commands} />
+      <LogisticsSettings snapshot={snapshot} />
+      <ProductivityResearchSettings snapshot={snapshot} />
+      <RecipeSettings snapshot={snapshot} />
+    </div>
+  )
+}
+
+function HelpPanel() {
+  return (
+    <div id="help_tab" style={{ width: "min(65rem, 100%)", padding: "16px 0 48px" }}>
+      <section>
+        <header>
+          <h1 style={{ margin: 0, color: "var(--bright)", fontSize: 21, letterSpacing: "-0.01em" }}>Help</h1>
+          <div style={{ marginBottom: 12, color: "var(--muted)", fontSize: 12.5 }}>
+            <span>Factorio 2.1.14</span>
+            <span aria-hidden="true"> · </span>
+            <span>Space Age</span>
+            <span aria-hidden="true"> · </span>
+            <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noreferrer">
+              Source on GitHub
+            </a>
+          </div>
+        </header>
+      </section>
+
+      <HelpSection title="Using the calculator">
+        <ol style={{ margin: 0, paddingLeft: 22, color: "var(--foreground)", fontSize: 13.75, lineHeight: 1.48 }}>
+          <li>Add a production target.</li>
+          <li>Choose the output quality, target rate, and production planet.</li>
+          <li>
+            Open <strong>Factory</strong> to choose recipes, machines, modules, and imported ingredients.
+          </li>
+          <li>
+            Check <strong>Resources</strong> and <strong>Visualize</strong> for totals and bottlenecks.
+          </li>
+        </ol>
+      </HelpSection>
+
+      <HelpSection title="Useful controls">
+        <HelpTable
+          firstColumn="Action"
+          secondColumn="Control"
+          rows={[
+            ["Combine production locations", "Shift-click location buttons"],
+            ["Treat an ingredient as externally supplied", "Click its icon in the Factory table"],
+            ["Restore an imported ingredient to the production chain", "Click the icon again"],
+            ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
+            ["Copy a module and its quality between slots", "Hover a module or module choice and press Q"],
+            ["Change belt stacking for one item", "Use the stacking selector beside its belt count"],
+            ["Plan a quality factory", "Set the output quality and production planet"],
+            ["Choose available quality gear", "Settings → Quality factory"],
+            ["Change recipe defaults", "Open Settings"],
+            ["Share the current calculation", "Copy plan link"],
+          ]}
+        />
+      </HelpSection>
+
+      <HelpSection title="Something looks wrong?">
+        <HelpTable
+          firstColumn="Problem"
+          secondColumn="Check"
+          rows={[
+            ["An item cannot be produced", "Enabled recipes and selected locations"],
+            ["An ingredient is missing from the chain", "Whether it is marked as imported"],
+            ["The calculator chose an unexpected resource", "Resource priorities and alternate recipes"],
+            ["A quality plan cannot solve", "Selected planet, target recipe, recycler recipe, and available machines"],
+            ["A Vulcanus plan imports basic metal", "Selected planet and whether lava casting recipes are enabled"],
+            ["Machine counts look higher than expected", "Recipe, modules, beacons, and machine quality"],
+          ]}
+        />
+      </HelpSection>
+
+      <details open style={{ marginTop: 32 }}>
+        <summary
+          style={{
+            paddingBottom: 7,
+            color: "var(--bright)",
+            borderBottom: "1px solid var(--rule)",
+            fontSize: 12,
+            fontWeight: 650,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          Changelog
+        </summary>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <ChangelogEntry date="2026-08-15" title="Q-Key Module Pipette">
+            <li>
+              Hover a module slot or picker choice and press Q to copy that module and quality, then click compatible
+              machine or beacon slots to place it repeatedly.
+            </li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-13" title="Practical Quality Factories & Presets">
+            <li>
+              Added recursive exact quality factories for Nauvis intermediates and a curated Vulcanus route from lava
+              and calcite through casting, crafting, and real recycling.
+            </li>
+            <li>
+              Added Full Legendary as a separate quality-only preset; progression presets preserve locations and Late
+              Space Age uses express belts.
+            </li>
+            <li>
+              Results now lead with feed, machines, module loadouts, recycling, imports, and power; detailed quality
+              math is collapsed, and quality-only plans omit the ordinary Factory table and header.
+            </li>
+            <li>
+              Progression presets now set every productivity research value, with Late Space Age using +100% across
+              mining and all eight recipe technologies; Recipe Settings no longer includes the broken jump links or
+              Debug page.
+            </li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-12" title="Machine, Module & Beacon Quality Support">
+            <li>Added quality controls for machines, modules, and beacons.</li>
+            <li>
+              Quality now changes machine speed, module effects, beacon transmission, mining drill drain, and rocket
+              launch speed.
+            </li>
+            <li>Shared plan links now include quality defaults and recipe-specific choices.</li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-10" title="Belt Production Targets & Stacking">
+            <li>Plan production by belt throughput as well as machine count or item rate.</li>
+            <li>Choose automatic or per-item belt stacking, including Big mining drill output.</li>
+            <li>Press Enter on a displayed Machines, Rate, or Belts value to make it the active target.</li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-06" title="Factorio 2.1.14">
+            <li>Updated to Factorio 2.1.14, production values unchanged.</li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">
+            <li>
+              Updated Space Age recipes for Factorio 2.1.13, including faster recycling for recipes that produce
+              multiple items.
+            </li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-03" title="Space Age Planning">
+            <li>
+              Added planning for Gleba agriculture and freshness, quality targets, production locations, and
+              interplanetary transfers.
+            </li>
+            <li>
+              Added planning for rocket launches, fluid and asteroid resources, stacked belts, storage, cargo wagons,
+              beacon power, pollution, and Aquilo heat.
+            </li>
+            <li>
+              Corrected rocket launch timing, Gleba spores, location warnings, and exact-quality totals, and removed
+              unreliable estimates.
+            </li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-08-02" title="Machine Selection, Search & Productivity">
+            <li>
+              Choose a machine for each recipe or let the calculator select one automatically, with preferences
+              preserved in shared plan links.
+            </li>
+            <li>Search with common Factorio shorthand for circuits, belts, robots, magazines, and more.</li>
+            <li>Set each Space Age recipe productivity technology independently.</li>
+            <li>Tooltips and recipe menus now stay visible near screen edges.</li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-07-31" title="Factory Planning & Calculation Fixes">
+            <li>
+              Added factory summaries, progression presets, location controls, clearer errors, and share-link copying.
+            </li>
+            <li>
+              Corrected production rates, machine speed limits, catalyst and coolant productivity, burner fuels, and
+              recipes with multiple probabilities.
+            </li>
+            <li>Improved location and beacon-power warnings and kept settings in sync as plans change.</li>
+            <li>Shared links now preserve recipe and module choices, including very large factories.</li>
+          </ChangelogEntry>
+          <ChangelogEntry date="2026-07-30" title="Factorio 2.1.12 & Space Age">
+            <li>Added Factorio 2.1.12 and Space Age support and made it the default.</li>
+            <li>
+              Improved recipe search, aliases, location restrictions, asteroid resources, and per-row recipe selection.
+            </li>
+            <li>
+              Improved Recipe Settings with search, crafting-category groups, unavailable-recipe filters, and recycling
+              controls.
+            </li>
+          </ChangelogEntry>
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function HelpSection({ title, children }: { readonly title: string; readonly children: ReactNode }) {
+  return (
+    <section style={{ marginTop: 32 }}>
+      <h2
+        style={{
+          margin: "0 0 12px",
+          paddingBottom: 7,
+          color: "var(--bright)",
+          borderBottom: "1px solid var(--rule)",
+          fontSize: 18,
+          fontWeight: 600,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+        }}
+      >
+        {title}
+      </h2>
+      {children}
+    </section>
+  )
+}
+
+function HelpTable({
+  firstColumn,
+  secondColumn,
+  rows,
+}: {
+  readonly firstColumn: string
+  readonly secondColumn: string
+  readonly rows: ReadonlyArray<readonly [string, string]>
+}) {
+  return (
+    <table
+      className="help-table"
+      style={{ width: "100%", borderCollapse: "collapse", color: "var(--foreground)", fontSize: 13.75 }}
+    >
+      <thead>
+        <tr>
+          <th scope="col" style={{ width: "48%", padding: "7px 10px", textAlign: "left" }}>
+            {firstColumn}
+          </th>
+          <th scope="col" style={{ padding: "7px 10px", textAlign: "left" }}>
+            {secondColumn}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(([first, second]) => (
+          <tr key={first}>
+            <td style={{ padding: "7px 10px" }}>{first}</td>
+            <td style={{ padding: "7px 10px" }}>{second}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function ChangelogEntry({
+  date,
+  title,
+  children,
+}: {
+  readonly date: string
+  readonly title: string
+  readonly children: ReactNode
+}) {
+  return (
+    <article
+      className="changelog-entry"
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px minmax(0, 1fr)",
+        gap: 24,
+        padding: "12px 0",
+        borderBottom: "1px solid var(--rule)",
+      }}
+    >
+      <time dateTime={date} style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: 12 }}>
+        {date}
+      </time>
+      <div>
+        <h3 style={{ margin: "0 0 5px", color: "var(--bright)", fontSize: 14 }}>{title}</h3>
+        <ul style={{ margin: 0, paddingLeft: 18, color: "var(--foreground)" }}>{children}</ul>
+      </div>
+    </article>
+  )
+}
+
+export function CalculatorView({ snapshot, commands }: CalculatorViewProps) {
+  return (
+    <Fragment>
+      <style>{BASE_CSS}</style>
+      <div
+        className="calculator-app"
+        data-density={snapshot.factoryDensity}
+        style={mergeStyles(UI.app, themeVariables(snapshot.colorSchemeKey))}
+      >
+        <div style={UI.page}>
+          <TargetsPanel snapshot={snapshot} commands={commands} />
+          <TabBar snapshot={snapshot} commands={commands} />
+          {snapshot.activeTab === "totals" ? <FactoryPanel snapshot={snapshot} /> : null}
+          {snapshot.activeTab === "graph" ? <GraphPanel snapshot={snapshot} /> : null}
+          {snapshot.activeTab === "resources" ? <PriorityPanel snapshot={snapshot} /> : null}
+          {snapshot.activeTab === "settings" ? <SettingsPanel snapshot={snapshot} commands={commands} /> : null}
+          {snapshot.activeTab === "help" ? <HelpPanel /> : null}
+          <footer style={UI.footer}>
+            <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noreferrer">
+              Source on GitHub
+            </a>
+          </footer>
+        </div>
+      </div>
+    </Fragment>
+  )
+}
+
+export function useCalculatorStore() {
+  return useSyncExternalStore(calculatorStore.subscribe, calculatorStore.getSnapshot, calculatorStore.getSnapshot)
+}
+// endregion react-ui.tsx
 
 // region app.ts
 function configureQualityOptimizerLoader(specification: FactorySpecification): void {
@@ -18123,93 +15505,8 @@ function configureQualityOptimizerLoader(specification: FactorySpecification): v
 
 configureQualityOptimizerLoader(spec)
 
-// Deferred visualization runtime
-
-interface VisualizationModule {
-  readonly renderTotals: typeof renderTotals
-}
-
-let visualizationModule: VisualizationModule | null = null
-let visualizationPromise: Promise<VisualizationModule> | null = null
-let pendingVisualization: { totals: Totals; ignore: Set<Item> } | null = null
-
-function loadVisualization(): Promise<VisualizationModule> {
-  if (visualizationModule !== null) return Promise.resolve(visualizationModule)
-  visualizationPromise ??= import("@dagrejs/dagre")
-    .then(({ default: runtime }) => {
-      dagreRuntime = runtime
-      visualizationModule = { renderTotals }
-      return visualizationModule
-    })
-    .catch((error) => {
-      visualizationPromise = null
-      throw error
-    })
-  return visualizationPromise
-}
-
-function renderVisualization(totals: Totals, ignore: Set<Item>): void {
-  if (visualizationModule !== null) {
-    visualizationModule.renderTotals(totals, ignore)
-    return
-  }
-  pendingVisualization = { totals, ignore }
-  void loadVisualization().then((module) => {
-    const pending = pendingVisualization
-    pendingVisualization = null
-    if (pending !== null && currentTab === "graph") {
-      module.renderTotals(pending.totals, pending.ignore)
-    }
-  })
-}
-
-// Browser factory view
-
-function requireBrowserBuildTarget(target: ReturnType<FactoryViewPort["createBuildTarget"]>): BuildTarget {
-  if (!(target instanceof BuildTarget)) {
-    throw new Error("The browser renderer received a non-browser production target")
-  }
-  return target
-}
-
-export const browserFactoryView: FactoryViewPort = {
-  createBuildTarget(index, itemKey, item, itemGroups) {
-    return new BuildTarget(index, itemKey, item, itemGroups)
-  },
-
-  mountBuildTarget(target) {
-    const browserTarget = requireBrowserBuildTarget(target)
-    select("#targets").insert(() => browserTarget.element, "#plusButton")
-  },
-
-  removeBuildTarget(target) {
-    const browserTarget = requireBrowserBuildTarget(target)
-    select(browserTarget.element).remove()
-  },
-
-  renderSolution(specification: FactorySpecification, totals: Totals) {
-    displayItems(specification, totals)
-    if (currentTab === "graph") {
-      renderVisualization(totals, specification.ignore)
-    }
-    reapTooltips()
-  },
-
-  renderCalculationError(specification: FactorySpecification, error: unknown) {
-    displayCalculationError(specification, error)
-    reapTooltips()
-  },
-
-  persistUrlState() {
-    syncUrlHash(formatSettings())
-  },
-}
-
-// Application bootstrap
-
 function reset(): void {
   clearUrlHash()
-  resetDisplay()
   spec.setQualityGraphOptimizerLoader(null)
   resetSpec()
   configureQualityOptimizerLoader(spec)
@@ -18218,15 +15515,14 @@ function reset(): void {
 }
 
 export function changeMod(): void {
-  let currentSettings = loadSettings("#" + formatSettings())
+  const currentSettings = loadSettings(`#${formatSettings()}`)
   currentSettings.delete("data")
-  let modName = currentMod()
+  const modName = currentMod()
   reset()
-  console.log("settings on reset:", currentSettings)
   loadData(modName, currentSettings)
 }
 
-let OIL_EXCLUSION = new Map([
+const OIL_EXCLUSION = new Map([
   ["basic", ["advanced-oil-processing"]],
   ["coal", ["advanced-oil-processing", "basic-oil-processing"]],
 ])
@@ -18235,11 +15531,9 @@ function fixLegacySettings(settings: Map<string, string>): void {
   if ((settings.has("use_3") || settings.has("min") || settings.has("furnace")) && !settings.has("buildings")) {
     const parts: string[] = []
     if (settings.has("min")) {
-      let n = settings.get("min")
-      if (n === "4") {
-        n = "3"
-      }
-      parts.push("assembling-machine-" + n)
+      let value = settings.get("min")
+      if (value === "4") value = "3"
+      parts.push(`assembling-machine-${value}`)
       settings.delete("min")
     } else if (settings.has("use_3")) {
       parts.push("assembling-machine-3")
@@ -18259,10 +15553,7 @@ function fixLegacySettings(settings: Map<string, string>): void {
       parts.push("kovarex-processing")
     }
     if (settings.has("p")) {
-      let p = settings.get("p")
-      for (const recipeKey of OIL_EXCLUSION.get(p ?? "") ?? []) {
-        parts.push(recipeKey)
-      }
+      for (const recipeKey of OIL_EXCLUSION.get(settings.get("p") ?? "") ?? []) parts.push(recipeKey)
       settings.delete("p")
     }
     settings.set("disable", parts.join(","))
@@ -18272,14 +15563,10 @@ function fixLegacySettings(settings: Map<string, string>): void {
 const dataRequests = new Map<string, Promise<unknown>>()
 
 function fetchData(filename: string): Promise<unknown> {
-  let request = dataRequests.get(filename)
-  if (request !== undefined) {
-    return request
-  }
-  request = fetch(filename, { cache: "force-cache", credentials: "same-origin" }).then((response) => {
-    if (!response.ok) {
-      throw new Error(`Failed to load ${filename}: ${response.status} ${response.statusText}`)
-    }
+  const existing = dataRequests.get(filename)
+  if (existing !== undefined) return existing
+  const request = fetch(filename, { cache: "force-cache", credentials: "same-origin" }).then((response) => {
+    if (!response.ok) throw new Error(`Failed to load ${filename}: ${response.status} ${response.statusText}`)
     return response.json() as Promise<unknown>
   })
   dataRequests.set(filename, request)
@@ -18293,9 +15580,8 @@ function loadData(modName: string, settings: Map<string, string>): void {
   const mod = MODIFICATIONS.get(modName)
   if (mod === undefined) throw new Error(`Unknown dataset: ${modName}`)
   setLegacyCalculation(mod.legacy)
-  const filename = "data/" + mod.filename
-  void fetchData(filename)
-    .then((rawData: unknown) => {
+  void fetchData(`data/${mod.filename}`)
+    .then((rawData) => {
       if (generation !== loadGeneration) return
       const data = parseCalculatorData(rawData)
       const items = getItems(data)
@@ -18308,7 +15594,6 @@ function loadData(modName: string, settings: Map<string, string>): void {
       const fuel = getFuel(data, items)
       const recipeProductivityResearch = getRecipeProductivityResearch(data, recipes)
       getSprites(data)
-      const itemGroups = getItemGroups(items, data)
       spec.setData(
         items,
         recipes,
@@ -18317,15 +15602,13 @@ function loadData(modName: string, settings: Map<string, string>): void {
         buildings,
         belts,
         fuel,
-        itemGroups,
+        getItemGroups(items, data),
         recipeProductivityResearch,
         getDatasetBeaconPower(data),
         qualities,
       )
-
       fixLegacySettings(settings)
-      renderSettings(settings)
-
+      applySettings(settings)
       spec.updateSolution()
       finishUrlInitialization()
     })
@@ -18333,50 +15616,33 @@ function loadData(modName: string, settings: Map<string, string>): void {
       if (generation !== loadGeneration) return
       spec.lastTotals = null
       spec.lastError = error
-      spec.display()
+      spec.notifyStateChanged()
     })
 }
 
 let initialized = false
 
 function handleUrlHashChange(): void {
-  const newHash = window.location.hash
-  if (newHash === `#${formatSettings()}`) {
-    return
-  }
-  const settings = loadSettings(newHash)
-  renderDataSetOptions(settings)
+  const hash = window.location.hash
+  if (hash === `#${formatSettings()}`) return
+  const settings = loadSettings(hash)
+  selectDatasetFromSettings(settings)
   reset()
   loadData(currentMod(), settings)
 }
 
 export function init(): void {
-  if (initialized) {
-    return
-  }
+  if (initialized) return
   initialized = true
   initializeFactoryDensity()
-  initializeTooltips()
-  initializeModulePipette()
-  configureFactoryView(browserFactoryView)
+  configureFactoryPersistence(() => syncUrlHash(formatSettings()))
   configureDatasetChangeHandler(changeMod)
-  configureDeferredTabHandler((tabName) => {
-    if (tabName === "settings") {
-      ensureDeferredSettingsRendered()
-    } else {
-      ensureDeferredResourcesRendered()
-    }
-  })
   window.spec = spec
-  configureModelRuntime({
-    getSpecification: () => spec,
-    useLegacyCalculation: usesLegacyCalculation,
-  })
+  configureModelRuntime({ getSpecification: () => spec, useLegacyCalculation: usesLegacyCalculation })
   initializeUrlState()
-  let settings = loadSettings(window.location.hash)
-  renderDataSetOptions(settings)
+  const settings = loadSettings(window.location.hash)
+  selectDatasetFromSettings(settings)
   loadData(currentMod(), settings)
-
   window.addEventListener("hashchange", handleUrlHashChange)
   window.addEventListener("popstate", handleUrlHashChange)
 }
@@ -18387,1050 +15653,13 @@ export function dispose(): void {
   loadGeneration++
   window.removeEventListener("hashchange", handleUrlHashChange)
   window.removeEventListener("popstate", handleUrlHashChange)
-  disposeModulePipette()
 }
 // endregion app.ts
 
-// region react/HelpPanel.tsx
-export function HelpPanel() {
-  return (
-    <div id="help_tab" className="tab">
-      <div className="help-content">
-        <section id="help-about" className="help-section">
-          <header className="help-header">
-            <h1>Help</h1>
-            <div className="help-meta">
-              <span>Factorio 2.1.14</span>
-              <span className="meta-separator">•</span>
-              <span>Space Age</span>
-              <span className="meta-separator">•</span>
-              <a href="https://github.com/anthfgreco/factorio-calculator" target="_blank" rel="noopener noreferrer">
-                Source on GitHub
-              </a>
-            </div>
-          </header>
-        </section>
-
-        <section id="help-using" className="help-section">
-          <h2 className="help-section-title">Using the calculator</h2>
-          <ol className="help-steps">
-            <li>Add a production target.</li>
-            <li>Choose the output quality, target rate, and production planet.</li>
-            <li>
-              Open <strong>Factory</strong> to choose recipes, machines, modules, and imported ingredients.
-            </li>
-            <li>
-              Check <strong>Resources</strong> and <strong>Visualize</strong> for totals and bottlenecks.
-            </li>
-          </ol>
-        </section>
-
-        <section id="help-controls" className="help-section">
-          <h2 className="help-section-title">Useful controls</h2>
-          <HelpTable
-            firstColumn="Action"
-            secondColumn="Control"
-            rows={[
-              ["Combine production locations", "Shift-click location buttons"],
-              ["Treat an ingredient as externally supplied", "Click its icon in the Factory table"],
-              ["Restore an imported ingredient to the production chain", "Click the icon again"],
-              ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
-              ["Copy a module and its quality between slots", "Hover a module or module choice and press Q"],
-              ["Change belt stacking for one item", "Use the stacking selector beside its belt count"],
-              ["Plan a quality factory", "Set the output quality and production planet"],
-              ["Choose available quality gear", "Settings → Quality factory"],
-              ["Change recipe defaults", "Open Settings"],
-              ["Share the current calculation", "Copy plan link"],
-            ]}
-          />
-        </section>
-
-        <section id="help-troubleshooting" className="help-section">
-          <h2 className="help-section-title">Something looks wrong?</h2>
-          <HelpTable
-            firstColumn="Problem"
-            secondColumn="Check"
-            rows={[
-              ["An item cannot be produced", "Enabled recipes and selected locations"],
-              ["An ingredient is missing from the chain", "Whether it is marked as imported"],
-              ["The calculator chose an unexpected resource", "Resource priorities and alternate recipes"],
-              [
-                "A quality plan cannot solve",
-                "Selected planet, target recipe, recycler recipe, and available machines",
-              ],
-              ["A Vulcanus plan imports basic metal", "Selected planet and whether lava casting recipes are enabled"],
-              ["Machine counts look higher than expected", "Recipe, modules, beacons, and machine quality"],
-            ]}
-          />
-        </section>
-
-        <details id="help-changelog" className="help-section help-changelog" open>
-          <summary>Changelog</summary>
-          <div className="changelog-timeline">
-            <ChangelogEntry date="2026-08-15" title="Q-Key Module Pipette">
-              <li>
-                Hover a module slot or picker choice and press Q to copy that module and quality, then click compatible
-                machine or beacon slots to place it repeatedly.
-              </li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-13" title="Practical Quality Factories & Presets">
-              <li>
-                Added recursive exact quality factories for Nauvis intermediates and a curated Vulcanus route from lava
-                and calcite through casting, crafting, and real recycling.
-              </li>
-              <li>
-                Added Full Legendary as a separate quality-only preset; progression presets preserve locations and Late
-                Space Age uses express belts.
-              </li>
-              <li>
-                Results now lead with feed, machines, module loadouts, recycling, imports, and power; detailed quality
-                math is collapsed, and quality-only plans omit the ordinary Factory table and header.
-              </li>
-              <li>
-                Progression presets now set every productivity research value, with Late Space Age using +100% across
-                mining and all eight recipe technologies; Recipe Settings no longer includes the broken jump links or
-                Debug page.
-              </li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-12" title="Machine, Module & Beacon Quality Support">
-              <li>Added quality controls for machines, modules, and beacons.</li>
-              <li>
-                Quality now changes machine speed, module effects, beacon transmission, mining drill drain, and rocket
-                launch speed.
-              </li>
-              <li>Shared plan links now include quality defaults and recipe-specific choices.</li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-10" title="Belt Production Targets & Stacking">
-              <li>Plan production by belt throughput as well as machine count or item rate.</li>
-              <li>Choose automatic or per-item belt stacking, including Big mining drill output.</li>
-              <li>Press Enter on a displayed Machines, Rate, or Belts value to make it the active target.</li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-06" title="Factorio 2.1.14">
-              <li>Updated to Factorio 2.1.14, production values unchanged.</li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-05" title="Factorio 2.1.13">
-              <li>
-                Updated Space Age recipes for Factorio 2.1.13, including faster recycling for recipes that produce
-                multiple items.
-              </li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-03" title="Space Age Planning">
-              <li>
-                Added planning for Gleba agriculture and freshness, quality targets, production locations, and
-                interplanetary transfers.
-              </li>
-              <li>
-                Added planning for rocket launches, fluid and asteroid resources, stacked belts, storage, cargo wagons,
-                beacon power, pollution, and Aquilo heat.
-              </li>
-              <li>
-                Corrected rocket launch timing, Gleba spores, location warnings, and exact-quality totals, and removed
-                unreliable estimates.
-              </li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-08-02" title="Machine Selection, Search & Productivity">
-              <li>
-                Choose a machine for each recipe or let the calculator select one automatically, with preferences
-                preserved in shared plan links.
-              </li>
-              <li>Search with common Factorio shorthand for circuits, belts, robots, magazines, and more.</li>
-              <li>Set each Space Age recipe productivity technology independently.</li>
-              <li>Tooltips and recipe menus now stay visible near screen edges.</li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-07-31" title="Factory Planning & Calculation Fixes">
-              <li>
-                Added factory summaries, progression presets, location controls, clearer errors, and share-link copying.
-              </li>
-              <li>
-                Corrected production rates, machine speed limits, catalyst and coolant productivity, burner fuels, and
-                recipes with multiple probabilities.
-              </li>
-              <li>Improved location and beacon-power warnings and kept settings in sync as plans change.</li>
-              <li>Shared links now preserve recipe and module choices, including very large factories.</li>
-            </ChangelogEntry>
-
-            <ChangelogEntry date="2026-07-30" title="Factorio 2.1.12 & Space Age">
-              <li>Added Factorio 2.1.12 and Space Age support and made it the default.</li>
-              <li>
-                Improved recipe search, aliases, location restrictions, asteroid resources, and per-row recipe
-                selection.
-              </li>
-              <li>
-                Improved Recipe Settings with search, crafting-category groups, unavailable-recipe filters, and
-                recycling controls.
-              </li>
-            </ChangelogEntry>
-          </div>
-        </details>
-      </div>
-    </div>
-  )
-}
-
-interface HelpTableProps {
-  firstColumn: string
-  secondColumn: string
-  rows: ReadonlyArray<readonly [string, string]>
-}
-
-function HelpTable({ firstColumn, secondColumn, rows }: HelpTableProps) {
-  return (
-    <table className="help-table">
-      <thead>
-        <tr>
-          <th scope="col">{firstColumn}</th>
-          <th scope="col">{secondColumn}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(([first, second]) => (
-          <tr key={first}>
-            <td>{first}</td>
-            <td>{second}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-interface ChangelogEntryProps {
-  date: string
-  title: string
-  children: ReactNode
-}
-
-function ChangelogEntry({ date, title, children }: ChangelogEntryProps) {
-  return (
-    <article className="changelog-entry">
-      <div className="changelog-meta">
-        <time dateTime={date}>{date}</time>
-      </div>
-      <div className="changelog-details">
-        <h3>{title}</h3>
-        <ul>{children}</ul>
-      </div>
-    </article>
-  )
-}
-// endregion react/HelpPanel.tsx
-
-// region react/SettingsPanel.tsx
-interface SettingsPanelProps {
-  commands: CalculatorCommands
-  snapshot: CalculatorSnapshot
-}
-
-export function SettingsPanel({ commands, snapshot }: SettingsPanelProps) {
-  const onPlanningChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>): void => {
-    const input = event.currentTarget
-    commands.setPlanningSetting({
-      id: input.id,
-      value: input.value,
-      resourceKey: input.dataset.resourceKey,
-      itemKey: input.dataset.itemKey,
-    })
-  }
-
-  return (
-    <div id="settings_tab" className="tab">
-      <table id="settings">
-        <colgroup>
-          <col className="settings-label-column" />
-          <col />
-        </colgroup>
-        <tbody>
-          <tr id="settings_data" className="setting-section">
-            <td colSpan={2}>
-              <span>Data</span>
-              <hr />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Use recipe set</td>
-            <td>
-              <select id="data_set" aria-label="Recipe set" />
-            </td>
-          </tr>
-
-          <tr id="settings_display" className="setting-section">
-            <td colSpan={2}>
-              <span>Display</span>
-              <hr />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Title</td>
-            <td>
-              <input
-                id="title_setting"
-                type="text"
-                size={30}
-                placeholder="Factorio Calculator"
-                value={snapshot.title === "Factorio Calculator" ? "" : snapshot.title}
-                onInput={(event: FormEvent<HTMLInputElement>) => commands.setTitle(event.currentTarget.value)}
-              />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label top">Display rates as</td>
-            <td>
-              <form id="display_rate" />
-            </td>
-          </tr>
-
-          <tr className="setting-row compact-setting-row compact-setting-first">
-            <td className="setting-label">Rate precision</td>
-            <td>
-              <input
-                id="rprec"
-                className="prec"
-                type="number"
-                value={snapshot.settings.ratePrecision}
-                min="0"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  commands.setRatePrecision(event.currentTarget.valueAsNumber)
-                }
-              />
-            </td>
-          </tr>
-
-          <tr className="setting-row compact-setting-row compact-setting-second">
-            <td className="setting-label">Count precision</td>
-            <td>
-              <input
-                id="cprec"
-                className="prec"
-                type="number"
-                value={snapshot.settings.countPrecision}
-                min="0"
-                onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                  commands.setCountPrecision(event.currentTarget.valueAsNumber)
-                }
-              />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label top">Format values as</td>
-            <td>
-              <form id="value_format">
-                <input
-                  id="decimal_format"
-                  type="radio"
-                  name="format"
-                  value="decimal"
-                  checked={snapshot.settings.displayFormat === "decimal"}
-                  onChange={() => commands.setDisplayFormat("decimal")}
-                />
-                <label htmlFor="decimal_format">Decimals</label>
-                <br />
-                <input
-                  id="rational_format"
-                  type="radio"
-                  name="format"
-                  value="rational"
-                  checked={snapshot.settings.displayFormat === "rational"}
-                  onChange={() => commands.setDisplayFormat("rational")}
-                />
-                <label htmlFor="rational_format">Rationals</label>
-                <br />
-              </form>
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Color scheme</td>
-            <td>
-              <select id="color_scheme" aria-label="Color scheme" />
-            </td>
-          </tr>
-
-          <tr id="settings_factory" className="setting-section">
-            <td colSpan={2}>
-              <span>Factory</span>
-              <hr />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Belt</td>
-            <td>
-              <span id="belt_selector" className="radio-setting" />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Maximum belt stack</td>
-            <td>
-              <select id="belt_stack_size" value={snapshot.settings.beltStackSize} onChange={onPlanningChange}>
-                <option value="1">×1 — No belt stacking</option>
-                <option value="2">×2 — Stack inserter research</option>
-                <option value="3">×3 — Belt capacity 1</option>
-                <option value="4">×4 — Belt capacity 2</option>
-              </select>
-              <div className="setting-help">Research sets the maximum; items still need a stacking source.</div>
-            </td>
-          </tr>
-
-          <tr className="setting-row compact-setting-row compact-setting-first">
-            <td className="setting-label">Default item stacking</td>
-            <td>
-              <select
-                id="belt_stack_default_policy"
-                value={snapshot.settings.beltStackDefaultPolicy}
-                onChange={onPlanningChange}
-              >
-                <option value="auto">Auto — direct output only</option>
-                <option value="stacked">Stacked — use maximum</option>
-                <option value="unstacked">Unstacked — use ×1</option>
-              </select>
-              <div className="setting-help">
-                Auto detects big drills. Override items stacked by inserters or recyclers.
-              </div>
-            </td>
-          </tr>
-
-          <tr className="setting-row compact-setting-row compact-setting-first">
-            <td className="setting-label">Logistics buffer</td>
-            <td>
-              <input
-                id="buffer_minutes"
-                type="number"
-                min="0"
-                step="0.5"
-                value={snapshot.settings.bufferMinutes}
-                size={5}
-                onChange={onPlanningChange}
-              />{" "}
-              minutes
-            </td>
-          </tr>
-
-          <tr className="setting-row compact-setting-row compact-setting-second">
-            <td className="setting-label">Freshness delay</td>
-            <td>
-              <input
-                id="freshness_delay"
-                type="number"
-                min="0"
-                step="0.5"
-                value={snapshot.settings.freshnessDelayMinutes}
-                size={5}
-                onChange={onPlanningChange}
-              />{" "}
-              minutes
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Quality progression</td>
-            <td>
-              <select id="max_quality" value={snapshot.settings.maxQualityLevel} onChange={onPlanningChange}>
-                <option value="0">Normal only</option>
-                <option value="2">Rare unlocked</option>
-                <option value="3">Epic unlocked</option>
-                <option value="4">Legendary unlocked</option>
-              </select>
-            </td>
-          </tr>
-
-          <tr className="setting-row planning-assumptions-row">
-            <td className="setting-label top">Resource assumptions</td>
-            <td>
-              <details className="planning-details">
-                <summary>Fluid yields and asteroid limits</summary>
-                <div className="planning-details-body">
-                  <section className="planning-group">
-                    <h4>Fluid resource yields</h4>
-                    <p>Adjust the output of each pumpjack resource relative to its nominal yield.</p>
-                    <div className="planning-grid">
-                      <ResourceYieldField label="Crude oil" resourceKey="crude-oil" onChange={onPlanningChange} />
-                      <ResourceYieldField
-                        label="Sulfuric geyser"
-                        resourceKey="sulfuric-acid-geyser"
-                        onChange={onPlanningChange}
-                      />
-                      <ResourceYieldField
-                        label="Fluorine vent"
-                        resourceKey="fluorine-vent"
-                        onChange={onPlanningChange}
-                      />
-                      <ResourceYieldField
-                        label="Lithium brine"
-                        resourceKey="lithium-brine"
-                        onChange={onPlanningChange}
-                      />
-                    </div>
-                  </section>
-
-                  <section className="planning-group">
-                    <h4>Asteroid collection limits</h4>
-                    <p>Leave a field blank for unlimited collection. Values use the selected display rate.</p>
-                    <div className="planning-grid">
-                      <AsteroidLimitField
-                        id="asteroid_metallic"
-                        label="Metallic"
-                        itemKey="metallic-asteroid-chunk"
-                        onChange={onPlanningChange}
-                      />
-                      <AsteroidLimitField
-                        id="asteroid_carbonic"
-                        label="Carbonic"
-                        itemKey="carbonic-asteroid-chunk"
-                        onChange={onPlanningChange}
-                      />
-                      <AsteroidLimitField
-                        id="asteroid_oxide"
-                        label="Oxide"
-                        itemKey="oxide-asteroid-chunk"
-                        onChange={onPlanningChange}
-                      />
-                      <AsteroidLimitField
-                        id="asteroid_promethium"
-                        label="Promethium"
-                        itemKey="promethium-asteroid-chunk"
-                        onChange={onPlanningChange}
-                      />
-                    </div>
-                  </section>
-                </div>
-              </details>
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Preferred fuel</td>
-            <td>
-              <span id="fuel_selector" className="radio-setting" />
-            </td>
-          </tr>
-
-          <tr className="setting-row" hidden={!snapshot.settings.equipmentQualityAvailable}>
-            <td className="setting-label">Equipment quality defaults</td>
-            <td>
-              <span className="equipment-quality-defaults">
-                <label>
-                  <span>Machine</span>
-                  <span id="default_machine_quality" />
-                </label>
-                <label>
-                  <span>Module</span>
-                  <span id="default_module_quality" />
-                </label>
-                <label>
-                  <span>Beacon</span>
-                  <span id="default_beacon_quality" />
-                </label>
-              </span>
-            </td>
-          </tr>
-
-          <tr className="setting-row" hidden={!snapshot.settings.equipmentQualityAvailable}>
-            <td className="setting-label top">Quality factory</td>
-            <td>
-              <span className="quality-planner-settings">
-                <label>
-                  <span>Quality module</span>
-                  <span id="quality_planner_module" />
-                </label>
-                <label>
-                  <span>Quality module quality</span>
-                  <span id="quality_planner_module_quality" />
-                </label>
-                <label>
-                  <span>Productivity module</span>
-                  <span id="quality_planner_productivity_module" />
-                </label>
-                <label>
-                  <span>Productivity module quality</span>
-                  <span id="quality_planner_productivity_module_quality" />
-                </label>
-              </span>
-              <div className="setting-help">
-                Quality-producing stages and recyclers use the quality selection. Guaranteed target-quality crafting
-                uses the productivity selection where compatible.
-              </div>
-              <details className="quality-planner-advanced">
-                <summary>Advanced priority</summary>
-                <label>
-                  <span>Prefer</span>
-                  <select
-                    id="quality_planner_objective"
-                    value={snapshot.settings.qualityPlannerObjective}
-                    onChange={onPlanningChange}
-                  >
-                    <option value="practical">Practical factory (recommended)</option>
-                    <option value="materials">Fewer raw resources</option>
-                    <option value="machines">Fewer machines</option>
-                    <option value="power">Lower power</option>
-                  </select>
-                </label>
-                <div className="setting-help">
-                  Used as a route tiebreaker after meeting the target and preferring local resources.
-                </div>
-              </details>
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Default module (all eligible slots)</td>
-            <td>
-              <span id="default_module" />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Secondary default module</td>
-            <td>
-              <span id="secondary_module" />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label">Default beacon</td>
-            <td>
-              <div id="default_beacon_setting" className="default-beacon-setting">
-                <span className="beacon-controls">
-                  <span id="default_beacon" className="beacon-container" />
-                  <span aria-hidden="true"> &times; </span>
-                  <input id="default_beacon_count" type="text" size={3} aria-label="Default beacon count" />
-                </span>
-              </div>
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label top-icon">
-              <div>
-                <span>Machines</span>
-              </div>
-            </td>
-            <td>
-              <span id="building_selector" />
-              <div className="setting-help">
-                Select one or more preferred machines. Automatic uses the fastest compatible selection; click a
-                Factory-row machine for an exact override.
-              </div>
-            </td>
-          </tr>
-
-          <tr id="settings_research" className="setting-section">
-            <td colSpan={2}>
-              <span>Research</span>
-              <hr />
-            </td>
-          </tr>
-
-          <tr id="recipe_productivity_row" className="setting-row">
-            <td className="setting-label top">Productivity</td>
-            <td>
-              <div id="recipe_productivity_settings">
-                <label className="recipe-productivity-setting mining-productivity-setting">
-                  <span className="recipe-productivity-icon mining-productivity-icon" aria-hidden="true" />
-                  <span>Mining productivity</span>
-                  <span className="recipe-productivity-percentage">
-                    <input
-                      id="mprod"
-                      className="mprod"
-                      type="number"
-                      step="10"
-                      value={snapshot.settings.miningProductivityPercent}
-                      min="0"
-                      aria-label="Mining productivity bonus percentage"
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        commands.setMiningProductivityPercent(event.currentTarget.value)
-                      }
-                    />
-                    <span aria-hidden="true">%</span>
-                  </span>
-                </label>
-              </div>
-              <div className="setting-help">
-                Enter the bonus percentages shown in-game. Recipe productivity is capped at +300% total; mining
-                productivity is uncapped.
-              </div>
-            </td>
-          </tr>
-
-          <tr id="settings_recipes" className="setting-section recipe-setting-section">
-            <td colSpan={2}>
-              <span>Recipes</span>
-              <hr />
-            </td>
-          </tr>
-
-          <tr className="setting-row">
-            <td className="setting-label top">Recipes</td>
-            <td>
-              <div id="recipe_toggles" />
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-interface ResourceYieldFieldProps {
-  label: string
-  resourceKey: string
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void
-}
-
-function ResourceYieldField({ label, resourceKey, onChange }: ResourceYieldFieldProps) {
-  return (
-    <label className="planning-field">
-      <span>{label}</span>
-      <span className="planning-control">
-        <input data-resource-key={resourceKey} type="number" min="1" step="10" defaultValue="100" onChange={onChange} />
-        <span>%</span>
-      </span>
-    </label>
-  )
-}
-
-interface AsteroidLimitFieldProps {
-  id: string
-  label: string
-  itemKey: string
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void
-}
-
-function AsteroidLimitField({ id, label, itemKey, onChange }: AsteroidLimitFieldProps) {
-  return (
-    <label className="planning-field">
-      <span>{label}</span>
-      <input id={id} data-item-key={itemKey} type="number" min="0" placeholder="Unlimited" onChange={onChange} />
-    </label>
-  )
-}
-// endregion react/SettingsPanel.tsx
-
-// region react/CalculatorShell.tsx
-const DISPLAY_RATE_UNITS: Readonly<Record<DisplayRate, string>> = {
-  s: "s",
-  m: "min",
-  h: "h",
-}
-
-interface CalculatorShellProps {
-  commands: CalculatorCommands
-  snapshot: CalculatorSnapshot
-}
-
-export function CalculatorShell({ commands, snapshot }: CalculatorShellProps) {
-  return (
-    <>
-      <TargetsPanel commands={commands} snapshot={snapshot} />
-      <PlannerToolbar commands={commands} snapshot={snapshot} />
-      <TabBar commands={commands} snapshot={snapshot} />
-      <VisualizationPanel commands={commands} snapshot={snapshot} />
-      <FactoryPanel />
-      <SettingsPanel commands={commands} snapshot={snapshot} />
-      <ResourcesPanel />
-      <HelpPanel />
-      <footer id="footer">
-        <a href="https://github.com/anthfgreco/factorio-calculator">Source on GitHub</a>
-      </footer>
-    </>
-  )
-}
-
-function TargetsPanel({ commands, snapshot }: CalculatorShellProps) {
-  return (
-    <section className="targets-panel" aria-labelledby="targets_title">
-      <div className="targets-heading">
-        <span id="targets_title">Production targets</span>
-      </div>
-      <div className="production-target-header" aria-hidden="true">
-        <span />
-        <span>Output</span>
-        <span>Quality</span>
-        <span>Machines</span>
-        <span>Rate/{DISPLAY_RATE_UNITS[snapshot.settings.displayRate]}</span>
-        <span data-tooltip="Uses each item's belt stacking setting.">Belts</span>
-      </div>
-      <ul id="targets">
-        <li id="plusButton">
-          <button
-            className="add-target-button ui"
-            data-tooltip="Add another production target."
-            type="button"
-            disabled={snapshot.status !== "ready"}
-            onClick={() => commands.addTarget()}
-          >
-            + Add target
-          </button>
-        </li>
-      </ul>
-    </section>
-  )
-}
-
-function PlannerToolbar({ commands, snapshot }: CalculatorShellProps) {
-  return (
-    <div className="planner-toolbar">
-      <div id="location_toolbar" className="location-toolbar" hidden>
-        <span className="location-toolbar-label">Locations</span>
-        <div className="location-toolbar-content">
-          <div id="planet_selector" />
-          <span className="location-toolbar-help">Shift-click to combine</span>
-        </div>
-      </div>
-      <div className="progression-presets" role="group" aria-label="Calculator preset">
-        <label htmlFor="progression_preset">Preset</label>
-        <select
-          id="progression_preset"
-          defaultValue=""
-          onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-            const value = event.currentTarget.value
-            if (isProgressionPreset(value)) commands.applyProgressionPreset(value)
-            else if (isQualityPreset(value)) commands.applyQualityPreset(value)
-          }}
-        >
-          <option value="">Custom</option>
-          <option value="early">Early game</option>
-          <option value="pre-rocket">Pre-rocket</option>
-          <option value="first-planets">Early Space Age</option>
-          <option value="late-space-age">Late Space Age</option>
-          <option value="full-legendary" disabled={!snapshot.settings.equipmentQualityAvailable}>
-            Full Legendary
-          </option>
-        </select>
-      </div>
-      <div className="planner-actions">
-        <span id="share_status" role="status" aria-live="polite" />
-        <button
-          id="copy_share_link"
-          className="ui planner-action"
-          type="button"
-          onClick={() => void commands.copyShareLink()}
-        >
-          Copy plan link
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function TabBar({ commands, snapshot }: CalculatorShellProps) {
-  return (
-    <div className="tabs">
-      <button
-        className={`tab_button ${snapshot.activeTab === "totals" ? "active" : ""}`}
-        id="totals_button"
-        type="button"
-        onClick={() => commands.selectTab("totals")}
-      >
-        Factory
-      </button>
-      <button
-        className={`tab_button ${snapshot.activeTab === "graph" ? "active" : ""}`}
-        id="graph_button"
-        type="button"
-        onClick={commands.openVisualization}
-      >
-        Visualize
-      </button>
-      <button
-        className={`tab_button ${snapshot.activeTab === "resources" ? "active" : ""}`}
-        id="resources_button"
-        type="button"
-        onClick={() => commands.selectTab("resources")}
-      >
-        Resources
-      </button>
-      <button
-        className={`tab_button ${snapshot.activeTab === "settings" ? "active" : ""}`}
-        id="settings_button"
-        type="button"
-        onClick={() => commands.selectTab("settings")}
-      >
-        Settings
-      </button>
-      <button
-        className={`tab_button ${snapshot.activeTab === "help" ? "active" : ""}`}
-        id="help_button"
-        type="button"
-        onClick={() => commands.selectTab("help")}
-      >
-        Help
-      </button>
-      <div id="factory_tab_tools" className="tab-tools">
-        <div className="factory-density-control" role="group" aria-label="Factory row density">
-          <span className="factory-density-label">Rows</span>
-          <input
-            id="factory_density_comfortable"
-            type="radio"
-            name="factory_density"
-            value="comfortable"
-            checked={snapshot.factoryDensity === "comfortable"}
-            onChange={() => commands.setFactoryDensity("comfortable")}
-          />
-          <label htmlFor="factory_density_comfortable">Relaxed</label>
-          <input
-            id="factory_density_compact"
-            type="radio"
-            name="factory_density"
-            value="compact"
-            checked={snapshot.factoryDensity === "compact"}
-            onChange={() => commands.setFactoryDensity("compact")}
-          />
-          <label htmlFor="factory_density_compact">Compact</label>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function VisualizationPanel({ commands, snapshot }: CalculatorShellProps) {
-  return (
-    <div id="graph_tab" className="tab graph">
-      <div className="visualization-toolbar" aria-label="Visualization controls">
-        <VisualizationRadioGroup
-          id="graph_type"
-          label="View"
-          name="type"
-          options={[
-            { id: "sankey_type", value: "sankey", label: "Flow" },
-            { id: "boxline_type", value: "boxline", label: "Recipe graph" },
-          ]}
-          value={snapshot.settings.visualizationType}
-          onChange={commands.setVisualizationType}
-        />
-        <VisualizationRadioGroup
-          id="graph_render"
-          label="Viewport"
-          name="render"
-          options={[
-            { id: "zoom_render", value: "zoom", label: "Zoom & pan" },
-            { id: "fix_render", value: "fix", label: "Fit" },
-          ]}
-          value={snapshot.settings.visualizationRender}
-          onChange={commands.setVisualizationRender}
-        />
-        <VisualizationRadioGroup
-          id="graph_direction"
-          label="Direction"
-          name="direction"
-          options={[
-            { id: "right_direction", value: "right", label: "Left to right" },
-            { id: "down_direction", value: "down", label: "Top to bottom" },
-          ]}
-          value={snapshot.settings.visualizationDirection}
-          onChange={commands.setVisualizationDirection}
-        />
-        <div className="visualization-meta">
-          <span id="visualization_summary" className="visualization-summary" />
-          <span className="visualization-key">
-            Width = rate; fluids use a 10:1 scale. Dashed = fuel. Hover = isolate.
-          </span>
-        </div>
-      </div>
-      <div id="graph_container">
-        <svg id="graph">
-          <g />
-        </svg>
-      </div>
-    </div>
-  )
-}
-
-interface VisualizationOption {
-  id: string
-  value: string
-  label: string
-}
-
-interface VisualizationRadioGroupProps {
-  id: string
-  label: string
-  name: string
-  options: VisualizationOption[]
-  value: string
-  onChange: (value: string) => void
-}
-
-function VisualizationRadioGroup({ id, label, name, options, value, onChange }: VisualizationRadioGroupProps) {
-  return (
-    <div className="visualization-control">
-      <span className="visualization-label">{label}</span>
-      <form id={id} className="segmented-control">
-        {options.map((option) => (
-          <Fragment key={option.id}>
-            <input
-              id={option.id}
-              type="radio"
-              name={name}
-              value={option.value}
-              checked={option.value === value}
-              autoComplete="off"
-              onChange={() => onChange(option.value)}
-            />
-            <label htmlFor={option.id}>{option.label}</label>
-          </Fragment>
-        ))}
-      </form>
-    </div>
-  )
-}
-
-function FactoryPanel() {
-  return (
-    <div id="totals_tab" className="tab">
-      <div id="calculation_error" className="calculation-error" role="alert" hidden>
-        <div className="calculation-error-title" />
-        <div className="calculation-error-message" />
-        <div className="calculation-error-guidance" />
-      </div>
-      <div id="factory_summary" className="factory-summary" aria-live="polite" hidden />
-      <div className="factory-table-scroll">
-        <table id="totals">
-          <thead>
-            <tr />
-          </thead>
-          <tbody />
-        </table>
-      </div>
-    </div>
-  )
-}
-
-function ResourcesPanel() {
-  return (
-    <div id="resources_tab" className="tab">
-      <p className="resources-intro">
-        Drag resources between tiers to choose what your factory should conserve. Higher tiers are preferred.
-      </p>
-      <div id="resource_settings" />
-    </div>
-  )
-}
-// endregion react/CalculatorShell.tsx
-
-// region react/useCalculatorStore.ts
-export function useCalculatorStore() {
-  return useSyncExternalStore(calculatorStore.subscribe, calculatorStore.getSnapshot, calculatorStore.getSnapshot)
-}
-// endregion react/useCalculatorStore.ts
-
-// region react/CalculatorApp.tsx
+// region main.tsx
 export function CalculatorApp() {
   const snapshot = useCalculatorStore()
-
-  useLayoutEffect(() => {
+  useEffect(() => {
     calculatorStore.start()
     init()
     return () => {
@@ -19438,20 +15667,15 @@ export function CalculatorApp() {
       calculatorStore.dispose()
     }
   }, [])
-
-  return <CalculatorShell commands={calculatorStore.commands} snapshot={snapshot} />
+  return <CalculatorView snapshot={snapshot} commands={calculatorStore.commands} />
 }
-// endregion react/CalculatorApp.tsx
 
-// region main.tsx
 export function mountCalculator(rootElement: HTMLElement): void {
-  installCalculatorStyles()
-  void import("tippy.js/dist/tippy.css")
   createRoot(rootElement).render(<CalculatorApp />)
 }
 
 if (typeof document !== "undefined") {
-  const rootElement = document.getElementById?.("root")
-  if (rootElement != null) mountCalculator(rootElement)
+  const rootElement = document.getElementById("root")
+  if (rootElement !== null) mountCalculator(rootElement)
 }
 // endregion main.tsx

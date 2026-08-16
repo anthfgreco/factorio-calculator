@@ -32,17 +32,13 @@
     "zip": "zx ./zip.ts"
   },
   "dependencies": {
-    "@dagrejs/dagre": "^3.1.0",
-    "d3": "^7.9.0",
     "highs": "1.15.2",
     "pako": "^3.0.1",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "tippy.js": "6.3.7"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
-    "@types/d3": "^7.4.3",
     "@types/node": "22.20.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",

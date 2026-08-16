@@ -48,26 +48,32 @@ const assetSources = await readJavaScriptAssets(new URL("assets/", dist))
 const calculatorBundle = assetSources.join("\n")
 for (const requiredText of [
   "Production targets",
-  "visualization_summary",
-  "fluids use a 10:1 scale",
-  "factory_tab_tools",
-  "location_toolbar",
-  "help-about",
-  "help-using",
-  "help-changelog",
-  "factory_density_comfortable",
-  "factory_density_compact",
-  "copy_share_link",
+  "Copy plan link",
+  "Active recipes",
+  "Machines to place",
+  "Factory recipe flow graph",
+  "Recipe graph",
+  "Drag resources between tiers",
+  "less valuable",
+  "more valuable",
+  "Planning diagnostics",
+  "Automatic quality factory",
+  "Show unavailable recipes",
+  "Disable recycling",
+  "Relaxed",
+  "Compact",
 ]) {
   if (!calculatorBundle.includes(requiredText)) {
     throw new Error(`Built calculator bundle is missing ${JSON.stringify(requiredText)}`)
   }
 }
 for (const removedText of [
+  "CALCULATOR_CSS",
+  "GLOBAL_CSS",
+  "vendor-sankey",
+  "@dagrejs/dagre",
+  "tippy.js",
   "factory-view-toolbar",
-  "Table density",
-  "Recent changes:",
-  "Machine equivalents",
   "debug_button",
   "debug_tab",
 ]) {

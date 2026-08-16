@@ -67,14 +67,11 @@ pnpm zip                 # Package current working-tree files on Windows
 
 ## Architecture
 
-The runtime is intentionally monolithic:
+The calculator has one authored runtime file: `src/main.tsx`. Ordered `// region …` markers preserve clear ownership without a first-party module graph. React owns every application DOM and SVG node. Domain models remain framework-free and expose plain data plus explicit mutations.
 
-- `src/main.tsx` is the one authoritative runtime file. Its `// region …` markers preserve the calculation, domain, state, URL, renderer, React, and startup boundaries without a first-party import graph.
-- `src/vendor-sankey.js` is the only source-code exception: one locally patched third-party implementation retained separately for provenance.
-- Tests, scripts, generated datasets, documentation, and binary assets remain separate because they are not runtime modules.
-- `AGENTS.md` is the only agent instruction file and includes the region map, invariants, validation lanes, and review rules.
+Component layout is inline in the `UI` style map. Theme values are React-applied CSS variables. `BASE_CSS` is intentionally limited to resets, pseudo states, density variables, and responsive media queries. HiGHS is the only deferred runtime engine and loads only for quality optimization.
 
-Dagre and HiGHS remain dynamically imported so the default Factory view does not load optional layout or native optimization engines. Styles are embedded in `main.tsx`; `calc.html` loads one application entry point. See [docs/architecture.md](docs/architecture.md) and [docs/change-guide.md](docs/change-guide.md).
+Tests, scripts, generated datasets, documentation, and binary assets remain separate. `AGENTS.md` is the only agent instruction file. The architecture check rejects new runtime modules, source stylesheets, imperative renderers, nested agent guides, and eager HiGHS imports. See [docs/architecture.md](docs/architecture.md) and [docs/change-guide.md](docs/change-guide.md).
 
 ## GitHub Pages
 

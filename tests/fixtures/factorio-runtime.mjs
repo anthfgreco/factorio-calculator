@@ -41,6 +41,7 @@ export async function setupSpaceAgeFactory() {
     modules.data.parseCalculatorData(JSON.parse(text)),
   )
   const data = await parsedDataPromise
+  modules.models.getSprites(data)
   const items = modules.recipes.getItems(data)
   const recipes = modules.recipes.getRecipes(data, items)
   const buildings = modules.models.getBuildings(data, items)

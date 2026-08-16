@@ -4,5 +4,5 @@
   "maximumInitialCssBytes": 10000,
   "maximumInitialRequests": 10,
   "maximumSingleChunkBytes": 1500000,
-  "requiredDeferredModuleFragments": ["node_modules/@dagrejs/dagre", "node_modules/.pnpm/highs@"]
+  "requiredDeferredModuleFragments": ["node_modules/.pnpm/highs@"]
 }

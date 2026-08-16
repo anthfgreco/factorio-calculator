@@ -2,7 +2,7 @@
 
 ## Context
 
-Partial strictness left nullable runtime paths, renderer datum shapes, and application boundaries implicit. Agents could not rely on the compiler to expose incorrect assumptions.
+Partial strictness left nullable runtime paths, graph data, and application boundaries implicit. Agents could not rely on the compiler to expose incorrect assumptions.
 
 ## Decision
 
@@ -10,4 +10,4 @@ Enable strict TypeScript globally, including unchecked-index and exact-optional-
 
 ## Consequences
 
-Unsafe external values are narrowed at JSON, URL, DOM, and solver boundaries. New code must model absence explicitly rather than suppressing errors. The release gate includes full strict type checking.
+Unsafe external values are narrowed at JSON, URL, browser, and solver boundaries. New code must model absence explicitly rather than suppressing errors. The release gate includes full strict type checking.

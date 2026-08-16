@@ -10,7 +10,7 @@ await compileTypeScript({ root, outputDirectory })
 
 const suites = {
   all: ["tests/*.test.mjs"],
-  core: ["tests/core.test.mjs", "tests/sankey.test.mjs", "tests/scenarios/*.test.mjs"],
+  core: ["tests/core.test.mjs", "tests/graph.test.mjs", "tests/scenarios/*.test.mjs"],
   ui: ["tests/interface.test.mjs", "tests/ui-state.test.mjs", "tests/url-state.test.mjs", "tests/ui/*.test.mjs"],
 }
 const suiteName = process.argv[2] ?? "all"

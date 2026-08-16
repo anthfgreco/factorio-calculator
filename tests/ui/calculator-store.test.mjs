@@ -5,89 +5,46 @@ import test from "node:test"
 
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
-const load = (path) => import(pathToFileURL(resolve(build, "main.js")).href)
 
-const { BrowserCalculatorStore } = await load("application/store")
-const { FactorySpecification } = await load("factory")
-const { Rational } = await load("math")
-
-function createBrowserPort() {
-  return {
-    datasetKey: "space-age-2-1-13",
-    title: "Factorio Calculator",
-    readDatasetKey() {
-      return this.datasetKey
-    },
-    readTitle() {
-      return this.title
-    },
-  }
+const storage = new Map()
+globalThis.window = {
+  localStorage: {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+  },
 }
 
-test("calculator store publishes stable snapshots from the bound specification", () => {
-  const browser = createBrowserPort()
-  const store = new BrowserCalculatorStore(browser)
+const main = await import(pathToFileURL(resolve(build, "main.js")).href)
+const { BrowserCalculatorStore, FactorySpecification } = main
+
+test("calculator store publishes the authoritative specification instead of a duplicate view model", () => {
+  const store = new BrowserCalculatorStore()
   const specification = new FactorySpecification()
   let notifications = 0
   store.subscribe(() => notifications++)
 
   store.bindSpecification(specification)
   const initial = store.getSnapshot()
+  assert.equal(initial.specification, specification)
+  assert.equal(initial.totals, null)
   assert.equal(initial.datasetKey, "space-age-2-1-13")
   assert.equal(initial.status, "loading")
-  assert.equal(initial.targets.length, 0)
-  assert.equal(initial.settings.beltStackDefaultPolicy, "auto")
+  assert.equal(initial.visualizerType, "sankey")
+  assert.equal(initial.visualizerRender, "zoom")
+  assert.equal(initial.visualizerDirection, "right")
 
-  specification.buildTargets.push({
-    index: 0,
-    itemKey: "advanced-circuit",
-    item: { name: "Advanced circuit" },
-    recipe: null,
-    defaultRecipe: null,
-    changedBuilding: false,
-    buildings: Rational.from_integer(1),
-    rate: Rational.from_integer(2),
-    belts: Rational.from_integer(0),
-    basis: "rate",
-    qualityLevel: 1,
-    qualityStrategy: "auto",
-    getRate: () => Rational.from_integer(2),
-    getBuildingCountInput: () => "1",
-    getBeltCountInput: () => "0",
-    setBuildings: () => undefined,
-    setRate: () => undefined,
-    setBelts: () => undefined,
-    setQuality: () => undefined,
-    setQualityStrategy: () => undefined,
-    displayRecipes: () => undefined,
-    rateChanged: () => undefined,
-  })
+  specification.format.rateName = "s"
   specification.notifyStateChanged()
 
   const updated = store.getSnapshot()
   assert.ok(updated.revision > initial.revision)
-  assert.equal(updated.targets[0].itemKey, "advanced-circuit")
-  assert.equal(updated.targets[0].qualityLevel, 1)
-  assert.equal(updated.targets[0].qualityStrategy, "auto")
-  assert.equal(updated.targets[0].rate, "2")
+  assert.equal(updated.specification, specification)
+  assert.equal(updated.specification.format.rateName, "s")
   assert.ok(notifications >= 2)
 })
 
-test("calculator store publishes display-rate changes", () => {
-  const store = new BrowserCalculatorStore(createBrowserPort())
-  const specification = new FactorySpecification()
-  store.bindSpecification(specification)
-
-  assert.equal(store.getSnapshot().settings.displayRate, "m")
-
-  specification.format.setDisplayRate("s")
-  specification.notifyStateChanged()
-
-  assert.equal(store.getSnapshot().settings.displayRate, "s")
-})
-
 test("calculator store surfaces calculation failures without throwing during render", () => {
-  const store = new BrowserCalculatorStore(createBrowserPort())
+  const store = new BrowserCalculatorStore()
   const specification = new FactorySpecification()
   store.bindSpecification(specification)
 
@@ -99,7 +56,7 @@ test("calculator store surfaces calculation failures without throwing during ren
 })
 
 test("calculator store keeps snapshot identity stable until state changes", () => {
-  const store = new BrowserCalculatorStore(createBrowserPort())
+  const store = new BrowserCalculatorStore()
   const specification = new FactorySpecification()
   store.bindSpecification(specification)
 
@@ -111,7 +68,7 @@ test("calculator store keeps snapshot identity stable until state changes", () =
 })
 
 test("calculator store unsubscribe and dispose stop future notifications", () => {
-  const store = new BrowserCalculatorStore(createBrowserPort())
+  const store = new BrowserCalculatorStore()
   const firstSpecification = new FactorySpecification()
   const secondSpecification = new FactorySpecification()
   let notifications = 0
@@ -138,26 +95,26 @@ test("calculator store unsubscribe and dispose stop future notifications", () =>
   assert.ok(afterFirstBind >= 1)
 })
 
-test("calculator store ignores removal requests for missing targets", () => {
-  const store = new BrowserCalculatorStore(createBrowserPort())
+test("calculator store ignores target mutations before the dataset is ready", () => {
+  const store = new BrowserCalculatorStore()
   const specification = new FactorySpecification()
   store.bindSpecification(specification)
   const before = store.getSnapshot()
 
+  assert.doesNotThrow(() => store.commands.addTarget())
   store.commands.removeTarget(99)
 
   assert.equal(store.getSnapshot(), before)
   assert.equal(specification.buildTargets.length, 0)
 })
 
-test("calculator store ignores target additions before the dataset is ready", () => {
-  const store = new BrowserCalculatorStore(createBrowserPort())
+test("calculator store owns browser-only density state through one command", () => {
+  const store = new BrowserCalculatorStore()
   const specification = new FactorySpecification()
   store.bindSpecification(specification)
-  const before = store.getSnapshot()
 
-  assert.doesNotThrow(() => store.commands.addTarget())
+  store.commands.setFactoryDensity("comfortable")
 
-  assert.equal(store.getSnapshot(), before)
-  assert.equal(specification.buildTargets.length, 0)
+  assert.equal(store.getSnapshot().factoryDensity, "comfortable")
+  assert.equal(storage.get("factorio-calculator-factory-density"), "comfortable")
 })

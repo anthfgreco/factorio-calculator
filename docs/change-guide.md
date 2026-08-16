@@ -1,47 +1,49 @@
 # Change Guide
 
-All runtime changes go in `src/main.tsx`. Search for the matching `// region …` marker or public symbol; do not create a new source file. The old module names below are region names, not paths.
+## Start at the owner
 
-## Change a Factorio mechanic or dataset field
+Search `src/main.tsx` for the relevant public symbol or `// region …` marker. Trace the complete path before editing: external input, validation, model mutation, calculation, URL serialization, store notification, and React output.
 
-1. Search `factorio-wiki.md` for the exact edition and mechanic.
-2. Update the `data.ts`, models, recipes, planning, or quality region that owns the behavior.
-3. When prototype data or sprite coordinates change, update `scripts/build_factorio_dataset.py` and regenerate every affected dataset/report/asset together.
-4. Add the smallest named exact scenario under `tests/scenarios/`.
-5. Run `pnpm check:quick`, the focused scenario, `pnpm test:core`, `pnpm validate:runtime`, and `pnpm verify`.
+Prefer the first shared fix. Reuse an existing method or pattern. Do not create a helper file, hook file, component file, stylesheet, or second state model.
 
-## Add or change a React-owned control
+## Add or change a calculator setting
 
-1. Identify the state owner first.
-2. Add a typed snapshot field or command in the `application/contracts.ts` region only when the existing contract does not cover it.
-3. Delegate through `BrowserCalculatorStore`; keep game policy in its owning domain region.
-4. Add the control in the relevant `react/*` region without placing React children inside an imperative-owned mount point.
-5. Include accessible labeling, keyboard behavior, persistence when applicable, and focused store/UI coverage.
+1. Put the durable value on `FactorySpecification` or the established settings owner.
+2. Validate at the external boundary.
+3. Add URL parse/format support when the value should persist.
+4. Expose the value through the existing snapshot rather than copying it.
+5. Render a native, labelled React control in `react-ui.tsx`.
+6. Mutate through `runMutation(specification, …)` or an existing command.
+7. Add a URL round-trip test and one public UI/store test.
 
-## Change an imperative renderer
+## Change targets or results
 
-1. Find the exact mount point and renderer region (`settings.ts`, `results.ts`, `ui.ts`, `presentation.ts`, or `visualization.ts`).
-2. Reuse an existing view model, formatter, and D3 update pattern before adding code.
-3. Preserve stable keys and incremental updates; avoid full table/graph rebuilds.
-4. Do not mutate React-owned controls or make DOM properties authoritative state.
-5. Add a public behavior test; use Playwright only for interaction or layout that cannot be covered below the browser.
+Keep `BuildTarget` DOM-free and bound to its owning specification. Put derived calculations in models or plain summary functions, then render those values directly in JSX. Do not read control values from the DOM or maintain a synchronized React copy.
 
-## Change solver behavior
+## Change the graph
 
-1. Reduce the failure to the smallest item/recipe graph and add the exact failing scenario first.
-2. Determine whether the bug belongs to runtime-to-solver adaptation in the `factory.ts` region or the pure `solver.ts` region.
-3. Preserve exact arithmetic, productivity eligibility, catalysts, probabilities, cycles, priorities, fuel edges, and output/surplus behavior.
-4. Run `pnpm test:core`, `pnpm bench:check`, `pnpm validate:runtime`, and `pnpm verify`.
+Change `buildDeclarativeGraph()` when node/link derivation is wrong. Change `GraphPanel` when presentation is wrong. Keep the boundary plain and deterministic; render SVG elements declaratively. Do not add chained DOM mutation or a layout dependency unless profiling proves the simple layout insufficient.
 
-## Change URL persistence
+## Change styling
 
-1. Keep pure encoding/decoding in the `url/codec.ts` region and browser history in `url/history.ts`.
-2. Preserve existing parameters, empty module slots, deterministic set ordering, compression heuristics, and old uncompressed links.
-3. Add round-trip, malformed-input, deterministic-order, and backwards-compatibility tests.
-4. Verify browser reload behavior with `pnpm test:e2e` for player-facing changes.
+Use an existing `UI` entry first. Use a nearby one-off style object for truly local differences. Add a React-root CSS variable for a theme value. Touch `BASE_CSS` only for reset, pseudo-state, density, or responsive behavior that cannot be expressed inline.
 
-## Decide between `updateSolution()` and `display()`
+Do not add a stylesheet, CSS framework, CSS-in-JS dependency, or generic styling abstraction.
 
-Use `updateSolution()` when a change can alter recipe rates, selected recipes, ingredients, outputs, target transformations, or the solved graph.
+## Change Factorio mechanics
 
-Use `display()` when solution ratios remain valid and only presentation or derived building counts change.
+Confirm the mechanic in `factorio-wiki.md` and the validated dataset. Add the smallest exact scenario, then change the first owning calculation region. Preserve exact `Rational` values and avoid multiplying catalysts or returned containers with productivity.
+
+## Validate
+
+Run the narrowest test while iterating, then:
+
+```bash
+pnpm check:quick
+pnpm test:core
+pnpm test:ui
+pnpm test:e2e       # browser-facing changes
+pnpm verify         # release gate
+```
+
+Report exactly what ran and what the environment prevented.

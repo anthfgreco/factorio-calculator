@@ -10,4 +10,4 @@ Expose calculator state to React through `CalculatorStore`, immutable `Calculato
 
 ## Consequences
 
-React uses `useSyncExternalStore`. New shell controls call commands instead of passing events. DOM reads are compatibility adapters only, not authoritative state. Lifecycle and stale asynchronous loads are testable.
+React uses `useSyncExternalStore`. UI controls pass typed values or call explicit model mutations rather than forwarding browser events. React local state is disposable view state, and rendered DOM is never authoritative. Lifecycle and stale asynchronous loads are testable.

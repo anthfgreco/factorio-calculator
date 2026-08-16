@@ -1364,7 +1364,7 @@ test("target quality handler enables automatic planet planning without mutating 
   }
   factorySpec.buildTargets = [target]
 
-  handleTargetQualityChange(target, 4)
+  handleTargetQualityChange(factorySpec, target, 4)
 
   assert.equal(target.qualityLevel, 4)
   assert.equal(target.qualityStrategy, "auto")
@@ -1377,7 +1377,7 @@ test("target quality handler enables automatic planet planning without mutating 
   assert.equal(factorySpec.qualityPlans[0].profile, "vulcanus")
   assert.equal(factorySpec.qualityPlans[0].recipe.key, "casting-iron")
 
-  handleTargetQualityChange(target, 0)
+  handleTargetQualityChange(factorySpec, target, 0)
   assert.equal(target.qualityLevel, 0)
   assert.equal(target.qualityStrategy, "direct")
   assert.equal(factorySpec.qualityPlans.length, 0)

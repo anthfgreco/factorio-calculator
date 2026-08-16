@@ -65,12 +65,10 @@ pnpm exec playwright install chromium
 
 The workflow verifies:
 
-- default dataset and successful calculation
-- target addition
-- title/URL persistence through reload
-- progression preset effects
-- opening Visualize renders a graph summary without browser errors
-- critical controls render at a mobile viewport
+- default calculation, target editing, addition, removal, and URL reload
+- native React settings, density, title, and display-rate persistence
+- declarative SVG nodes, links, sprites, and graph controls
+- Factory inline equipment, Resources, and Help at a mobile viewport
 - uncaught browser errors fail the test
 
 Use `pnpm test:e2e:ui` for Playwright's interactive test runner. Traces are retained on the first retry in CI.
@@ -101,7 +99,7 @@ pnpm build:site
 pnpm validate:build
 ```
 
-The Vite manifest and emitted Rollup module graph are checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred optional engines. Dagre and HiGHS must be present in dynamic chunks and absent from the calculator entry's static import closure.
+The Vite manifest and emitted Rollup module graph are checked for initial JavaScript/CSS/request budgets, maximum chunk size, and deferred engines. HiGHS must be present in a dynamic chunk and absent from the calculator entry's static import closure.
 
 ## Release gate
 

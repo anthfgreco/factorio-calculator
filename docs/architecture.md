@@ -1,63 +1,63 @@
 # Architecture
 
-## Monolithic runtime
+## One runtime file
 
-The calculator has one authored runtime module: `src/main.tsx`. `src/vendor-sankey.js` is the only source-code exception because it is a locally patched third-party implementation.
-
-This layout deliberately removes first-party import traversal. Architectural boundaries still exist as ordered `// region …` sections, named after the former modules:
+`src/main.tsx` is the calculator's only authored runtime source. Ordered `// region …` sections preserve the former domain boundaries while removing first-party import traversal:
 
 ```text
-data and exact math
+validated data and exact arithmetic
   ↓
 solver and Factorio domain models
   ↓
 quality and deterministic planning
   ↓
-FactorySpecification, state, and calculatorStore
+FactorySpecification and BuildTarget
   ↓
-settings, URL compatibility, results, and target UI
+application state, settings, and URL persistence
   ↓
-optional HiGHS / graph layout adapters
+plain result summaries
   ↓
-browser composition, React shell, and mount
+React controls, compact result rows, and declarative SVG
+  ↓
+data loading, lifecycle, and mount
 ```
 
-`scripts/check-architecture.mjs` prevents new runtime source files, nested agent guides, internal dynamic imports, and eager Dagre/HiGHS imports.
+Tests, scripts, generated datasets, docs, and assets stay separate because they are not runtime modules. `AGENTS.md` is the only agent instruction file.
 
-## Boundaries inside the file
+## State ownership
 
-### Validated data and exact calculation
+`FactorySpecification` is authoritative. It owns selected data, targets, recipes, equipment, planning settings, totals, and calculation errors. Each `BuildTarget` is permanently bound to the specification that created it.
 
-The `data.ts` region owns external dataset contracts, runtime validation, normalized search, location helpers, and shared sorting. Raw JSON remains `unknown` until `parseCalculatorData()` validates it.
+`BrowserCalculatorStore` exposes one `CalculatorSnapshot` per revision. The snapshot carries the actual specification and totals plus small browser view state such as the active tab, density, colour scheme, and graph options. React does not maintain a synchronized copy of calculator data.
 
-The `math.ts`, `solver/contracts.ts`, `solver/errors.ts`, and `solver.ts` regions own exact `Rational` arithmetic, matrix/simplex primitives, cycle handling, fuel-consumer edges, per-product productivity, totals, and typed failures. These paths stay independent of React and the DOM even though they share a physical file.
+Mutations explicitly name the specification and call existing model methods. React local state is limited to drafts, filters, and hover state. Meaningful calculator state round-trips through the URL.
 
-### Domain and planning
+## React ownership
 
-The models, recipes, priorities, factory, planning, and quality regions own Factorio runtime objects, recipe policy, solver adaptation, quality transitions, selected-planet expansion, recycler disposal, logistics, capacity, pollution, rockets, heat, and optional certified HiGHS optimization.
+React owns every node below `#root`, including production targets, settings, the integrated factory table and inline equipment pickers, help, errors, and the SVG graph. There are no imperative renderers or DOM adapters.
 
-HiGHS proposes a candidate basis only. The original rational coefficients certify primal feasibility, dual feasibility, reduced costs, and objective before accepting it; invalid candidates fall back to the exact solver.
+The graph boundary is plain data: `buildDeclarativeGraph()` derives nodes and links from `Totals`; JSX renders `<svg>`, `<path>`, `<g>`, and sprite `<image>` elements. No layout or visualization dependency is required.
 
-### One application-state boundary
+## Styling
 
-`FactorySpecification` remains the calculation authority. `BrowserCalculatorStore` adapts it into stable immutable `CalculatorSnapshot` values and typed `CalculatorCommands`. DOM values and React local state are not competing calculator state.
+Most styling is co-located in the `UI` inline-style map or a small nearby style object. Colour schemes are CSS-variable maps applied by the React root.
 
-The URL codec/history regions preserve deterministic fragments, legacy links, slot placeholders, compression behavior, and safe malformed-input handling.
+`BASE_CSS` remains limited to behavior inline styles cannot express cleanly: reset rules, focus/hover/disabled pseudo states, density variables, responsive picker positioning, and media queries. The source tree contains no stylesheet files.
 
-### Renderer ownership
+## Optional engine
 
-React owns the stable page shell and creates imperative mount-point containers. Settings, targets, results, tooltips, and graph renderers own the children inside those containers. Neither side mutates the other's owned children.
+HiGHS and `highs/runtime?url` are the only dynamic imports. They load only when a quality optimization needs the LP engine. The ordinary calculator and Visualize tab do not load an optional layout package.
 
-High-volume result and D3/SVG rendering remains imperative. Stable keys and incremental updates avoid rebuilding large tables or graphs on every state change.
+## Enforced boundaries
 
-### Startup and optional engines
+`scripts/check-architecture.mjs` rejects:
 
-`calc.html` loads only `src/main.tsx`. The calculator CSS is embedded in that file. Dagre and HiGHS remain behind dynamic imports and are omitted from the initial dependency closure; opening Visualize or invoking the quality optimizer loads them on demand.
+- another runtime source file or source stylesheet;
+- first-party imports hidden behind static or dynamic loading;
+- D3, Tippy, Dagre, vendored Sankey code, or manual DOM/SVG construction;
+- unsupported `document` APIs;
+- eager HiGHS imports;
+- runtime dependency drift;
+- nested `AGENTS.md` or `SKILL.md` files.
 
-## Generated data and assets
-
-`scripts/build_factorio_dataset.py` is the source for generated prototype data and sprite coordinates. Runtime JSON lives under `public/data`; sprites live under `public/images`. Generated values are never hand-edited, and every referenced sprite hash retains both PNG and WebP copies.
-
-## Why regions instead of modules
-
-This repository optimizes for agentic changes: one search target, one public export surface, no barrel graph, no duplicated local types, and no ambiguity about which source file should change. Region markers retain ownership and navigation while avoiding the context and coordination overhead of many tiny files.
+Strict TypeScript, public behavior tests, runtime validation, URL compatibility tests, performance budgets, and production build checks protect the rest of the architecture.

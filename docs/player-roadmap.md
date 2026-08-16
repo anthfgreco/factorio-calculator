@@ -7,9 +7,9 @@ The calculator's strongest foundations are worth preserving:
 - exact rational arithmetic rather than floating-point approximations
 - a proven recipe-graph and simplex solver for multi-output systems
 - compact, shareable URL state
-- no server dependency; keep the React shell thin and the solver framework-independent
+- no server dependency; keep the React UI explicit and the solver framework-independent
 - generated datasets backed by Factorio prototype exports
-- cohesive modules with executable architecture and runtime checks
+- one navigable runtime file with executable architecture and runtime checks
 
 The highest-value remaining work is not a framework rewrite. It is extending the production model where Space Age and quality introduce dimensions that a single shared item graph cannot represent.
 
