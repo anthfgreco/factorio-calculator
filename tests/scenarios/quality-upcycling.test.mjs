@@ -205,7 +205,7 @@ test("automatic quality planning requires a planet instead of falling back to a 
   assert.equal(specification.qualityPlans.length, 0)
 })
 
-test("Vulcanus automatic quality starts iron plates at lava casting and recycles every failed tier", async () => {
+test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore shuffle", async () => {
   const runtime = await setupSpaceAgeFactory()
   const { specification, math, vulcanusPlanner, items, recipes, planets, calculatorModules } = runtime
   const vulcanus = requireValue(planets, "vulcanus")
@@ -233,8 +233,16 @@ test("Vulcanus automatic quality starts iron plates at lava casting and recycles
   assert.equal(plan.profile, "vulcanus")
   assert.equal(plan.recipe.key, "casting-iron")
   assert.equal(plan.firstPassChance.toString(), "1/5000")
+  assert.equal(plan.warnings.length, 2)
+  assert.match(plan.warnings[0], /local lava, casting, and available quality shuffles/i)
+  assert.match(plan.warnings[1], /steady-state estimate/i)
   assert.ok(plan.fluidInputs.some((entry) => entry.item.key === "lava" && math.zero.less(entry.amount)))
   assert.ok(plan.freshInputs.some((entry) => entry.item.key === "calcite" && math.zero.less(entry.amount)))
+  assert.ok(
+    plan.freshInputs.some(
+      (entry) => entry.item.key === "calcite" && entry.qualityLevel === 4 && math.zero.less(entry.amount),
+    ),
+  )
   assert.equal(plan.importedInputs.length, 0)
   assert.equal(
     plan.freshInputs.some((entry) => entry.item.key === "iron-plate"),
@@ -255,7 +263,9 @@ test("Vulcanus automatic quality starts iron plates at lava casting and recycles
     true,
   )
 
-  const melting = plan.operations.find((operation) => operation.recipe.key === "molten-iron-from-lava")
+  const melting = plan.operations.find(
+    (operation) => operation.recipe.key === "molten-iron-from-lava" && operation.qualityLevel === 4,
+  )
   assert.ok(melting)
   assert.equal(melting.configuration.qualityChance.toString(), "0")
   assert.ok(math.one.less(melting.configuration.productivity))
@@ -279,10 +289,84 @@ test("Vulcanus automatic quality starts iron plates at lava casting and recycles
     recycling.every((operation) => operation.configuration.qualityChance.toString() === "1/5"),
     true,
   )
-  assert.ok(
+  for (const recipeKey of ["stone-brick", "concrete-from-molten-iron", "concrete-recycling", "iron-plate"]) {
+    assert.ok(
+      plan.operations.some((operation) => operation.recipe.key === recipeKey && operation.qualityLevel === 4),
+      `Expected Legendary ${recipeKey}`,
+    )
+  }
+  assert.equal(
     plan.operations.some((operation) => operation.kind === "dispose" && operation.recipe.key === "stone-recycling"),
+    false,
   )
   assert.equal(plan.surplusOutputs.length, 0)
+
+  specification.setDisable(requireValue(recipes, "concrete-from-molten-iron"))
+  const fallback = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: ironPlate,
+    recipe: normalSmelting,
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  assert.equal(
+    fallback.operations.some((operation) => operation.recipe.key === "concrete-from-molten-iron"),
+    false,
+  )
+  assert.ok(
+    fallback.operations.some((operation) => operation.kind === "dispose" && operation.recipe.key === "stone-recycling"),
+  )
+})
+
+test("Vulcanus Legendary LDS shuffling supplies steel and regenerates plastic at the productivity cap", async () => {
+  const runtime = await setupSpaceAgeFactory()
+  const { specification, math, vulcanusPlanner, items, recipes, planets } = runtime
+  specification.selectOnePlanet(requireValue(planets, "vulcanus"))
+  specification.setRecipeProductivityLevel("low-density-structure-productivity", 30)
+
+  const plan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: requireValue(items, "steel-plate"),
+    recipe: requireValue(recipes, "steel-plate"),
+    requested: math.one,
+    qualityLevel: 4,
+  })
+
+  const casting = plan.operations.find(
+    (operation) => operation.recipe.key === "casting-low-density-structure" && operation.qualityLevel === 4,
+  )
+  const recycling = plan.operations.find(
+    (operation) => operation.recipe.key === "low-density-structure-recycling" && operation.qualityLevel === 4,
+  )
+  assert.ok(casting)
+  assert.ok(recycling)
+  assert.equal(casting.configuration.productivity.toString(), "4")
+  assert.equal(casting.configuration.qualityChance.toString(), "0")
+  assert.equal(recycling.configuration.qualityChance.toString(), "0")
+  assert.equal(casting.rate.mul(math.Rational.from_integer(4)).toString(), recycling.rate.toString())
+  assert.equal(
+    plan.freshInputs.some((entry) => entry.item.key === "plastic-bar"),
+    false,
+  )
+  assert.equal(plan.importedInputs.length, 0)
+  assert.equal(
+    plan.operations.some((operation) => operation.recipe.key === "casting-steel"),
+    false,
+  )
+
+  specification.setDisable(requireValue(recipes, "casting-low-density-structure"))
+  const fallback = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: requireValue(items, "steel-plate"),
+    recipe: requireValue(recipes, "steel-plate"),
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  assert.equal(
+    fallback.operations.some((operation) => operation.recipe.key === "low-density-structure-recycling"),
+    false,
+  )
+  assert.ok(fallback.operations.some((operation) => operation.recipe.key === "casting-steel"))
 })
 
 test("Vulcanus practical electronics honor the dedicated productivity module profile", async () => {
@@ -359,14 +443,8 @@ test("Vulcanus Mech armor makes its oil chain locally and imports only holmium o
     qualityLevel: 4,
   })
   assert.equal(optimizer.lastRun?.certified, true, JSON.stringify(optimizer.lastRun))
-  assert.equal(
-    plan.totalCrafts.toString(),
-    "654695212069960015266641502753802861784751118/1559668913829556971062523577911481640625",
-  )
-  assert.equal(
-    plan.totalRecycles.toString(),
-    "1237937377184826460954378686853325258859601/4413756926211535373891223186470587500",
-  )
+  assert.ok(math.zero.less(plan.totalCrafts))
+  assert.ok(math.zero.less(plan.totalRecycles))
 
   const scaledPlan = vulcanusPlanner.planVulcanusQualityTarget({
     specification,

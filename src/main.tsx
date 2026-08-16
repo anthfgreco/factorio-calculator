@@ -6853,6 +6853,7 @@ class PracticalQualityGraphBuilder {
   readonly embeddedRecyclers = new Map<QualityGraphRecipe, EmbeddedRecycler>()
   private readonly expandedItems = new Set<string>()
   private readonly expandedProducers = new Set<string>()
+  private readonly expandedVulcanusShuffles = new Set<string>()
   private readonly importedItems = new Set<QualityGraphItem>()
   private readonly configurations = new Map<string, readonly QualityTierConfiguration[]>()
   private readonly userDisabledRecipes: ReadonlySet<Recipe>
@@ -6975,10 +6976,123 @@ class PracticalQualityGraphBuilder {
     this.expandedItems.add(graphItem.key)
 
     const keepLevel = graphItem.qualityLevel ?? 0
+    this.addVulcanusShuffleProducer(item, keepLevel)
     const producer = this.chooseProducer(item)
     if (producer !== null) this.ensureProducer(item, keepLevel, producer)
 
     if (keepLevel === 0 || producer === null) this.addImport(graphItem, item)
+  }
+
+  private addVulcanusShuffleProducer(item: Item, qualityLevel: number): void {
+    if (this.planet.key !== "vulcanus" || qualityLevel === 0 || qualityLevel !== this.targetQualityLevel) return
+    if (item.key === "copper-plate" || item.key === "steel-plate") {
+      this.addVulcanusLdsShuffle(qualityLevel)
+    }
+    if (item.key === "iron-ore" || item.key === "iron-plate") {
+      this.addVulcanusConcreteShuffle(qualityLevel)
+    }
+  }
+
+  private addVulcanusLdsShuffle(qualityLevel: number): void {
+    const routeKey = `lds@q${qualityLevel}`
+    if (this.expandedVulcanusShuffles.has(routeKey)) return
+    this.expandedVulcanusShuffles.add(routeKey)
+
+    const lowDensityStructure = this.specification.items.get("low-density-structure")
+    const casting = this.specification.recipes.get("casting-low-density-structure")
+    const recycling = this.specification.recipes.get("low-density-structure-recycling")
+    if (
+      lowDensityStructure === undefined ||
+      casting === undefined ||
+      recycling === undefined ||
+      !this.isUsableProducer(casting, lowDensityStructure) ||
+      !this.canRecycle(recycling)
+    ) {
+      return
+    }
+
+    const configuration = this.getCraftConfigurations(recycling, qualityLevel)[qualityLevel]
+    if (configuration === undefined) throw new Error("Missing Vulcanus low density structure shuffle configuration")
+    const operation = addCraftRecipe(
+      this.graph,
+      lowDensityStructure,
+      recycling,
+      qualityLevel,
+      0,
+      this.specification.maxQualityLevel,
+      configuration,
+      [],
+      `${this.planet.key}:lds-shuffle`,
+    )
+    this.operations.set(operation, configuration)
+    this.setOperationTiebreak(operation, configuration)
+    for (const ingredient of operation.ingredients) this.ensureItem(ingredient.item)
+  }
+
+  private addVulcanusConcreteShuffle(qualityLevel: number): void {
+    const routeKey = `concrete@q${qualityLevel}`
+    if (this.expandedVulcanusShuffles.has(routeKey)) return
+    this.expandedVulcanusShuffles.add(routeKey)
+
+    const ironPlate = this.specification.items.get("iron-plate")
+    const ironOre = this.specification.items.get("iron-ore")
+    const concrete = this.specification.items.get("concrete")
+    const stoneBrick = this.specification.items.get("stone-brick")
+    const stone = this.specification.items.get("stone")
+    const smelting = this.specification.recipes.get("iron-plate")
+    const concreteRecycling = this.specification.recipes.get("concrete-recycling")
+    const concreteCasting = this.specification.recipes.get("concrete-from-molten-iron")
+    const brickSmelting = this.specification.recipes.get("stone-brick")
+    const lavaMelting = this.specification.recipes.get("molten-iron-from-lava")
+    if (
+      ironPlate === undefined ||
+      ironOre === undefined ||
+      concrete === undefined ||
+      stoneBrick === undefined ||
+      stone === undefined ||
+      smelting === undefined ||
+      concreteRecycling === undefined ||
+      concreteCasting === undefined ||
+      brickSmelting === undefined ||
+      lavaMelting === undefined ||
+      !this.isUsableProducer(smelting, ironPlate) ||
+      !this.canRecycle(concreteRecycling) ||
+      !this.isUsableProducer(concreteCasting, concrete) ||
+      !this.isUsableProducer(brickSmelting, stoneBrick) ||
+      !this.isUsableProducer(lavaMelting, stone)
+    ) {
+      return
+    }
+
+    const routeOperations: [Item, Recipe][] = [
+      [ironPlate, smelting],
+      [concrete, concreteRecycling],
+      [concrete, concreteCasting],
+      [stoneBrick, brickSmelting],
+      [stone, lavaMelting],
+    ]
+    const addedOperations: QualityGraphRecipe[] = []
+    for (const [product, recipe] of routeOperations) {
+      const configuration = this.getCraftConfigurations(recipe, qualityLevel)[qualityLevel]
+      if (configuration === undefined) throw new Error(`Missing Vulcanus shuffle configuration for ${recipe.name}`)
+      const operation = addCraftRecipe(
+        this.graph,
+        product,
+        recipe,
+        qualityLevel,
+        0,
+        this.specification.maxQualityLevel,
+        configuration,
+        [],
+        `${this.planet.key}:concrete-shuffle`,
+      )
+      this.operations.set(operation, configuration)
+      this.setOperationTiebreak(operation, configuration)
+      addedOperations.push(operation)
+    }
+    for (const operation of addedOperations) {
+      for (const ingredient of operation.ingredients) this.ensureItem(ingredient.item)
+    }
   }
 
   private addImport(graphItem: QualityGraphItem, item: Item): void {
@@ -7294,16 +7408,11 @@ export function planPracticalQualityTarget(options: {
   const recyclerRecipe = findRecyclerRecipe(specification, item)
   const warnings = [
     ...profileWarnings,
-    "Quality modules are used before the requested quality; guaranteed requested-quality crafting uses the configured productivity module and quality where compatible.",
-    "Lower-quality products are processed through their real recycler recipes. Irreducible or intentionally retained byproducts remain listed.",
-    "Expected steady-state throughput; low-volume high-quality output will be lumpy.",
+    "Steady-state estimate: quality modules and recycling raise lower tiers, requested-quality steps use configured productivity where compatible, and small runs may be lumpy; retained byproducts remain listed.",
   ]
   if (!specification.selectedPlanets.has(planet)) {
     warnings.unshift(`The plan uses ${planet.name} availability because the target is in automatic quality mode.`)
   }
-  warnings.push(
-    `Inputs unavailable from ${planet.name} resources are shown as imports rather than silently treated as Normal local materials.`,
-  )
 
   return {
     profile,
@@ -7385,7 +7494,7 @@ export function planVulcanusQualityTarget(options: {
     profile: "vulcanus",
     curatedProducers: CURATED_PRODUCERS,
     profileWarnings: [
-      "Vulcanus practical mode starts local metals at lava and molten-metal casting instead of importing Normal plates.",
+      "Uses Vulcanus-local lava, casting, and available quality shuffles; unavailable materials remain listed as imports.",
     ],
   })
 }
