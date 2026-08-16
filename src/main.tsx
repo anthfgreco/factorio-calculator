@@ -44,9 +44,7 @@ summary { list-style-position: outside; }
 [data-density="compact"] .factory-table td.factory-modules,
 [data-density="compact"] .factory-table td.factory-beacons { padding-top: 4.65px !important; padding-bottom: 4.65px !important; }
 .compact-icon-select select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-.icon-picker > summary { list-style: none; }
-.icon-picker > summary::-webkit-details-marker { display: none; }
-.icon-picker > summary:hover, .icon-picker[open] > summary { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.icon-picker > button:hover, .icon-picker[data-open="true"] > button { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 .help-table th, .help-table td { border-bottom: 1px solid var(--rule); }
 .help-table tbody tr:last-child td { border-bottom: 0; }
 .settings-columns { align-items: start; }
@@ -66,7 +64,7 @@ summary { list-style-position: outside; }
   .target-machines { grid-column: 2; width: calc(50% - 4px); }
   .target-rate { grid-column: 2; width: calc(50% - 4px); margin-left: calc(50% + 4px); margin-top: -53px; }
   .target-belts { grid-column: 2; max-width: 135px; margin-top: -11px; }
-  .target-recipe, .target-strategy, .target-warning { grid-column: 1 / -1 !important; margin-left: 40px; }
+  .target-strategy, .target-warning { grid-column: 1 / -1 !important; margin-left: 40px; }
   .planner-toolbar { display: grid !important; justify-items: start; gap: 10.5px !important; }
   .planner-toolbar > label { display: grid !important; grid-template-columns: auto 158px; align-items: center; gap: 8px; width: max-content !important; padding-left: 0 !important; border-left: 0 !important; }
   .planner-toolbar > label select { width: 158px !important; }
@@ -11915,28 +11913,6 @@ function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonl
         <span />
       )}
 
-      {availableRecipes.length > 1 ? (
-        <Field label="Recipe" className="target-recipe" style={{ gridColumn: "2 / 4" }}>
-          <select
-            aria-label={`Recipe for ${target.item.name}`}
-            value={target.recipe?.key ?? ""}
-            disabled={availableRecipes.length === 0}
-            style={UI.control}
-            onChange={(event) => {
-              const recipe = specification.recipes.get(event.currentTarget.value)
-              if (recipe !== undefined) runMutation(specification, () => target.setRecipe(recipe))
-            }}
-          >
-            {availableRecipes.length === 0 ? <option value="">No available recipe</option> : null}
-            {availableRecipes.map((recipe) => (
-              <option key={recipe.key} value={recipe.key}>
-                {recipe.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-      ) : null}
-
       {target.qualityLevel > 0 ? (
         <Field label="Quality strategy" className="target-strategy" style={{ gridColumn: "2 / 4" }}>
           <select
@@ -12202,98 +12178,169 @@ function RecipeIconPicker({
   readonly item: Item
   readonly activeRecipe: Recipe
 }) {
+  const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const [open, setOpen] = useState(false)
+  const [position, setPosition] = useState({ top: 8, left: 8, width: 392, maxHeight: 308 })
   const recipes = getItemProductionRecipes(item)
-  if (recipes.length === 0) return <SpriteIcon icon={item.icon} size={32} title={item.name} />
   const groups = getRecipeSelectorGroups(recipes, activeRecipe)
+
+  const updatePosition = () => {
+    const anchor = trigger.current
+    if (anchor === null) return
+    const viewportPadding = 8
+    const gap = 6
+    const bounds = anchor.getBoundingClientRect()
+    const width = Math.min(392, Math.max(0, window.innerWidth - viewportPadding * 2))
+    const maxHeight = Math.min(308, Math.max(0, window.innerHeight - viewportPadding * 2))
+    const preferredLeft = bounds.right + gap
+    const left =
+      preferredLeft + width <= window.innerWidth - viewportPadding
+        ? preferredLeft
+        : Math.max(viewportPadding, bounds.left - width - gap)
+    const top = Math.min(
+      Math.max(viewportPadding, bounds.top - 5),
+      Math.max(viewportPadding, window.innerHeight - maxHeight - viewportPadding),
+    )
+    setPosition({ top, left, width, maxHeight })
+  }
+
+  useEffect(() => {
+    if (!open) return
+    updatePosition()
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && !root.current?.contains(target)) setOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      setOpen(false)
+      requestAnimationFrame(() => trigger.current?.focus())
+    }
+    window.addEventListener("pointerdown", closeOnOutsidePointer, true)
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+    return () => {
+      window.removeEventListener("pointerdown", closeOnOutsidePointer, true)
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [open])
+
+  if (recipes.length === 0) return <SpriteIcon icon={item.icon} size={32} title={item.name} />
+
   return (
-    <details className="icon-picker" style={{ position: "relative", display: "inline-block" }}>
-      <summary
+    <div ref={root} className="icon-picker" data-open={open} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        ref={trigger}
+        type="button"
         aria-label={`Enable or disable recipes for ${item.name}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         title={`Enable or disable recipes for ${item.name}`}
-        style={{ display: "block", width: 32, height: 32, cursor: "pointer", borderRadius: 3 }}
-      >
-        <SpriteIcon icon={item.icon} size={32} title={item.name} />
-      </summary>
-      <div
         style={{
-          position: "absolute",
-          zIndex: 30,
-          top: -5,
-          left: 38,
-          width: 392,
-          maxWidth: "min(392px, 85vw)",
-          maxHeight: 308,
-          overflow: "auto",
-          padding: 7,
-          color: "var(--foreground)",
-          border: "1px solid var(--rule)",
-          borderTop: "2px solid var(--accent)",
-          borderRadius: 2,
-          background: "var(--dark)",
-          boxShadow: "0 10px 24px rgba(0, 0, 0, 0.55)",
+          display: "block",
+          width: 32,
+          height: 32,
+          padding: 0,
+          border: 0,
+          background: "transparent",
+          cursor: "pointer",
+        }}
+        onClick={() => {
+          if (!open) updatePosition()
+          setOpen((current) => !current)
         }}
       >
-        <strong style={{ display: "block", marginBottom: 5, color: "var(--bright)" }}>Recipes for {item.name}</strong>
-        {groups.map((group, groupIndex) => (
-          <section
-            key={group.key}
-            style={groupIndex === 0 ? undefined : { marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--light)" }}
-          >
-            <div
-              style={{
-                ...UI.label,
-                margin: "1px 0 3px 4px",
-                textTransform: "uppercase",
-                letterSpacing: "0.035em",
-              }}
+        <SpriteIcon icon={item.icon} size={32} title={item.name} />
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-label={`Recipes for ${item.name}`}
+          style={{
+            position: "fixed",
+            zIndex: 100,
+            top: position.top,
+            left: position.left,
+            width: position.width,
+            maxHeight: position.maxHeight,
+            overflow: "auto",
+            padding: 7,
+            color: "var(--foreground)",
+            border: "1px solid var(--rule)",
+            borderTop: "2px solid var(--accent)",
+            borderRadius: 2,
+            background: "var(--dark)",
+            boxShadow: "0 10px 24px rgba(0, 0, 0, 0.55)",
+          }}
+        >
+          <strong style={{ display: "block", marginBottom: 5, color: "var(--bright)" }}>Recipes for {item.name}</strong>
+          {groups.map((group, groupIndex) => (
+            <section
+              key={group.key}
+              style={
+                groupIndex === 0 ? undefined : { marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--light)" }
+              }
             >
-              {group.name}
-            </div>
-            <div>
-              {group.recipes.map((recipe) => {
-                const enabled = !specification.disable.has(recipe)
-                const recipeDetails: string[] = []
-                if (!recipe.time.isZero()) recipeDetails.push(`${formatCanadianNumber(recipe.time.toDecimal())} s`)
-                if (specification.selectedPlanets.size > 0) {
-                  const count = getRecipeLocations(specification, recipe, specification.getBuilding(recipe)).length
-                  recipeDetails.push(`${count} selected location${count === 1 ? "" : "s"}`)
-                }
-                const label = recipeDetails.length > 0 ? `${recipe.name} — ${recipeDetails.join(", ")}` : recipe.name
-                return (
-                  <label
-                    key={recipe.key}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "18px 32px minmax(0, 1fr)",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "3px 4px",
-                      borderRadius: 4,
-                      color: recipe === activeRecipe ? "var(--bright)" : undefined,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      style={{ accentColor: "var(--accent)" }}
-                      onChange={(event) =>
-                        runMutation(specification, () =>
-                          setRecipeEnabled(specification, recipe, event.currentTarget.checked),
-                        )
-                      }
-                    />
-                    <SpriteIcon icon={recipe.icon} size={32} title={recipe.name} />
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
-                  </label>
-                )
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    </details>
+              <div
+                style={{
+                  ...UI.label,
+                  margin: "1px 0 3px 4px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.035em",
+                }}
+              >
+                {group.name}
+              </div>
+              <div>
+                {group.recipes.map((recipe) => {
+                  const enabled = !specification.disable.has(recipe)
+                  const recipeDetails: string[] = []
+                  if (!recipe.time.isZero()) recipeDetails.push(`${formatCanadianNumber(recipe.time.toDecimal())} s`)
+                  if (specification.selectedPlanets.size > 0) {
+                    const count = getRecipeLocations(specification, recipe, specification.getBuilding(recipe)).length
+                    recipeDetails.push(`${count} selected location${count === 1 ? "" : "s"}`)
+                  }
+                  const label = recipeDetails.length > 0 ? `${recipe.name} — ${recipeDetails.join(", ")}` : recipe.name
+                  return (
+                    <label
+                      key={recipe.key}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "18px 32px minmax(0, 1fr)",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "3px 4px",
+                        borderRadius: 4,
+                        color: recipe === activeRecipe ? "var(--bright)" : undefined,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        style={{ accentColor: "var(--accent)" }}
+                        onChange={(event) =>
+                          runMutation(specification, () =>
+                            setRecipeEnabled(specification, recipe, event.currentTarget.checked),
+                          )
+                        }
+                      />
+                      <SpriteIcon icon={recipe.icon} size={32} title={recipe.name} />
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }
 
