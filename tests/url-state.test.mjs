@@ -402,3 +402,25 @@ test("URL history controller suppresses startup writes and replaces later state 
   history.clearHash()
   assert.deepEqual(replacements, ["#data=space-age-2-1-13&items=", "/calc.html?embed=1"])
 })
+
+test("URL history controller preserves a shared hash until initialization finishes", () => {
+  const replacements = []
+  const port = {
+    hash: "#mprod=230&rprod=steel-plate-productivity:9",
+    pathname: "/calc.html",
+    search: "",
+    replace(url) {
+      replacements.push(url)
+      this.hash = url
+    },
+  }
+  const history = new CalculatorUrlHistory(port)
+
+  history.initialize()
+  history.sync("data=space-age-2-1-13&items=")
+  assert.deepEqual(replacements, [])
+
+  history.finishInitialization()
+  history.sync("mprod=240&rprod=steel-plate-productivity:9")
+  assert.deepEqual(replacements, ["#mprod=240&rprod=steel-plate-productivity:9"])
+})

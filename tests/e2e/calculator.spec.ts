@@ -288,3 +288,17 @@ test("inline factory controls, resources, and help remain usable at a mobile vie
   await expect(page.getByText(/Share the current calculation/)).toBeVisible()
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
+
+test("factory equipment popovers escape the table scroller and stay inside the viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 560 })
+  await openReadyCalculator(page)
+
+  const machine = page.getByRole("button", { name: "Choose a machine for Iron plate" })
+  await machine.scrollIntoViewIfNeeded()
+  await machine.click()
+
+  const dialog = page.getByRole("dialog", { name: "Machine and quality for Iron plate" })
+  await expect(dialog).toBeVisible()
+  await expect(dialog).toBeInViewport()
+  await expect(dialog.getByRole("button").last()).toBeInViewport()
+})

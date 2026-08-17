@@ -10233,7 +10233,7 @@ export class CalculatorUrlHistory {
   constructor(private readonly port: UrlHistoryPort) {}
 
   initialize(): void {
-    this.suppressWrites = this.port.hash === ""
+    this.suppressWrites = true
   }
 
   finishInitialization(): void {
@@ -13391,30 +13391,58 @@ function InlineEquipmentPopover({
   readonly width: number | string
   readonly align?: InlineEquipmentPopoverAlignment
 }) {
+  const root = useRef<HTMLSpanElement>(null)
+  const [panelPosition, setPanelPosition] = useState<CSSProperties | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setPanelPosition(null)
+      return
+    }
+    const updatePosition = () => {
+      const rect = root.current?.getBoundingClientRect()
+      if (rect === undefined) return
+      const spaceAbove = rect.top - 12
+      const spaceBelow = window.innerHeight - rect.bottom - 12
+      const openAbove = spaceBelow < 430 && spaceAbove > spaceBelow
+      setPanelPosition({
+        ...(openAbove ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+        maxHeight: Math.max(120, Math.min(430, openAbove ? spaceAbove : spaceBelow)),
+        ...(align === "right"
+          ? { right: Math.max(12, window.innerWidth - rect.right) }
+          : align === "machine"
+            ? { left: rect.left + rect.width / 2, transform: "translateX(-30%)" }
+            : { left: rect.left }),
+      })
+    }
+    updatePosition()
+    window.addEventListener("resize", updatePosition)
+    window.addEventListener("scroll", updatePosition, true)
+    return () => {
+      window.removeEventListener("resize", updatePosition)
+      window.removeEventListener("scroll", updatePosition, true)
+    }
+  }, [align, open])
+
   return (
     <span
+      ref={root}
       data-inline-equipment-picker={pickerKey}
       style={{ position: "relative", display: "inline-flex", zIndex: open ? 40 : undefined }}
     >
       {trigger}
-      {open ? (
+      {open && panelPosition !== null ? (
         <span
           id={equipmentPickerPanelId(pickerKey)}
           role="dialog"
           aria-label={label}
           style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            ...(align === "right"
-              ? { right: 0 }
-              : align === "machine"
-                ? { left: "50%", transform: "translateX(-30%)" }
-                : { left: 0 }),
-            zIndex: 50,
+            position: "fixed",
+            ...panelPosition,
+            zIndex: 100,
             display: "grid",
             width,
             maxWidth: "calc(100vw - 24px)",
-            maxHeight: "min(430px, calc(100vh - 24px))",
             padding: 6,
             overflow: "auto",
             color: "var(--foreground)",
@@ -16113,8 +16141,8 @@ function configureQualityOptimizerLoader(specification: FactorySpecification): v
 
 configureQualityOptimizerLoader(spec)
 
-function reset(): void {
-  clearUrlHash()
+function reset(clearHash = true): void {
+  if (clearHash) clearUrlHash()
   spec.setQualityGraphOptimizerLoader(null)
   resetSpec()
   configureQualityOptimizerLoader(spec)
@@ -16234,8 +16262,9 @@ function handleUrlHashChange(): void {
   const hash = window.location.hash
   if (hash === `#${formatSettings()}`) return
   const settings = loadSettings(hash)
+  initializeUrlState()
   selectDatasetFromSettings(settings)
-  reset()
+  reset(false)
   loadData(currentMod(), settings)
 }
 
