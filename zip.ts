@@ -1,4 +1,4 @@
-#!/usr/bin/env zx
+#!/usr/bin/env node
 
 /**
  * Creates a ZIP containing repository working-tree files, using their current
@@ -25,12 +25,12 @@
  * By default, a hidden cached ZIP is copied to the Windows clipboard as a file.
  */
 
-import { spawnSync } from "node:child_process"
+import { execFileSync, spawnSync } from "node:child_process"
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { $, argv, chalk, usePowerShell, usePwsh } from "zx"
+import { parseArgs } from "node:util"
 
 interface ZipFileMetadata {
   size: number
@@ -47,19 +47,11 @@ type ArchiveMode = "full" | "incremental" | "reused"
 const MANIFEST_VERSION = 1
 const MAX_INCREMENTAL_COMMAND_LENGTH = 24_000
 
-if (process.platform === "win32") {
-  try {
-    usePwsh()
-  } catch {
-    usePowerShell()
-  }
-}
-
 if (process.platform !== "win32") {
   throw new Error("This script currently requires Windows' built-in tar.exe.")
 }
 
-const copyFileToClipboard = async (filePath: string): Promise<void> => {
+const copyFileToClipboard = (filePath: string): void => {
   const powershellScript = `
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -69,7 +61,7 @@ $fileDropList = [System.Collections.Specialized.StringCollection]::new()
 [System.Windows.Forms.Clipboard]::SetFileDropList($fileDropList)
 `
 
-  await runProcess("powershell.exe", ["-NoProfile", "-STA", "-Command", powershellScript], process.cwd(), {
+  runProcess("powershell.exe", ["-NoProfile", "-STA", "-Command", powershellScript], process.cwd(), {
     env: {
       ...process.env,
       ZIP_CLIPBOARD_PATH: filePath,
@@ -183,12 +175,12 @@ const find7Zip = (): string | undefined => {
   return candidates.find((candidatePath) => fs.existsSync(candidatePath))
 }
 
-const runProcess = async (
+const runProcess = (
   executablePath: string,
   processArguments: string[],
   cwd: string,
   options: { env?: NodeJS.ProcessEnv } = {},
-): Promise<void> => {
+): void => {
   const result = spawnSync(executablePath, processArguments, {
     cwd,
     ...options,
@@ -272,7 +264,9 @@ const makeIncrementalArguments = (
   return approximateCommandLength <= MAX_INCREMENTAL_COMMAND_LENGTH ? processArguments : undefined
 }
 
-const { stdout: repoRootOutput } = await $`git rev-parse --show-toplevel`
+const repoRootOutput = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+  encoding: "utf8",
+})
 
 const repoRoot = repoRootOutput.trim()
 
@@ -281,6 +275,13 @@ if (!repoRoot) {
 }
 
 const repoName = path.basename(repoRoot)
+const { values: argv } = parseArgs({
+  options: {
+    nocopy: { type: "boolean", default: false },
+    output: { type: "string" },
+  },
+  strict: true,
+})
 const outputArgument = typeof argv.output === "string" ? argv.output : undefined
 const shouldCopyToClipboard = argv.nocopy !== true
 const localAppDataPath = process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local")
@@ -294,9 +295,15 @@ const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "zip-"))
 const fileListPath = path.join(tempDirectory, "working-tree-files.txt")
 
 try {
-  const { stdout: workingTreeOutput } = await $({
-    cwd: repoRoot,
-  })`git ls-files --cached --others --exclude-standard -z`
+  const workingTreeOutput = execFileSync(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  )
 
   const EXTRA_INCLUSIONS = [
     "factorio-wiki.md",
@@ -324,12 +331,18 @@ try {
       continue
     }
 
-    if (!fs.existsSync(absolutePath)) {
-      deletedPaths.push(filePath)
-      continue
-    }
+    let stats: fs.Stats
 
-    const stats = fs.lstatSync(absolutePath)
+    try {
+      stats = fs.lstatSync(absolutePath)
+    } catch (error) {
+      if (isRecord(error) && error.code === "ENOENT") {
+        deletedPaths.push(filePath)
+        continue
+      }
+
+      throw error
+    }
 
     // Git normally tracks files rather than directories. A tracked directory
     // generally represents a submodule, which should not be recursively zipped
@@ -365,10 +378,10 @@ try {
       cachedManifest = parseManifest(repoRoot, fs.readFileSync(manifestPath, "utf8"))
 
       if (cachedManifest === undefined) {
-        console.warn(chalk.yellow("Cached ZIP manifest is invalid. Performing a full ZIP rebuild."))
+        console.warn("Cached ZIP manifest is invalid. Performing a full ZIP rebuild.")
       }
     } catch {
-      console.warn(chalk.yellow("Cached ZIP manifest is corrupt. Performing a full ZIP rebuild."))
+      console.warn("Cached ZIP manifest is corrupt. Performing a full ZIP rebuild.")
     }
   }
 
@@ -376,7 +389,7 @@ try {
     recursive: true,
   })
 
-  const buildFullArchive = async (): Promise<void> => {
+  const buildFullArchive = (): void => {
     fs.rmSync(cacheZipPath, {
       force: true,
     })
@@ -384,10 +397,11 @@ try {
     // NUL separation safely handles spaces, newlines, and leading dashes.
     fs.writeFileSync(fileListPath, `${filePaths.join("\0")}\0`, "utf8")
 
-    await $({
-      cwd: cacheDirectory,
-      stdio: "inherit",
-    })`tar.exe -a -c -f ${path.basename(cacheZipPath)} -C ${repoRoot} --null -T ${fileListPath}`
+    runProcess(
+      "tar.exe",
+      ["-a", "-c", "-f", path.basename(cacheZipPath), "-C", repoRoot, "--null", "-T", fileListPath],
+      cacheDirectory,
+    )
   }
 
   let archiveMode: ArchiveMode
@@ -424,21 +438,21 @@ try {
     removedCount = removedPaths.length
 
     if (sevenZipPath === undefined) {
-      console.warn(chalk.yellow("7-Zip not found."))
-      console.warn(chalk.yellow("Performing full ZIP rebuild with tar.exe."))
-      console.warn(chalk.yellow("Install 7-Zip to enable incremental ZIP updates:"))
-      console.warn(chalk.yellow("  winget install --id 7zip.7zip -e"))
-      console.warn(chalk.yellow("Or use the Windows x64 .exe from https://www.7-zip.org/download.html"))
-      await buildFullArchive()
+      console.warn("7-Zip not found.")
+      console.warn("Performing full ZIP rebuild with tar.exe.")
+      console.warn("Install 7-Zip to enable incremental ZIP updates:")
+      console.warn("  winget install --id 7zip.7zip -e")
+      console.warn("Or use the Windows x64 .exe from https://www.7-zip.org/download.html")
+      buildFullArchive()
       archiveMode = "full"
     } else if (incrementalArguments === undefined) {
-      console.warn(chalk.yellow("Incremental path list is unsafe or too long for 7-Zip."))
-      console.warn(chalk.yellow("Performing full ZIP rebuild with tar.exe."))
-      await buildFullArchive()
+      console.warn("Incremental path list is unsafe or too long for 7-Zip.")
+      console.warn("Performing full ZIP rebuild with tar.exe.")
+      buildFullArchive()
       archiveMode = "full"
     } else {
       try {
-        await runProcess(
+        runProcess(
           sevenZipPath,
           ["u", cacheZipPath, "-up1q0r2x2y2z2w2", "-bso0", "-bsp0", "--", ...incrementalArguments],
           repoRoot,
@@ -446,14 +460,14 @@ try {
         archiveMode = "incremental"
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
-        console.warn(chalk.yellow(`Incremental ZIP update failed: ${message}`))
-        console.warn(chalk.yellow("Performing full ZIP rebuild with tar.exe."))
-        await buildFullArchive()
+        console.warn(`Incremental ZIP update failed: ${message}`)
+        console.warn("Performing full ZIP rebuild with tar.exe.")
+        buildFullArchive()
         archiveMode = "full"
       }
     }
   } else {
-    await buildFullArchive()
+    buildFullArchive()
     archiveMode = "full"
   }
 
@@ -471,37 +485,37 @@ try {
   const displayedOutputPath = outputArgument === undefined ? path.basename(outputPath) : outputPath
 
   console.log("")
-  console.log(`${chalk.green("Ready:")} ${displayedOutputPath}`)
-  console.log(chalk.cyan(`Included: ${filePaths.length} working-tree files`))
-  console.log(chalk.cyan(`Size: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`))
+  console.log(`Ready: ${displayedOutputPath}`)
+  console.log(`Included: ${filePaths.length} working-tree files`)
+  console.log(`Size: ${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB`)
 
   if (archiveMode === "reused") {
-    console.log(chalk.green("Reused unchanged ZIP."))
+    console.log("Reused unchanged ZIP.")
   } else if (archiveMode === "incremental") {
-    console.log(chalk.green(`Updated ZIP incrementally (${changedCount} changed, ${removedCount} removed).`))
+    console.log(`Updated ZIP incrementally (${changedCount} changed, ${removedCount} removed).`)
   } else {
-    console.log(chalk.green("Created ZIP with a full rebuild."))
+    console.log("Created ZIP with a full rebuild.")
   }
 
   if (shouldCopyToClipboard) {
     try {
-      await copyFileToClipboard(outputPath)
-      console.log(chalk.green("Copied ZIP to clipboard."))
+      copyFileToClipboard(outputPath)
+      console.log("Copied ZIP to clipboard.")
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
 
       // Clipboard copying is only a convenience. The successfully created ZIP
       // should remain usable even if another process temporarily owns the clipboard.
-      console.warn(chalk.yellow(`Could not copy ZIP to clipboard: ${message}`))
+      console.warn(`Could not copy ZIP to clipboard: ${message}`)
     }
   }
 
   if (deletedPaths.length > 0) {
-    console.log(chalk.yellow(`Skipped: ${deletedPaths.length} tracked files deleted locally`))
+    console.log(`Skipped: ${deletedPaths.length} tracked files deleted locally`)
   }
 
   if (directoryPaths.length > 0) {
-    console.log(chalk.yellow(`Skipped: ${directoryPaths.length} tracked directories or submodules`))
+    console.log(`Skipped: ${directoryPaths.length} tracked directories or submodules`)
   }
 } finally {
   fs.rmSync(tempDirectory, {
