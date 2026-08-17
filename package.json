@@ -29,7 +29,7 @@
     "validate:runtime": "node scripts/validate-runtime.mjs",
     "validate:build": "node scripts/validate-build.mjs && node scripts/check-build-budgets.mjs",
     "verify": "pnpm run doctor && pnpm check:quick && pnpm test:core && pnpm test:ui && pnpm bench:check && pnpm build:site && pnpm validate:runtime && pnpm validate:build",
-    "zip": "zx ./zip.ts"
+    "zip": "node ./zip.ts"
   },
   "dependencies": {
     "highs": "1.15.2",
