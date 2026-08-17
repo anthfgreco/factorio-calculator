@@ -8,7 +8,9 @@ if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
 const load = (path) => import(pathToFileURL(resolve(build, "main.js")).href)
 
 const {
+  FACTORIO_PRODUCTIVITY_EXPORT_COMMAND,
   MAX_RECIPE_PRODUCTIVITY_PERCENT,
+  parseFactorioProductivityExport,
   recipeProductivityLevelFromPercent,
   recipeProductivityPercent,
   recipeProductivityPercentPerLevel,
@@ -42,4 +44,42 @@ test("recipe productivity setting caps bonuses and rejects inconsistent effects"
     [{ key: "processing-unit" }, "1/5"],
   ])
   assert.equal(recipeProductivityPercent(inconsistent, 3), null)
+})
+
+test("Factorio productivity exports are validated before import", () => {
+  const imported = parseFactorioProductivityExport(
+    JSON.stringify({
+      kind: "factorio-calculator-productivity",
+      schemaVersion: 1,
+      miningProductivityPercent: 230,
+      technologyLevels: {
+        "processing-unit-productivity": 6,
+        "steel-plate-productivity": 9,
+      },
+    }),
+  )
+
+  assert.equal(imported.miningProductivityPercent, 230)
+  assert.deepEqual(
+    [...imported.technologyLevels],
+    [
+      ["processing-unit-productivity", 6],
+      ["steel-plate-productivity", 9],
+    ],
+  )
+  assert.match(FACTORIO_PRODUCTIVITY_EXPORT_COMMAND, /^\/c /)
+  assert.match(FACTORIO_PRODUCTIVITY_EXPORT_COMMAND, /box\.select_all\(\)/)
+  assert.throws(() => parseFactorioProductivityExport("not json"), /valid Factorio productivity export/)
+  assert.throws(
+    () =>
+      parseFactorioProductivityExport(
+        JSON.stringify({
+          kind: "factorio-calculator-productivity",
+          schemaVersion: 1,
+          miningProductivityPercent: 20,
+          technologyLevels: { "processing-unit-productivity": 2.5 },
+        }),
+      ),
+    /expected an integer/,
+  )
 })

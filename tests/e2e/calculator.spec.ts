@@ -108,6 +108,46 @@ test("settings are native React controls and persist without DOM adapters", asyn
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
+test("Factorio productivity is copied and pasted without replacing the plan", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"])
+  await openReadyCalculator(page)
+  const targetRate = await page.getByLabel("Rate for Advanced circuit").inputValue()
+  await page.getByRole("button", { name: "Settings" }).click()
+
+  await page.getByRole("button", { name: "Copy game command" }).click()
+  await expect(page.getByText("Game command copied.", { exact: true })).toBeVisible()
+  const command = await page.evaluate(() => navigator.clipboard.readText())
+  expect(command).toMatch(/^\/c /)
+  expect(command).toContain("factorio-calculator-productivity")
+
+  await page.evaluate(() =>
+    navigator.clipboard.writeText(
+      JSON.stringify({
+        kind: "factorio-calculator-productivity",
+        schemaVersion: 1,
+        miningProductivityPercent: 230,
+        technologyLevels: {
+          "processing-unit-productivity": 6,
+          "steel-plate-productivity": 9,
+        },
+      }),
+    ),
+  )
+  await page.getByRole("button", { name: "Paste productivity" }).click()
+
+  await expect(page.getByText("Imported mining and 2 recipe productivity values.", { exact: true })).toBeVisible()
+  await expect(page.getByLabel("Mining productivity bonus percentage")).toHaveValue("230")
+  await expect(page.getByLabel("Processing unit productivity bonus percentage")).toHaveValue("60")
+  await expect(page.getByLabel("Steel plate productivity bonus percentage")).toHaveValue("90")
+  await expect(page.getByLabel("Rate for Advanced circuit")).toHaveValue(targetRate)
+
+  await page.reload()
+  await page.getByRole("button", { name: "Settings" }).click()
+  await expect(page.getByLabel("Mining productivity bonus percentage")).toHaveValue("230")
+  await expect(page.getByLabel("Processing unit productivity bonus percentage")).toHaveValue("60")
+  await expect(page.getByLabel("Steel plate productivity bonus percentage")).toHaveValue("90")
+})
+
 test("Visualize renders and updates a declarative React SVG", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page)
   await openReadyCalculator(page)

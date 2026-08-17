@@ -9210,6 +9210,8 @@ const RECIPE_PRODUCTIVITY_RESEARCH_KEYS = [
   "steel-plate-productivity",
 ] as const
 
+export const FACTORIO_PRODUCTIVITY_EXPORT_COMMAND = `/c local p=game.player; local id="factorio_calculator_productivity_export"; local old=p.gui.screen[id]; if old then old.destroy(); p.print("[color=green]Productivity export closed.[/color]"); else local f=p.force; local names={${RECIPE_PRODUCTIVITY_RESEARCH_KEYS.map((key) => `"${key}"`).join(",")}}; local levels={}; for _,name in ipairs(names) do local t=f.technologies[name]; if t then local completed=t.researched and t.level or math.max(0,t.level-1); levels[name]=completed; end; end; local payload=helpers.table_to_json({kind="factorio-calculator-productivity",schemaVersion=1,miningProductivityPercent=tonumber(string.format("%.12g",f.mining_drill_productivity_bonus*100)),technologyLevels=levels}); local frame=p.gui.screen.add{type="frame",name=id,caption="Factorio Calculator productivity",direction="vertical"}; frame.auto_center=true; frame.add{type="label",caption="Press Ctrl+C, then paste this into the calculator. Run this command again to close."}; local box=frame.add{type="text-box",text=payload}; box.read_only=true; box.style.width=700; box.style.height=120; p.opened=frame; box.focus(); box.select_all(); end`
+
 const PROGRESSION_PRESETS: Record<ProgressionPreset, PresetDefinition> = {
   early: {
     miningProductivity: 0,
@@ -9661,6 +9663,59 @@ export function recipeProductivityLevelFromPercent(research: RecipeProductivityR
   const percentPerLevel = recipeProductivityPercentPerLevel(research)
   if (!Number.isFinite(percent) || percentPerLevel <= 0) return 0
   return Math.min(MAX_RECIPE_PRODUCTIVITY_PERCENT, Math.max(0, percent)) / percentPerLevel
+}
+
+export interface FactorioProductivityExport {
+  readonly miningProductivityPercent: number
+  readonly technologyLevels: ReadonlyMap<string, number>
+}
+
+export function parseFactorioProductivityExport(text: string): FactorioProductivityExport {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    throw new Error("The clipboard does not contain a valid Factorio productivity export.")
+  }
+
+  const record = requireRecord(value, "productivity export")
+  if (record.kind !== "factorio-calculator-productivity") {
+    throw new Error("The clipboard does not contain a Factorio Calculator productivity export.")
+  }
+  if (record.schemaVersion !== 1) {
+    throw new Error("This productivity export version is not supported.")
+  }
+
+  const miningProductivityPercent = requireNonnegativeNumber(
+    record.miningProductivityPercent,
+    "productivity export.miningProductivityPercent",
+  )
+  const levelsRecord = requireRecord(record.technologyLevels, "productivity export.technologyLevels")
+  const technologyLevels = new Map<string, number>()
+  for (const [key, rawLevel] of Object.entries(levelsRecord)) {
+    const level = requireNonnegativeNumber(rawLevel, `productivity export.technologyLevels.${key}`)
+    if (!Number.isInteger(level)) {
+      throw new Error(`productivity export.technologyLevels.${key}: expected an integer`)
+    }
+    technologyLevels.set(key, level)
+  }
+
+  return { miningProductivityPercent, technologyLevels }
+}
+
+export function applyFactorioProductivityExport(
+  specification: FactorySpecification,
+  imported: FactorioProductivityExport,
+): number {
+  specification.miningProd = Rational.from_string(String(imported.miningProductivityPercent)).div(
+    Rational.from_integer(100),
+  )
+  specification.recipeProductivityLevels.clear()
+  let appliedResearches = 0
+  for (const [key, level] of imported.technologyLevels) {
+    if (specification.setRecipeProductivityLevel(key, level)) appliedResearches++
+  }
+  return appliedResearches
 }
 // endregion settings/productivity-research.ts
 
@@ -15537,8 +15592,48 @@ function BuildingSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot 
 
 function ProductivityResearchSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
   const specification = snapshot.specification
+  const [transferStatus, setTransferStatus] = useState<{ readonly message: string; readonly error: boolean } | null>(
+    null,
+  )
   const miningIcon = specification.items.get("electric-mining-drill") ?? specification.items.get("burner-mining-drill")
   const research = [...specification.recipeProductivityResearch.values()].sort((a, b) => a.name.localeCompare(b.name))
+
+  const copyExportCommand = async () => {
+    try {
+      await navigator.clipboard.writeText(FACTORIO_PRODUCTIVITY_EXPORT_COMMAND)
+      setTransferStatus({ message: "Game command copied.", error: false })
+    } catch {
+      setTransferStatus({ message: "Could not copy the game command.", error: true })
+    }
+  }
+
+  const pasteProductivity = async () => {
+    let text: string
+    try {
+      text = await navigator.clipboard.readText()
+    } catch {
+      setTransferStatus({ message: "Clipboard access was not allowed.", error: true })
+      return
+    }
+
+    try {
+      const imported = parseFactorioProductivityExport(text)
+      let appliedResearches = 0
+      runMutation(specification, () => {
+        appliedResearches = applyFactorioProductivityExport(specification, imported)
+      })
+      setTransferStatus({
+        message: `Imported mining and ${appliedResearches} recipe productivity values.`,
+        error: false,
+      })
+    } catch (error) {
+      setTransferStatus({
+        message: error instanceof Error ? error.message : "Could not import productivity.",
+        error: true,
+      })
+    }
+  }
+
   return (
     <SettingSection title="Research">
       <SettingsRow label="Productivity" style={{ width: 504 }}>
@@ -15607,6 +15702,31 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
         <div style={{ ...UI.muted, marginTop: 5 }}>
           Enter the bonus percentages shown in-game. Recipe productivity is capped at +300% total; mining productivity
           is uncapped.
+        </div>
+        <div style={{ ...UI.row, marginTop: 7, gap: 6 }}>
+          <button
+            type="button"
+            style={{ ...UI.button, minHeight: 27, padding: "3px 8px", fontSize: 12 }}
+            onClick={() => void copyExportCommand()}
+          >
+            Copy game command
+          </button>
+          <button
+            type="button"
+            style={{ ...UI.button, minHeight: 27, padding: "3px 8px", fontSize: 12 }}
+            onClick={() => void pasteProductivity()}
+          >
+            Paste productivity
+          </button>
+          {transferStatus !== null && (
+            <span
+              role="status"
+              aria-live="polite"
+              style={{ color: transferStatus.error ? "var(--danger)" : "var(--muted)" }}
+            >
+              {transferStatus.message}
+            </span>
+          )}
         </div>
       </SettingsRow>
     </SettingSection>
