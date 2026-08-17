@@ -6292,6 +6292,24 @@ function moduleSpecFromConfiguration(
   return moduleSpec
 }
 
+function configurationWithBeaconSetup(
+  specification: FactorySpecification,
+  recipe: Recipe,
+  configuration: QualityTierConfiguration,
+  beaconModule: Module | null,
+  beaconModuleQuality: Quality,
+  beaconQuality: Quality,
+  beaconCount: Rational,
+): QualityTierConfiguration {
+  const moduleSpec = moduleSpecFromConfiguration(specification, recipe, configuration)
+  if (moduleSpec === null) return configuration
+  moduleSpec.beaconModules.fill(beaconModule)
+  moduleSpec.beaconModuleQualities.fill(beaconModuleQuality)
+  moduleSpec.beaconQuality = beaconQuality
+  moduleSpec.beaconCount = beaconCount
+  return configurationFromModuleSpec(specification, recipe, configuration.qualityLevel, moduleSpec)
+}
+
 export function operationCapacity(
   specification: FactorySpecification,
   recipe: Recipe,
@@ -6335,7 +6353,8 @@ function quarterSelfRecyclerForItem(specification: FactorySpecification, item: I
   if (recycler === null || recycler.ingredients.length !== 1 || recycler.products.length !== 1) return null
   const ingredient = recycler.ingredients[0]
   const product = recycler.products[0]
-  if (ingredient === undefined || product === undefined || ingredient.item !== item || product.item !== item) return null
+  if (ingredient === undefined || product === undefined || ingredient.item !== item || product.item !== item)
+    return null
   return product.amount.mul(Rational.from_integer(4)).equal(ingredient.amount) ? recycler : null
 }
 
@@ -6370,9 +6389,7 @@ function selfRecyclingLegendaryMetrics(
       source.configuration.qualityChance,
       recyclerConfiguration.qualityChance,
     ),
-    legendaryPerMinutePerMachine: outputPerSecondPerMachine
-      .mul(probability)
-      .mul(Rational.from_integer(60)),
+    legendaryPerMinutePerMachine: outputPerSecondPerMachine.mul(probability).mul(Rational.from_integer(60)),
   }
 }
 
@@ -6954,6 +6971,8 @@ class PracticalQualityGraphBuilder {
   private readonly userDisabledRecipes: ReadonlySet<Recipe>
   private readonly plannerQuality: Quality
   private readonly productivityQuality: Quality
+  private readonly miningModuleQuality: Quality
+  private readonly miningBeaconQuality: Quality
 
   constructor(
     readonly specification: FactorySpecification,
@@ -6971,6 +6990,8 @@ class PracticalQualityGraphBuilder {
       specification,
       specification.qualityPlannerProductivityModuleQuality,
     )
+    this.miningModuleQuality = availableModuleQuality(specification, specification.qualityPlannerMiningModuleQuality)
+    this.miningBeaconQuality = availableModuleQuality(specification, specification.qualityPlannerMiningBeaconQuality)
   }
 
   build(): QualityGraphItem {
@@ -7264,18 +7285,114 @@ class PracticalQualityGraphBuilder {
     configurations = Array.from({ length: this.specification.maxQualityLevel + 1 }, (_, qualityLevel) => {
       const qualityGoal = this.profile === "planet" ? this.targetQualityLevel : keepLevel
       const wantsQuality = qualityGoal > qualityLevel && recipe.allow_quality
-      return moduleTierConfiguration({
+      const configured = moduleTierConfiguration({
         specification: this.specification,
         recipe,
         qualityLevel,
         building,
         module: wantsQuality ? qualityModule : productivityModule,
         moduleQuality: wantsQuality ? this.plannerQuality : this.productivityQuality,
-        preserveBeacons: true,
+        preserveBeacons: false,
       })
+      return qualityLevel === 0 && wantsQuality
+        ? this.optimizeSelfRecyclingMinerBeacons(recipe, configured)
+        : configured
     })
     this.configurations.set(cacheKey, configurations)
     return configurations
+  }
+
+  private optimizeSelfRecyclingMinerBeacons(
+    recipe: Recipe,
+    configured: QualityTierConfiguration,
+  ): QualityTierConfiguration {
+    if (this.objective !== "configured") return configured
+    if (this.targetQualityLevel !== 4 || this.specification.maxQualityLevel !== 4) return configured
+    if (!(configured.building instanceof Miner)) return configured
+    if (recipe.products.length !== 1) return configured
+
+    const product = recipe.products[0]
+    if (product === undefined || !isQualifiedSolid(product.item)) return configured
+    const recyclerRecipe = quarterSelfRecyclerForItem(this.specification, product.item)
+    if (recyclerRecipe === null || !this.canRecycle(recyclerRecipe)) return configured
+
+    const recyclerConfigurations = this.getRecyclerConfigurations(recyclerRecipe)
+    const recyclerConfiguration = recyclerConfigurations[0]
+    if (recyclerConfiguration === undefined) return configured
+    if (
+      recyclerConfigurations.some((candidate) => !candidate.qualityChance.equal(recyclerConfiguration.qualityChance))
+    ) {
+      return configured
+    }
+
+    const miningModule = this.specification.qualityPlannerMiningModule
+    if (
+      miningModule === null ||
+      !miningModule.canBeacon() ||
+      !miningModule.canUse(recipe, configured.building) ||
+      !zero.less(miningModule.speedFor(this.specification.getNormalQuality()))
+    ) {
+      return configured
+    }
+
+    const maxBeaconCount = Rational.max(zero, this.specification.qualityPlannerMiningBeaconCount)
+    const candidateCounts: Rational[] = [zero]
+    const wholeBeaconCount = maxBeaconCount.floor().toFloat()
+    for (let count = 1; count <= wholeBeaconCount; count++) {
+      candidateCounts.push(Rational.from_integer(count))
+    }
+    if (!maxBeaconCount.equal(maxBeaconCount.floor())) candidateCounts.push(maxBeaconCount)
+
+    const outputPerCraft = addProductivity(recipe, product, configured.productivity)
+    let best = configurationWithBeaconSetup(
+      this.specification,
+      recipe,
+      configured,
+      null,
+      this.specification.getNormalQuality(),
+      this.specification.getNormalQuality(),
+      zero,
+    )
+    let bestScore = zero
+
+    for (const beaconCount of candidateCounts) {
+      const beaconQualities = beaconCount.isZero()
+        ? [this.specification.getNormalQuality()]
+        : this.specification
+            .getAvailableQualities()
+            .slice(0, this.specification.getQualityIndex(this.miningBeaconQuality) + 1)
+      for (const beaconQuality of beaconQualities) {
+        const moduleQualities = beaconCount.isZero()
+          ? [this.specification.getNormalQuality()]
+          : this.specification
+              .getAvailableQualities()
+              .slice(0, this.specification.getQualityIndex(this.miningModuleQuality) + 1)
+        for (const moduleQuality of moduleQualities) {
+          const candidate = configurationWithBeaconSetup(
+            this.specification,
+            recipe,
+            configured,
+            beaconCount.isZero() ? null : miningModule,
+            moduleQuality,
+            beaconQuality,
+            beaconCount,
+          )
+          const capacity = operationCapacity(this.specification, recipe, one, candidate)
+          if (capacity.machineCount.isZero()) continue
+          const outputPerSecond = outputPerCraft.div(capacity.machineCount)
+          const score = quarterSelfRecycleLegendaryScore(
+            outputPerSecond,
+            candidate.qualityChance,
+            recyclerConfiguration.qualityChance,
+          )
+          if (bestScore.less(score) || (bestScore.equal(score) && candidate.beaconCount.less(best.beaconCount))) {
+            best = candidate
+            bestScore = score
+          }
+        }
+      }
+    }
+    return best
   }
 
   private getRecyclerConfigurations(recipe: Recipe): readonly QualityTierConfiguration[] {
@@ -7293,11 +7410,31 @@ class PracticalQualityGraphBuilder {
         building,
         module: qualityModule,
         moduleQuality: this.plannerQuality,
-        preserveBeacons: true,
+        preserveBeacons: false,
       }),
     )
     this.configurations.set(cacheKey, configurations)
     return configurations
+  }
+
+  getSelfRecyclingConfiguration(recipe: Recipe): {
+    readonly recipe: Recipe
+    readonly configuration: QualityTierConfiguration
+  } | null {
+    if (recipe.products.length !== 1) return null
+    const product = recipe.products[0]
+    if (product === undefined || !isQualifiedSolid(product.item)) return null
+    const recyclerRecipe = quarterSelfRecyclerForItem(this.specification, product.item)
+    if (recyclerRecipe === null || !this.canRecycle(recyclerRecipe)) return null
+    const configurations = this.getRecyclerConfigurations(recyclerRecipe)
+    const configuration = configurations[0]
+    if (
+      configuration === undefined ||
+      configurations.some((candidate) => !candidate.qualityChance.equal(configuration.qualityChance))
+    ) {
+      return null
+    }
+    return { recipe: recyclerRecipe, configuration }
   }
 
   private setOperationTiebreak(operation: QualityGraphRecipe, configuration: QualityTierConfiguration): void {
@@ -7424,13 +7561,17 @@ export function planPracticalQualityTarget(options: {
       embedded?.configurations.every((candidate) =>
         candidate.qualityChance.equal(recyclerConfiguration.qualityChance),
       ) === true
+    const standaloneSelfRecycler = kind === "source" ? builder.getSelfRecyclingConfiguration(baseRecipe) : null
+    const metricsRecyclerRecipe = embedded?.recipe ?? standaloneSelfRecycler?.recipe
+    const metricsRecyclerConfiguration = hasUniformRecyclerQuality
+      ? recyclerConfiguration
+      : standaloneSelfRecycler?.configuration
     const selfRecyclingLegendary =
       qualityLevel === 4 &&
       specification.maxQualityLevel === 4 &&
-      embedded !== undefined &&
-      recyclerConfiguration !== undefined &&
-      hasUniformRecyclerQuality
-        ? selfRecyclingLegendaryMetrics(specification, operation, embedded.recipe, recyclerConfiguration)
+      metricsRecyclerRecipe !== undefined &&
+      metricsRecyclerConfiguration !== undefined
+        ? selfRecyclingLegendaryMetrics(specification, operation, metricsRecyclerRecipe, metricsRecyclerConfiguration)
         : null
     operations.push(selfRecyclingLegendary === null ? operation : { ...operation, selfRecyclingLegendary })
     if (kind === "source") {
@@ -7621,6 +7762,10 @@ export const DEFAULT_QUALITY_PLANNER_MODULE_KEY = "quality-module-2"
 export const DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY = "legendary"
 export const DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY = "productivity-module-3"
 export const DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY = "legendary"
+export const DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY = "speed-module-2"
+export const DEFAULT_QUALITY_PLANNER_MINING_MODULE_QUALITY_KEY = "legendary"
+export const DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY = "legendary"
+export const DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT = 8
 export const DEFAULT_BUILDING_KEYS = new Set([
   "assembling-machine-1",
   "chemical-plant",
@@ -7914,6 +8059,10 @@ export class FactorySpecification {
   qualityPlannerModuleQuality: Quality = normalQuality
   qualityPlannerProductivityModule: Module | null = null
   qualityPlannerProductivityModuleQuality: Quality = normalQuality
+  qualityPlannerMiningModule: Module | null = null
+  qualityPlannerMiningModuleQuality: Quality = normalQuality
+  qualityPlannerMiningBeaconQuality: Quality = normalQuality
+  qualityPlannerMiningBeaconCount = Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT)
   qualityPlannerObjective: QualityPlannerObjective = "practical"
   readonly defaultBeacon: (Module | null)[] = [null, null]
   defaultBeaconCount = zero
@@ -8035,6 +8184,18 @@ export class FactorySpecification {
       : null
     this.qualityPlannerProductivityModuleQuality =
       this.qualities.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) ?? normal
+    const qualityPlannerMiningModule = this.modules.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY)
+    this.qualityPlannerMiningModule =
+      qualityPlannerMiningModule !== undefined &&
+      qualityPlannerMiningModule.canBeacon() &&
+      zero.less(qualityPlannerMiningModule.speedFor(normal))
+        ? qualityPlannerMiningModule
+        : null
+    this.qualityPlannerMiningModuleQuality =
+      this.qualities.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_QUALITY_KEY) ?? normal
+    this.qualityPlannerMiningBeaconQuality =
+      this.qualities.get(DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) ?? normal
+    this.qualityPlannerMiningBeaconCount = Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT)
     this.qualityPlannerObjective = "practical"
     this.machineQualityOverrides.clear()
     replaceMap(this.buildings, getBuildingGroups(buildings, recipes.values()))
@@ -8181,6 +8342,8 @@ export class FactorySpecification {
     if (!available.has(this.qualityPlannerProductivityModuleQuality)) {
       this.qualityPlannerProductivityModuleQuality = normal
     }
+    if (!available.has(this.qualityPlannerMiningModuleQuality)) this.qualityPlannerMiningModuleQuality = normal
+    if (!available.has(this.qualityPlannerMiningBeaconQuality)) this.qualityPlannerMiningBeaconQuality = normal
     for (const [recipe, quality] of this.machineQualityOverrides) {
       if (!available.has(quality)) this.machineQualityOverrides.delete(recipe)
     }
@@ -8251,6 +8414,8 @@ export class FactorySpecification {
     this.defaultBeaconQuality = legendary
     this.qualityPlannerModuleQuality = legendary
     this.qualityPlannerProductivityModuleQuality = legendary
+    this.qualityPlannerMiningModuleQuality = legendary
+    this.qualityPlannerMiningBeaconQuality = legendary
     this.machineQualityOverrides.clear()
 
     for (const target of this.buildTargets) {
@@ -9843,6 +10008,24 @@ function applyQualityPlanner(settings: SettingsMap): void {
   spec.qualityPlannerProductivityModuleQuality = settings.has("qppmq")
     ? getQuality(settings.get("qppmq"))
     : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
+
+  const miningModule = settings.has("qpmm")
+    ? getModuleByKey(settings.get("qpmm") ?? "null")
+    : (spec.modules.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY) ?? null)
+  spec.qualityPlannerMiningModule =
+    miningModule !== null && miningModule.canBeacon() && zero.less(miningModule.speedFor(spec.getNormalQuality()))
+      ? miningModule
+      : null
+  spec.qualityPlannerMiningModuleQuality = settings.has("qpmmq")
+    ? getQuality(settings.get("qpmmq"))
+    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_MINING_MODULE_QUALITY_KEY) ?? spec.getNormalQuality())
+  spec.qualityPlannerMiningBeaconQuality = settings.has("qpmbq")
+    ? getQuality(settings.get("qpmbq"))
+    : (getAvailableQuality(DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) ?? spec.getNormalQuality())
+  spec.qualityPlannerMiningBeaconCount = Rational.max(
+    zero,
+    Rational.from_string(settings.get("qpmbc") ?? String(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT)),
+  )
   const objective = settings.get("qpo")
   spec.qualityPlannerObjective =
     objective !== undefined && isQualityPlannerObjective(objective) ? objective : "practical"
@@ -10328,6 +10511,19 @@ export function formatSettings(
   }
   if (spec.qualityPlannerProductivityModuleQuality.key !== DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) {
     settings += "qppmq=" + spec.qualityPlannerProductivityModuleQuality.key + "&"
+  }
+  const defaultQualityPlannerMiningModule = spec.modules.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY) ?? null
+  if (spec.qualityPlannerMiningModule !== defaultQualityPlannerMiningModule) {
+    settings += "qpmm=" + getModuleKey(spec.qualityPlannerMiningModule) + "&"
+  }
+  if (spec.qualityPlannerMiningModuleQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_MODULE_QUALITY_KEY) {
+    settings += "qpmmq=" + spec.qualityPlannerMiningModuleQuality.key + "&"
+  }
+  if (spec.qualityPlannerMiningBeaconQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) {
+    settings += "qpmbq=" + spec.qualityPlannerMiningBeaconQuality.key + "&"
+  }
+  if (!spec.qualityPlannerMiningBeaconCount.equal(Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT))) {
+    settings += "qpmbc=" + spec.qualityPlannerMiningBeaconCount.toString() + "&"
   }
   if (spec.qualityPlannerObjective !== "practical") settings += "qpo=" + spec.qualityPlannerObjective + "&"
   if (spec.secondaryDefaultModule !== null) {
@@ -13787,6 +13983,7 @@ function QualityPlanView({
   readonly specification: FactorySpecification
   readonly plan: QualityTargetPlan
 }) {
+  const beaconItem = specification.items.get("beacon")
   return (
     <details open style={UI.details}>
       <summary style={UI.detailsSummary}>
@@ -13843,13 +14040,13 @@ function QualityPlanView({
                           )}
                           {" Legendary/min per miner · score "}
                           {formatCanadianNumber(
-                            operation.selfRecyclingLegendary.score
-                              .mul(Rational.from_integer(100))
-                              .toDecimal(1),
+                            operation.selfRecyclingLegendary.score.mul(Rational.from_integer(100)).toDecimal(1),
                           )}
                         </div>
                         <div>
-                          {formatCanadianNumber(operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3))}
+                          {formatCanadianNumber(
+                            operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3),
+                          )}
                           {"/s × ("}
                           {formatPercent(operation.selfRecyclingLegendary.sourceQualityChance, 3)}
                           {" + "}
@@ -13884,6 +14081,36 @@ function QualityPlanView({
                           />
                         ),
                       )}
+                      {!operation.configuration.beaconCount.isZero() &&
+                      operation.configuration.beaconModules.some((module) => module !== null) ? (
+                        <>
+                          <span style={{ ...UI.muted, margin: "0 1px" }}>+</span>
+                          {beaconItem === undefined ? (
+                            <span style={UI.muted}>{operation.configuration.beaconQuality.name} beacon</span>
+                          ) : (
+                            <SpriteIcon
+                              icon={beaconItem.icon}
+                              quality={operation.configuration.beaconQuality}
+                              size={22}
+                              title={`${operation.configuration.beaconQuality.name} Beacon`}
+                            />
+                          )}
+                          {operation.configuration.beaconModules.map((module, moduleIndex) =>
+                            module === null ? null : (
+                              <SpriteIcon
+                                key={`beacon-${module.key}-${moduleIndex}`}
+                                icon={module.icon}
+                                quality={operation.configuration.beaconModuleQualities[moduleIndex] ?? null}
+                                size={20}
+                                title={`${module.name} in beacon`}
+                              />
+                            ),
+                          )}
+                          <span style={{ ...UI.muted, fontFamily: "monospace" }}>
+                            ×{operation.configuration.beaconCount.toDecimal()}
+                          </span>
+                        </>
+                      ) : null}
                     </div>
                   </td>
                 </tr>
@@ -15043,6 +15270,9 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
   const specification = snapshot.specification
   const qualityModules = sortedByName(specification.modules.values()).filter((module) => module.hasQualityEffect())
   const prodModules = sortedByName(specification.modules.values()).filter((module) => module.hasProdEffect())
+  const speedModules = sortedByName(specification.modules.values()).filter(
+    (module) => module.canBeacon() && zero.less(module.speedFor(specification.getNormalQuality())),
+  )
   const qualities = specification.getAvailableQualities()
   const plannerSelectStyle: CSSProperties = {
     ...UI.control,
@@ -15054,7 +15284,7 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
     fontSize: 12.5,
   }
   return (
-    <SettingsRow label="Quality factory" style={{ width: 520, minHeight: 190 }}>
+    <SettingsRow label="Quality factory" style={{ width: 520, minHeight: 280 }}>
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: "7px 13px", maxWidth: 504 }}>
         <Field label="Quality module" style={{ width: "max-content" }}>
           <select
@@ -15135,10 +15365,84 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
             ))}
           </select>
         </Field>
+        <Field label="Mining speed module" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory mining speed module"
+            value={specification.qualityPlannerMiningModule?.key ?? ""}
+            style={{ ...plannerSelectStyle, width: 203 }}
+            onChange={(event) =>
+              runMutation(specification, () => {
+                specification.qualityPlannerMiningModule = specification.modules.get(event.currentTarget.value) ?? null
+              })
+            }
+          >
+            <option value="">No mining beacons</option>
+            {speedModules.map((module) => (
+              <option key={module.key} value={module.key}>
+                {module.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Maximum module quality" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory maximum mining module quality"
+            value={specification.qualityPlannerMiningModuleQuality.key}
+            style={{ ...plannerSelectStyle, width: 144 }}
+            onChange={(event) => {
+              const quality = specification.qualities.get(event.currentTarget.value)
+              if (quality !== undefined)
+                runMutation(specification, () => {
+                  specification.qualityPlannerMiningModuleQuality = quality
+                })
+            }}
+          >
+            {qualities.map((quality) => (
+              <option key={quality.key} value={quality.key}>
+                {quality.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Maximum beacon quality" style={{ width: "max-content" }}>
+          <select
+            aria-label="Quality factory maximum mining beacon quality"
+            value={specification.qualityPlannerMiningBeaconQuality.key}
+            style={{ ...plannerSelectStyle, width: 203 }}
+            onChange={(event) => {
+              const quality = specification.qualities.get(event.currentTarget.value)
+              if (quality !== undefined)
+                runMutation(specification, () => {
+                  specification.qualityPlannerMiningBeaconQuality = quality
+                })
+            }}
+          >
+            {qualities.map((quality) => (
+              <option key={quality.key} value={quality.key}>
+                {quality.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Maximum beacons" style={{ width: "max-content" }}>
+          <CommitInput
+            key={specification.qualityPlannerMiningBeaconCount.toString()}
+            value={specification.qualityPlannerMiningBeaconCount.toString()}
+            ariaLabel="Quality factory maximum mining beacon count"
+            style={{ ...plannerSelectStyle, width: 144 }}
+            onCommit={(value) =>
+              runMutation(specification, () => {
+                specification.qualityPlannerMiningBeaconCount = Rational.max(zero, Rational.from_string(value || "0"))
+              })
+            }
+          />
+        </Field>
       </div>
       <div style={{ ...UI.muted, marginTop: 5, maxWidth: 510 }}>
         Quality-producing stages and recyclers use the quality selection. Guaranteed target-quality crafting uses the
-        productivity selection where compatible.
+        productivity selection where compatible. In Practical mode, self-recycling miners compare no beacons with every
+        count through the mining maximum, using the selected speed-module type and every module and beacon quality up to
+        their configured maximums. These limits do not change ordinary factory equipment.
       </div>
       <details style={{ marginTop: 6 }}>
         <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>Advanced priority</summary>
@@ -15578,7 +15882,8 @@ function HelpPanel() {
             <li>Added Vulcanus LDS and concrete quality shuffles to the practical Legendary planner.</li>
             <li>Full Legendary now includes the Late Space Age research, belts, stacking, and machine baseline.</li>
             <li>
-              Self-recycling mined resources now show expected Legendary/min per miner plus the
+              Self-recycling mined resources now optimize no-beacon through the Quality factory mining limits for beacon
+              count, beacon quality, and speed-module quality. Results show expected Legendary/min per miner plus the
               throughput × (mining quality + recycler quality / 3) comparison score.
             </li>
           </ChangelogEntry>

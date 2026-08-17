@@ -57,6 +57,28 @@ const resourcesHtml = render({ activeTab: "resources" })
 const helpHtml = render({ activeTab: "help" })
 const errorHtml = render({ status: "error", errorMessage: "No production path" })
 
+const qualityRuntime = await setupSpaceAgeFactory()
+qualityRuntime.specification.selectOnePlanet(qualityRuntime.planets.get("vulcanus"))
+qualityRuntime.specification.setMaxQualityLevel(4)
+qualityRuntime.specification.qualityPlannerMiningModuleQuality = qualityRuntime.specification.qualities.get("normal")
+qualityRuntime.specification.qualityPlannerMiningBeaconQuality = qualityRuntime.specification.qualities.get("normal")
+const qualityTarget = qualityRuntime.specification.addTarget("iron-plate")
+qualityTarget.setQuality(4)
+qualityTarget.setQualityStrategy("auto")
+qualityTarget.setRate("10")
+qualityRuntime.specification.updateSolution()
+assert.equal(qualityRuntime.specification.lastError, null)
+assert.ok(qualityRuntime.specification.lastTotals)
+const qualityHtml = renderToStaticMarkup(
+  createElement(CalculatorView, {
+    commands,
+    snapshot: snapshot({
+      specification: qualityRuntime.specification,
+      totals: qualityRuntime.specification.lastTotals,
+    }),
+  }),
+)
+
 test("React UI renders the complete calculator workflow from one specification", () => {
   for (const text of [
     "Production targets",
@@ -125,6 +147,20 @@ test("settings are native React controls grouped by user intent", () => {
   assert.match(settingsHtml, /<select/)
   assert.match(settingsHtml, /type="checkbox"/)
   assert.doesNotMatch(settingsHtml, /tippy|dropdownWrapper|display-row/)
+})
+
+test("quality results render the selected mining beacon equipment on the optimized source row", () => {
+  const beaconIndex = qualityHtml.indexOf('title="Normal Beacon"')
+  assert.notEqual(beaconIndex, -1)
+  const rowStart = qualityHtml.lastIndexOf("<tr", beaconIndex)
+  const rowEnd = qualityHtml.indexOf("</tr>", beaconIndex)
+  assert.notEqual(rowStart, -1)
+  assert.notEqual(rowEnd, -1)
+  const beaconRow = qualityHtml.slice(rowStart, rowEnd)
+  assert.match(beaconRow, /0\.036 Legendary\/min per miner · score 16\.8/)
+  assert.match(beaconRow, /title="Normal Beacon"/)
+  assert.match(beaconRow, /title="Speed module 2 in beacon"/)
+  assert.match(beaconRow, />×4<\/span>/)
 })
 
 test("visualizer is declarative SVG rendered by React", () => {

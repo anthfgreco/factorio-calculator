@@ -77,6 +77,12 @@ test("settings are native React controls and persist without DOM adapters", asyn
   await expect(page.getByText("Quality factory", { exact: true })).toBeVisible()
   await expect(page.getByLabel("Search recipes")).toBeVisible()
   await expect(page.getByText("Show unavailable recipes", { exact: true })).toBeVisible()
+  await page.getByLabel("Quality factory mining speed module").selectOption({ label: "Speed module 3" })
+  await page.getByLabel("Quality factory maximum mining module quality").selectOption("rare")
+  await page.getByLabel("Quality factory maximum mining beacon quality").selectOption("epic")
+  const maximumMiningBeacons = page.getByLabel("Quality factory maximum mining beacon count")
+  await maximumMiningBeacons.fill("6")
+  await maximumMiningBeacons.press("Enter")
   await page.getByText("Recycling recipes", { exact: true }).click()
   await expect(page.getByRole("button", { name: "Disable all recycling recipes" })).toBeVisible()
 
@@ -95,6 +101,10 @@ test("settings are native React controls and persist without DOM adapters", asyn
   await page.getByRole("button", { name: "Settings" }).click()
   await expect(page.getByRole("radio", { name: "items/hour" })).toBeChecked()
   await expect(page.locator('[data-density="comfortable"]')).toBeVisible()
+  await expect(page.getByLabel("Quality factory mining speed module")).toHaveValue("speed-module-3")
+  await expect(page.getByLabel("Quality factory maximum mining module quality")).toHaveValue("rare")
+  await expect(page.getByLabel("Quality factory maximum mining beacon quality")).toHaveValue("epic")
+  await expect(page.getByLabel("Quality factory maximum mining beacon count")).toHaveValue("6")
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
