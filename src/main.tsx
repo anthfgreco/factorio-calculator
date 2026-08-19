@@ -13012,18 +13012,31 @@ function ItemTable({
         if (product.item instanceof Item && items.has(product.item)) groupItems.add(product.item)
       }
     }
-    const groupItemList = [...groupItems]
-    const groupRecipeList = [...group]
-    if (groupItemList.length === 0) return
-    const length = Math.max(groupItemList.length, groupRecipeList.length)
-    for (let index = 0; index < length; index++) {
-      const item = groupItemList[index] ?? null
-      const factoryRecipe = groupRecipeList[index] ?? null
+    if (groupItems.size === 0) return
+    const claimedItems = new Set<Item>()
+    let index = 0
+    for (const factoryRecipe of group) {
+      const primaryProduct = factoryRecipe.products[0]?.item
+      const item =
+        primaryProduct instanceof Item && groupItems.has(primaryProduct) && !claimedItems.has(primaryProduct)
+          ? primaryProduct
+          : null
+      if (item !== null) claimedItems.add(item)
       rows.push({
         key: `${groupIndex}-${index}-${item?.key ?? factoryRecipe?.key ?? "row"}`,
         item,
         factoryRecipe,
       })
+      index++
+    }
+    for (const item of groupItems) {
+      if (claimedItems.has(item)) continue
+      rows.push({
+        key: `${groupIndex}-${index}-${item.key}`,
+        item,
+        factoryRecipe: null,
+      })
+      index++
     }
   })
 

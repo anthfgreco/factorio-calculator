@@ -79,6 +79,23 @@ const qualityHtml = renderToStaticMarkup(
   }),
 )
 
+const lavaRuntime = await setupSpaceAgeFactory()
+lavaRuntime.specification.selectOnePlanet(lavaRuntime.planets.get("vulcanus"))
+const lavaTarget = lavaRuntime.specification.addTarget("metallurgic-science-pack")
+lavaTarget.setRate("1000")
+lavaRuntime.specification.updateSolution()
+assert.equal(lavaRuntime.specification.lastError, null)
+assert.ok(lavaRuntime.specification.lastTotals)
+const lavaHtml = renderToStaticMarkup(
+  createElement(CalculatorView, {
+    commands,
+    snapshot: snapshot({
+      specification: lavaRuntime.specification,
+      totals: lavaRuntime.specification.lastTotals,
+    }),
+  }),
+)
+
 test("React UI renders the complete calculator workflow from one specification", () => {
   for (const text of [
     "Production targets",
@@ -120,6 +137,13 @@ test("React UI renders the complete calculator workflow from one specification",
   assert.match(factoryHtml, /data-item-key="light-oil" data-recipe-key="heavy-oil-cracking"/)
   assert.match(factoryHtml, /data-item-key="petroleum-gas" data-recipe-key="light-oil-cracking"/)
   assert.doesNotMatch(factoryHtml, /\son(?:click|change|input|mouseenter|mouseleave)=/i)
+})
+
+test("factory rows keep lava-melting machines with their primary products", () => {
+  assert.match(lavaHtml, /data-item-key="molten-copper" data-recipe-key="molten-copper-from-lava"/)
+  assert.match(lavaHtml, /data-item-key="molten-iron" data-recipe-key="molten-iron-from-lava"/)
+  assert.match(lavaHtml, /data-item-key="stone"/)
+  assert.doesNotMatch(lavaHtml, /data-item-key="stone" data-recipe-key="molten-(?:copper|iron)-from-lava"/)
 })
 
 test("React UI disables target addition only while loading", () => {
