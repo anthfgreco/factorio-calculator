@@ -106,6 +106,10 @@ test("React UI renders the complete calculator workflow from one specification",
   assert.match(factoryHtml, /aria-label="Rate for Advanced circuit"/)
   assert.match(factoryHtml, /images\/icons\.svg#right/)
   assert.match(factoryHtml, /images\/icons\.svg#popout/)
+  assert.match(
+    factoryHtml,
+    /<a[^>]+href="#[^"]+"[^>]+target="_blank"[^>]+rel="noopener noreferrer"[^>]+aria-label="Add Advanced circuit as a production target"/i,
+  )
   assert.match(factoryHtml, /aria-label="Empty module slot"/)
   assert.match(factoryHtml, /aria-label="Choose a machine for Advanced circuit"/)
   assert.match(factoryHtml, /data-inline-equipment-picker="machine:advanced-circuit"/)

@@ -10456,6 +10456,7 @@ export function formatSettings(
   excludeTitle = false,
   overrideTab: CalculatorTab | null = null,
   targets: Iterable<readonly [Item, Rational]> | null = null,
+  factorySpec: FactorySpecification = spec,
 ): string {
   let settings = ""
   const title = getTitle()
@@ -10473,120 +10474,120 @@ export function formatSettings(
   if (colorScheme.key !== DEFAULT_COLOR_SCHEME) {
     settings += "c=" + colorScheme.key + "&"
   }
-  if (spec.format.rateName !== DEFAULT_RATE) {
-    settings += "rate=" + spec.format.rateName + "&"
+  if (factorySpec.format.rateName !== DEFAULT_RATE) {
+    settings += "rate=" + factorySpec.format.rateName + "&"
   }
-  if (spec.format.ratePrecision !== DEFAULT_RATE_PRECISION) {
-    settings += "rp=" + spec.format.ratePrecision + "&"
+  if (factorySpec.format.ratePrecision !== DEFAULT_RATE_PRECISION) {
+    settings += "rp=" + factorySpec.format.ratePrecision + "&"
   }
-  if (spec.format.countPrecision !== DEFAULT_COUNT_PRECISION) {
-    settings += "cp=" + spec.format.countPrecision + "&"
+  if (factorySpec.format.countPrecision !== DEFAULT_COUNT_PRECISION) {
+    settings += "cp=" + factorySpec.format.countPrecision + "&"
   }
-  if (spec.format.displayFormat !== DEFAULT_FORMAT) {
-    settings += "vf=" + spec.format.displayFormat[0] + "&"
+  if (factorySpec.format.displayFormat !== DEFAULT_FORMAT) {
+    settings += "vf=" + factorySpec.format.displayFormat[0] + "&"
   }
-  if (!spec.miningProd.isZero()) {
+  if (!factorySpec.miningProd.isZero()) {
     let hundred = Rational.from_float(100)
-    let mprod = spec.miningProd.mul(hundred).toString()
+    let mprod = factorySpec.miningProd.mul(hundred).toString()
     settings += "mprod=" + mprod + "&"
   }
-  let recipeProductivityLevels = serializeRecipeProductivityLevels(spec)
+  let recipeProductivityLevels = serializeRecipeProductivityLevels(factorySpec)
   if (recipeProductivityLevels.length > 0) {
     settings += "rprod=" + recipeProductivityLevels.join(",") + "&"
   }
-  let buildings = serializeAutomaticBuildings(spec)
+  let buildings = serializeAutomaticBuildings(factorySpec)
   if (buildings.length > 0) {
     settings += "buildings=" + buildings.join(",") + "&"
   }
-  let machineSettings = serializeBuildingOverrides(spec)
+  let machineSettings = serializeBuildingOverrides(factorySpec)
   if (machineSettings.length > 0) {
     settings += "machines=" + machineSettings.join(",") + "&"
   }
-  const machineQualities = serializeMachineQualities(spec)
+  const machineQualities = serializeMachineQualities(factorySpec)
   if (machineQualities.length > 0) settings += "machineq=" + machineQualities.join(",") + "&"
-  if (spec.belt !== null && spec.belt.key !== DEFAULT_BELT) {
-    settings += "belt=" + spec.belt.key + "&"
+  if (factorySpec.belt !== null && factorySpec.belt.key !== DEFAULT_BELT) {
+    settings += "belt=" + factorySpec.belt.key + "&"
   }
-  if (!spec.beltStackSize.equal(Rational.from_float(1))) settings += "bstack=" + spec.beltStackSize.toString() + "&"
-  const beltStackOverrides = serializeBeltStackOverrides(spec)
+  if (!factorySpec.beltStackSize.equal(Rational.from_float(1))) settings += "bstack=" + factorySpec.beltStackSize.toString() + "&"
+  const beltStackOverrides = serializeBeltStackOverrides(factorySpec)
   if (
-    !spec.beltStackSize.equal(Rational.from_float(1)) ||
-    spec.beltStackDefaultPolicy !== "auto" ||
+    !factorySpec.beltStackSize.equal(Rational.from_float(1)) ||
+    factorySpec.beltStackDefaultPolicy !== "auto" ||
     beltStackOverrides !== ""
   ) {
-    settings += "bstackmode=" + spec.beltStackDefaultPolicy + "&"
+    settings += "bstackmode=" + factorySpec.beltStackDefaultPolicy + "&"
   }
   if (beltStackOverrides !== "") settings += "bstackitems=" + beltStackOverrides + "&"
-  if (!spec.bufferMinutes.equal(Rational.from_float(1))) settings += "buffer=" + spec.bufferMinutes.toString() + "&"
-  if (!spec.freshnessDelayMinutes.isZero()) settings += "fresh=" + spec.freshnessDelayMinutes.toString() + "&"
-  let resourceYields = [...spec.resourceYields]
+  if (!factorySpec.bufferMinutes.equal(Rational.from_float(1))) settings += "buffer=" + factorySpec.bufferMinutes.toString() + "&"
+  if (!factorySpec.freshnessDelayMinutes.isZero()) settings += "fresh=" + factorySpec.freshnessDelayMinutes.toString() + "&"
+  let resourceYields = [...factorySpec.resourceYields]
     .filter(([recipe, value]) => recipe.categories?.has("basic-fluid") && !value.equal(Rational.from_float(1)))
     .sort(([a], [b]) => a.key.localeCompare(b.key))
     .map(([recipe, value]) => `${recipe.key}:${value.mul(Rational.from_float(100)).toString()}`)
   if (resourceYields.length > 0) settings += "ryield=" + resourceYields.join(",") + "&"
-  if (spec.maxQualityLevel !== 4) settings += "maxq=" + spec.maxQualityLevel + "&"
-  if (spec.asteroidLimits.size > 0) {
+  if (factorySpec.maxQualityLevel !== 4) settings += "maxq=" + factorySpec.maxQualityLevel + "&"
+  if (factorySpec.asteroidLimits.size > 0) {
     settings +=
       "astcap=" +
-      [...spec.asteroidLimits]
+      [...factorySpec.asteroidLimits]
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([key, value]) => `${key}:${value.mul(spec.format.rateFactor).toString()}`)
+        .map(([key, value]) => `${key}:${value.mul(factorySpec.format.rateFactor).toString()}`)
         .join(",") +
       "&"
   }
-  if (spec.recipeLocations.size > 0) {
+  if (factorySpec.recipeLocations.size > 0) {
     settings +=
       "rloc=" +
-      [...spec.recipeLocations]
+      [...factorySpec.recipeLocations]
         .sort(([a], [b]) => a.key.localeCompare(b.key))
         .map(([recipe, location]) => `${recipe.key}:${location.key}`)
         .join(",") +
       "&"
   }
-  if (spec.fuel !== null && spec.fuel.key !== DEFAULT_FUEL) {
-    settings += "fuel=" + spec.fuel.key + "&"
+  if (factorySpec.fuel !== null && factorySpec.fuel.key !== DEFAULT_FUEL) {
+    settings += "fuel=" + factorySpec.fuel.key + "&"
   }
-  if (spec.defaultModule !== null) {
-    settings += "dm=" + spec.defaultModule.shortName() + "&"
+  if (factorySpec.defaultModule !== null) {
+    settings += "dm=" + factorySpec.defaultModule.shortName() + "&"
   }
-  if (spec.defaultMachineQuality.key !== "normal") settings += "dmachq=" + spec.defaultMachineQuality.key + "&"
-  if (spec.defaultModuleQuality.key !== "normal") settings += "dmq=" + spec.defaultModuleQuality.key + "&"
-  if (spec.defaultBeaconQuality.key !== "normal") settings += "dbq=" + spec.defaultBeaconQuality.key + "&"
-  const defaultQualityPlannerModule = spec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null
-  if (spec.qualityPlannerModule !== defaultQualityPlannerModule) {
-    settings += "qpm=" + getModuleKey(spec.qualityPlannerModule) + "&"
+  if (factorySpec.defaultMachineQuality.key !== "normal") settings += "dmachq=" + factorySpec.defaultMachineQuality.key + "&"
+  if (factorySpec.defaultModuleQuality.key !== "normal") settings += "dmq=" + factorySpec.defaultModuleQuality.key + "&"
+  if (factorySpec.defaultBeaconQuality.key !== "normal") settings += "dbq=" + factorySpec.defaultBeaconQuality.key + "&"
+  const defaultQualityPlannerModule = factorySpec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null
+  if (factorySpec.qualityPlannerModule !== defaultQualityPlannerModule) {
+    settings += "qpm=" + getModuleKey(factorySpec.qualityPlannerModule) + "&"
   }
-  if (spec.qualityPlannerModuleQuality.key !== DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) {
-    settings += "qpmq=" + spec.qualityPlannerModuleQuality.key + "&"
+  if (factorySpec.qualityPlannerModuleQuality.key !== DEFAULT_QUALITY_PLANNER_MODULE_QUALITY_KEY) {
+    settings += "qpmq=" + factorySpec.qualityPlannerModuleQuality.key + "&"
   }
   const defaultQualityPlannerProductivityModule =
-    spec.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY) ?? null
-  if (spec.qualityPlannerProductivityModule !== defaultQualityPlannerProductivityModule) {
-    settings += "qppm=" + getModuleKey(spec.qualityPlannerProductivityModule) + "&"
+    factorySpec.modules.get(DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_KEY) ?? null
+  if (factorySpec.qualityPlannerProductivityModule !== defaultQualityPlannerProductivityModule) {
+    settings += "qppm=" + getModuleKey(factorySpec.qualityPlannerProductivityModule) + "&"
   }
-  if (spec.qualityPlannerProductivityModuleQuality.key !== DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) {
-    settings += "qppmq=" + spec.qualityPlannerProductivityModuleQuality.key + "&"
+  if (factorySpec.qualityPlannerProductivityModuleQuality.key !== DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) {
+    settings += "qppmq=" + factorySpec.qualityPlannerProductivityModuleQuality.key + "&"
   }
-  const defaultQualityPlannerMiningModule = spec.modules.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY) ?? null
-  if (spec.qualityPlannerMiningModule !== defaultQualityPlannerMiningModule) {
-    settings += "qpmm=" + getModuleKey(spec.qualityPlannerMiningModule) + "&"
+  const defaultQualityPlannerMiningModule = factorySpec.modules.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY) ?? null
+  if (factorySpec.qualityPlannerMiningModule !== defaultQualityPlannerMiningModule) {
+    settings += "qpmm=" + getModuleKey(factorySpec.qualityPlannerMiningModule) + "&"
   }
-  if (spec.qualityPlannerMiningModuleQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_MODULE_QUALITY_KEY) {
-    settings += "qpmmq=" + spec.qualityPlannerMiningModuleQuality.key + "&"
+  if (factorySpec.qualityPlannerMiningModuleQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_MODULE_QUALITY_KEY) {
+    settings += "qpmmq=" + factorySpec.qualityPlannerMiningModuleQuality.key + "&"
   }
-  if (spec.qualityPlannerMiningBeaconQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) {
-    settings += "qpmbq=" + spec.qualityPlannerMiningBeaconQuality.key + "&"
+  if (factorySpec.qualityPlannerMiningBeaconQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) {
+    settings += "qpmbq=" + factorySpec.qualityPlannerMiningBeaconQuality.key + "&"
   }
-  if (!spec.qualityPlannerMiningBeaconCount.equal(Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT))) {
-    settings += "qpmbc=" + spec.qualityPlannerMiningBeaconCount.toString() + "&"
+  if (!factorySpec.qualityPlannerMiningBeaconCount.equal(Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT))) {
+    settings += "qpmbc=" + factorySpec.qualityPlannerMiningBeaconCount.toString() + "&"
   }
-  if (spec.qualityPlannerObjective !== "practical") settings += "qpo=" + spec.qualityPlannerObjective + "&"
-  if (spec.secondaryDefaultModule !== null) {
-    settings += "dm2=" + spec.secondaryDefaultModule.shortName() + "&"
+  if (factorySpec.qualityPlannerObjective !== "practical") settings += "qpo=" + factorySpec.qualityPlannerObjective + "&"
+  if (factorySpec.secondaryDefaultModule !== null) {
+    settings += "dm2=" + factorySpec.secondaryDefaultModule.shortName() + "&"
   }
-  if (!spec.isDefaultDefaultBeacon()) {
+  if (!factorySpec.isDefaultDefaultBeacon()) {
     let parts = []
-    for (let module of spec.defaultBeacon) {
+    for (let module of factorySpec.defaultBeacon) {
       if (module === null) {
         parts.push("null")
       } else {
@@ -10595,8 +10596,8 @@ export function formatSettings(
     }
     settings += "db=" + parts.join(":") + "&"
   }
-  if (!spec.defaultBeaconCount.isZero()) {
-    settings += "dbc=" + spec.defaultBeaconCount.toDecimal(0) + "&"
+  if (!factorySpec.defaultBeaconCount.isZero()) {
+    settings += "dbc=" + factorySpec.defaultBeaconCount.toDecimal(0) + "&"
   }
   if (visualizerType !== DEFAULT_VISUALIZER) {
     settings += "vt=" + visualizerType + "&"
@@ -10612,10 +10613,10 @@ export function formatSettings(
   const targetStrings: string[] = []
   if (targets) {
     for (let [item, rate] of targets) {
-      targetStrings.push(`${item.key}:r:${rate.mul(spec.format.rateFactor).toString()}`)
+      targetStrings.push(`${item.key}:r:${rate.mul(factorySpec.format.rateFactor).toString()}`)
     }
   } else {
-    for (let target of spec.buildTargets) {
+    for (let target of factorySpec.buildTargets) {
       let mode: "f" | "r" | "b"
       let value: string
       if (target.changedBuilding) {
@@ -10626,7 +10627,7 @@ export function formatSettings(
         value = target.getBeltCountInput()
       } else {
         mode = "r"
-        value = target.rate.mul(spec.format.rateFactor).toString()
+        value = target.rate.mul(factorySpec.format.rateFactor).toString()
       }
       targetStrings.push(
         formatTargetSetting({
@@ -10644,21 +10645,21 @@ export function formatSettings(
   settings += targetStrings.join(",")
 
   let ignore = []
-  for (let item of spec.ignore) {
+  for (let item of factorySpec.ignore) {
     ignore.push(item.key)
   }
   if (ignore.length > 0) {
     settings += "&ignore=" + ignore.sort().join(",")
   }
 
-  if (!spec.isDefaultPlanet()) {
+  if (!factorySpec.isDefaultPlanet()) {
     let planets = []
-    for (let p of sorted(spec.selectedPlanets, (p) => p.order)) {
+    for (let p of sorted(factorySpec.selectedPlanets, (p) => p.order)) {
       planets.push(p.key)
     }
     settings += "&planet=" + planets.join(",")
   }
-  let { disable, enable } = spec.getNetDisable()
+  let { disable, enable } = factorySpec.getNetDisable()
   if (disable.size !== 0) {
     let parts = []
     for (let d of disable) {
@@ -10674,16 +10675,16 @@ export function formatSettings(
     settings += "&enable=" + parts.sort().join(",")
   }
 
-  let moduleSettings = serializeModuleSettings(spec)
+  let moduleSettings = serializeModuleSettings(factorySpec)
   if (moduleSettings.length > 0) {
     settings += "&modules=" + moduleSettings.join(",")
   }
-  const moduleQualitySettings = serializeModuleQualitySettings(spec)
+  const moduleQualitySettings = serializeModuleQualitySettings(factorySpec)
   if (moduleQualitySettings.length > 0) settings += "&moduleq=" + moduleQualitySettings.join(",")
 
-  if (!spec.isDefaultPriority()) {
+  if (!factorySpec.isDefaultPriority()) {
     let priority = []
-    for (let level of spec.priority) {
+    for (let level of factorySpec.priority) {
       let keys = []
       for (let { recipe, weight } of level) {
         keys.push(`${recipe.key}=${weight.toString()}`)
@@ -10694,15 +10695,15 @@ export function formatSettings(
   }
 
   return compressCalculatorSettings(settings, {
-    encode: (binary) => window.btoa(binary),
-    decode: (encoded) => window.atob(encoded),
+    encode: (binary) => (typeof window !== "undefined" ? window.btoa(binary) : globalThis.btoa(binary)),
+    decode: (encoded) => (typeof window !== "undefined" ? window.atob(encoded) : globalThis.atob(encoded)),
   })
 }
 
 export function loadSettings(fragment: string): Map<string, string> {
   return parseCalculatorFragment(fragment, {
-    encode: (binary) => window.btoa(binary),
-    decode: (encoded) => window.atob(encoded),
+    encode: (binary) => (typeof window !== "undefined" ? window.btoa(binary) : globalThis.btoa(binary)),
+    decode: (encoded) => (typeof window !== "undefined" ? window.atob(encoded) : globalThis.atob(encoded)),
   })
 }
 // endregion url-state.ts
@@ -13349,8 +13350,10 @@ function ItemTable({
                   </td>
                   <td className="factory-action" style={{ ...UI.td, textAlign: "center" }}>
                     {item === null ? null : (
-                      <button
-                        type="button"
+                      <a
+                        href={`#${formatSettings(false, null, [[item, rate]], specification)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         aria-label={`Add ${item.name} as a production target`}
                         title={`Add ${item.name} as a production target`}
                         style={{
@@ -13363,15 +13366,11 @@ function ItemTable({
                           opacity: 0.45,
                           border: 0,
                           background: "transparent",
+                          textDecoration: "none",
                         }}
-                        onClick={() =>
-                          runMutation(specification, () => {
-                            specification.addTarget(item.key)
-                          })
-                        }
                       >
                         <UiGlyph name="popout" size={24} />
-                      </button>
+                      </a>
                     )}
                   </td>
                 </tr>

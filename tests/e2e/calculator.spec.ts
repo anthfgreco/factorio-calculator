@@ -342,3 +342,25 @@ test("factory equipment popovers escape the table scroller and stay inside the v
   await expect(dialog).toBeInViewport()
   await expect(dialog.getByRole("button").last()).toBeInViewport()
 })
+
+test("popout target link opens the item calculation in a new tab", async ({ page, context }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await openReadyCalculator(page)
+
+  const popoutLink = page.getByRole("link", { name: "Add Electronic circuit as a production target" })
+  await expect(popoutLink).toBeVisible()
+  await expect(popoutLink).toHaveAttribute("target", "_blank")
+  await expect(popoutLink).toHaveAttribute("rel", "noopener noreferrer")
+  await expect(popoutLink).toHaveAttribute("href", /^#/)
+
+  const [newPage] = await Promise.all([
+    context.waitForEvent("page"),
+    popoutLink.click(),
+  ])
+
+  await newPage.waitForLoadState()
+  await expect(newPage.getByRole("button", { name: "Choose output for target 1: Electronic circuit" })).toBeVisible()
+  await expect(newPage.getByRole("region", { name: "Factory summary" })).toBeVisible()
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
