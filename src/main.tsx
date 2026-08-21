@@ -6888,6 +6888,7 @@ const IMPORT_WEIGHT = Rational.from_integer(1_000_000)
 const TIEBREAK_LEVEL = 0
 const OBJECTIVE_LEVEL = 1
 const IMPORT_LEVEL = 2
+const STRATEGIC_QUALITY_LOOP_MIN_PRODUCTIVITY = Rational.from_integer(2)
 const FULGORA_CURATED_PRODUCERS = new Map<string, string>([
   ["water", "ice-melting"],
   ["light-oil", "heavy-oil-cracking"],
@@ -7033,7 +7034,7 @@ function objectiveForPlan(specification: FactorySpecification): QualityOptimizat
     : specification.qualityPlannerObjective
 }
 
-class PracticalQualityGraphBuilder {
+export class PracticalQualityGraphBuilder {
   readonly graph = new QualityGraph()
   readonly operations = new Map<QualityGraphRecipe, QualityTierConfiguration>()
   readonly embeddedRecyclers = new Map<QualityGraphRecipe, EmbeddedRecycler>()
@@ -7081,7 +7082,7 @@ class PracticalQualityGraphBuilder {
     const miningRecipe = this.specification.recipes.get("scrap")
     if (scrap === undefined || miningRecipe === undefined || !this.isUsableProducer(miningRecipe, scrap)) return
 
-    const miningConfiguration = this.getCraftConfigurations(miningRecipe, 0)[0]
+    const miningConfiguration = this.getCraftConfigurations(miningRecipe, 0, true)[0]
     if (miningConfiguration === undefined) throw new Error("Missing Fulgora scrap mining configuration")
     const miningOperation = addCraftRecipe(
       this.graph,
@@ -7139,7 +7140,7 @@ class PracticalQualityGraphBuilder {
   }
 
   getTargetConfigurations(): readonly QualityTierConfiguration[] {
-    return this.getCraftConfigurations(this.targetRecipe, this.targetQualityLevel)
+    return this.getCraftConfigurations(this.targetRecipe, this.targetQualityLevel, true)
   }
 
   private chooseProducer(item: Item): Recipe | null {
@@ -7202,7 +7203,7 @@ class PracticalQualityGraphBuilder {
       return
     }
 
-    const configuration = this.getCraftConfigurations(recycling, qualityLevel)[qualityLevel]
+    const configuration = this.getCraftConfigurations(recycling, qualityLevel, false)[qualityLevel]
     if (configuration === undefined) throw new Error("Missing Vulcanus low density structure shuffle configuration")
     const operation = addCraftRecipe(
       this.graph,
@@ -7264,7 +7265,7 @@ class PracticalQualityGraphBuilder {
     ]
     const addedOperations: QualityGraphRecipe[] = []
     for (const [product, recipe] of routeOperations) {
-      const configuration = this.getCraftConfigurations(recipe, qualityLevel)[qualityLevel]
+      const configuration = this.getCraftConfigurations(recipe, qualityLevel, false)[qualityLevel]
       if (configuration === undefined) throw new Error(`Missing Vulcanus shuffle configuration for ${recipe.name}`)
       const operation = addCraftRecipe(
         this.graph,
@@ -7293,13 +7294,35 @@ class PracticalQualityGraphBuilder {
     this.graph.source(graphItem, item, IMPORT_WEIGHT.mul(qualityPenalty), IMPORT_LEVEL)
   }
 
+  private isQualityGenerationNode(item: Item, keepLevel: number, recipe: Recipe): boolean {
+    if (keepLevel === 0 || !isQualifiedSolid(item) || !recipe.allow_quality) return false
+    if (item === this.target && keepLevel === this.targetQualityLevel) return true
+    if (recipe.isResource()) return true
+
+    const recycler = findRecyclerRecipe(this.specification, item)
+    if (recycler === null || !this.canRecycle(recycler)) return false
+    const building = choosePracticalBuilding(this.specification, this.planet, recipe)
+    if (building === null) return false
+    const configuration = moduleTierConfiguration({
+      specification: this.specification,
+      recipe,
+      qualityLevel: 0,
+      building,
+      module: null,
+      moduleQuality: this.specification.getNormalQuality(),
+      preserveBeacons: false,
+    })
+    return !configuration.productivity.less(STRATEGIC_QUALITY_LOOP_MIN_PRODUCTIVITY)
+  }
+
   private ensureProducer(item: Item, keepLevel: number, recipe: Recipe): void {
     const producerKey = `${recipe.key}->${item.key}@q${keepLevel}`
     if (this.expandedProducers.has(producerKey)) return
     this.expandedProducers.add(producerKey)
 
-    const craftConfigurations = this.getCraftConfigurations(recipe, keepLevel)
-    const recycler = keepLevel > 0 && isQualifiedSolid(item) ? findRecyclerRecipe(this.specification, item) : null
+    const generatesQuality = this.isQualityGenerationNode(item, keepLevel, recipe)
+    const craftConfigurations = this.getCraftConfigurations(recipe, keepLevel, generatesQuality)
+    const recycler = generatesQuality ? findRecyclerRecipe(this.specification, item) : null
     const usableRecycler =
       recycler !== null &&
       !this.directSelfRecyclingRecipes.has(recipe) &&
@@ -7322,8 +7345,13 @@ class PracticalQualityGraphBuilder {
           )
 
     const hasSolidIngredients = recipe.ingredients.some(({ item: ingredient }) => isQualifiedSolid(ingredient))
-    const highestInputQuality = isQualifiedSolid(item) && hasSolidIngredients ? this.specification.maxQualityLevel : 0
-    for (let inputQuality = 0; inputQuality <= highestInputQuality; inputQuality++) {
+    const lowestInputQuality = generatesQuality || !hasSolidIngredients ? 0 : keepLevel
+    const highestInputQuality = generatesQuality
+      ? hasSolidIngredients
+        ? this.specification.maxQualityLevel
+        : 0
+      : lowestInputQuality
+    for (let inputQuality = lowestInputQuality; inputQuality <= highestInputQuality; inputQuality++) {
       const configuration = craftConfigurations[inputQuality]
       if (configuration === undefined) throw new Error(`Missing practical configuration for ${recipe.name}`)
       if (usableRecycler !== null && item === this.target && keepLevel === this.targetQualityLevel) {
@@ -7365,8 +7393,12 @@ class PracticalQualityGraphBuilder {
     }
   }
 
-  private getCraftConfigurations(recipe: Recipe, keepLevel: number): readonly QualityTierConfiguration[] {
-    const cacheKey = `craft:${recipe.key}:keep${keepLevel}`
+  private getCraftConfigurations(
+    recipe: Recipe,
+    keepLevel: number,
+    generatesQuality: boolean,
+  ): readonly QualityTierConfiguration[] {
+    const cacheKey = `craft:${recipe.key}:keep${keepLevel}:generate${generatesQuality ? 1 : 0}`
     let configurations = this.configurations.get(cacheKey)
     if (configurations !== undefined) return configurations
     const building = choosePracticalBuilding(this.specification, this.planet, recipe)
@@ -7386,7 +7418,7 @@ class PracticalQualityGraphBuilder {
         : null
     configurations = Array.from({ length: this.specification.maxQualityLevel + 1 }, (_, qualityLevel) => {
       const qualityGoal = this.profile === "planet" ? this.targetQualityLevel : keepLevel
-      const producesQuality = qualityGoal > qualityLevel && recipe.allow_quality
+      const producesQuality = generatesQuality && qualityGoal > qualityLevel && recipe.allow_quality
       const targetQuality = qualityGoal > 0 && qualityLevel >= qualityGoal
       const configuration = (module: Module | null, moduleQuality: Quality) =>
         moduleTierConfiguration({
@@ -14993,9 +15025,11 @@ export interface QualityOperationDisplayRow {
 export type QualityPlanDisplayEntry =
   | { readonly kind: "operation"; readonly row: QualityOperationDisplayRow }
   | {
-      readonly kind: "source-group"
-      readonly recipe: Recipe
-      readonly rows: readonly QualityOperationDisplayRow[]
+      readonly kind: "resource-group"
+      readonly item: Item
+      readonly utilityRows: readonly QualityOperationDisplayRow[]
+      readonly qualitySourceRows: readonly QualityOperationDisplayRow[]
+      readonly recyclerRows: readonly QualityOperationDisplayRow[]
       readonly machineCount: Rational
       readonly power: Rational
     }
@@ -15051,40 +15085,71 @@ export function aggregateRecyclerDisplayRows(
   return rows
 }
 
-export function qualityPlanDisplayRows(
+export function qualityPlanDisplayEntries(
   operations: readonly QualityOperationRate[],
   locationKey: string,
 ): QualityPlanDisplayEntry[] {
   const rows = aggregateRecyclerDisplayRows(operations, locationKey)
-  const sourceRowsByRecipe = new Map<string, QualityOperationDisplayRow[]>()
+  const sourceRowsByItem = new Map<string, { readonly item: Item; readonly rows: QualityOperationDisplayRow[] }>()
   for (const row of rows) {
     if (row.operation.kind !== "source") continue
-    const recipeRows = sourceRowsByRecipe.get(row.operation.recipe.key)
-    if (recipeRows === undefined) sourceRowsByRecipe.set(row.operation.recipe.key, [row])
-    else recipeRows.push(row)
+    const item = row.operation.recipe.products.find(({ item: product }) => isQualifiedSolid(product))?.item
+    if (item === undefined) continue
+    const sourceRows = sourceRowsByItem.get(item.key)
+    if (sourceRows === undefined) sourceRowsByItem.set(item.key, { item, rows: [row] })
+    else sourceRows.rows.push(row)
   }
 
-  const groupedSources = new Set<string>()
+  const recyclerRowsByItem = new Map<string, QualityOperationDisplayRow[]>()
+  for (const row of rows) {
+    if (row.operation.kind !== "recycle") continue
+    const item = row.operation.recipe.ingredients.find(({ item: ingredient }) =>
+      row.operation.recipe.products.some(({ item: product }) => product === ingredient),
+    )?.item
+    if (item === undefined || !sourceRowsByItem.has(item.key)) continue
+    const recyclerRows = recyclerRowsByItem.get(item.key)
+    if (recyclerRows === undefined) recyclerRowsByItem.set(item.key, [row])
+    else recyclerRows.push(row)
+  }
+
+  const groupByRow = new Map<QualityOperationDisplayRow, string>()
+  const groups = new Map<
+    string,
+    {
+      readonly item: Item
+      readonly utilityRows: readonly QualityOperationDisplayRow[]
+      readonly qualitySourceRows: readonly QualityOperationDisplayRow[]
+      readonly recyclerRows: readonly QualityOperationDisplayRow[]
+    }
+  >()
+  for (const [itemKey, source] of sourceRowsByItem) {
+    const utilityRows = source.rows.filter((row) => row.operation.sourcePurpose !== "quality")
+    const qualitySourceRows = source.rows.filter((row) => row.operation.sourcePurpose === "quality")
+    const recyclerRows = recyclerRowsByItem.get(itemKey) ?? []
+    if ((utilityRows.length === 0 || qualitySourceRows.length === 0) && recyclerRows.length === 0) continue
+    const group = { item: source.item, utilityRows, qualitySourceRows, recyclerRows }
+    groups.set(itemKey, group)
+    for (const row of [...source.rows, ...recyclerRows]) groupByRow.set(row, itemKey)
+  }
+
+  const renderedGroups = new Set<string>()
   const entries: QualityPlanDisplayEntry[] = []
   for (const row of rows) {
-    const operation = row.operation
-    if (operation.kind !== "source") {
+    const itemKey = groupByRow.get(row)
+    if (itemKey === undefined) {
       entries.push({ kind: "operation", row })
       continue
     }
-    const recipeRows = sourceRowsByRecipe.get(operation.recipe.key) ?? [row]
-    if (recipeRows.length < 2) {
-      entries.push({ kind: "operation", row })
-      continue
-    }
-    if (groupedSources.has(operation.recipe.key)) continue
-    groupedSources.add(operation.recipe.key)
+    if (renderedGroups.has(itemKey)) continue
+    renderedGroups.add(itemKey)
+    const group = groups.get(itemKey)
+    if (group === undefined) continue
+    const childRows = [...group.utilityRows, ...group.qualitySourceRows, ...group.recyclerRows]
     entries.push({
-      kind: "source-group",
-      recipe: operation.recipe,
-      rows: recipeRows,
-      machineCount: recipeRows.reduce((total, sourceRow) => total.add(sourceRow.machineCount), zero),
-      power: recipeRows.reduce((total, sourceRow) => total.add(sourceRow.power), zero),
+      kind: "resource-group",
+      ...group,
+      machineCount: childRows.reduce((total, childRow) => total.add(childRow.machineCount), zero),
+      power: childRows.reduce((total, childRow) => total.add(childRow.power), zero),
     })
   }
   return entries
@@ -15098,7 +15163,7 @@ export function QualityPlanView({
   readonly plan: QualityTargetPlan
 }) {
   const beaconItem = specification.items.get("beacon")
-  const displayRows = qualityPlanDisplayRows(plan.operations, plan.planetKey)
+  const displayRows = qualityPlanDisplayEntries(plan.operations, plan.planetKey)
   const operationName = (operation: QualityOperationRate): string =>
     operation.kind === "source"
       ? `${operation.recipe.name} mining · ${operation.sourcePurpose ?? "utility"}`
@@ -15117,18 +15182,18 @@ export function QualityPlanView({
     const hasFluidOutput = operation.recipe.products.some(({ item }) => !isQualifiedSolid(item))
     return operation.qualityLevel > 0 && hasSolidOutput && hasFluidOutput ? `${quality} solid outputs` : quality
   }
-  const operationRow = (row: QualityOperationDisplayRow, key: string, sourceChild = false) => {
+  const operationRow = (
+    row: QualityOperationDisplayRow,
+    key: string,
+    options: { readonly name?: string; readonly indent?: number } = {},
+  ) => {
     const operation = row.operation
-    const name = sourceChild
-      ? operation.sourcePurpose === "quality"
-        ? "Quality feed"
-        : "Utility"
-      : operationName(operation)
+    const name = options.name ?? operationName(operation)
     return (
       <tr key={key}>
-        <td style={{ ...UI.td, ...(sourceChild ? { paddingLeft: 34 } : {}) }}>
-          {sourceChild ? <span style={UI.muted}>↳ </span> : null}
-          <IconLabel icon={operation.recipe.icon} name={name} size={sourceChild ? 20 : 24} />
+        <td style={{ ...UI.td, ...(options.indent === undefined ? {} : { paddingLeft: options.indent }) }}>
+          {options.indent === undefined ? null : <span style={UI.muted}>↳ </span>}
+          <IconLabel icon={operation.recipe.icon} name={name} size={options.indent === undefined ? 24 : 20} />
           {operation.selfRecyclingLegendary === undefined ? null : (
             <div
               style={{
@@ -15276,10 +15341,10 @@ export function QualityPlanView({
                   )
                 }
                 return (
-                  <Fragment key={`source-group-${entry.recipe.key}`}>
+                  <Fragment key={`resource-group-${entry.item.key}`}>
                     <tr>
                       <td style={UI.td}>
-                        <IconLabel icon={entry.recipe.icon} name={`${entry.recipe.name} mining`} size={24} />
+                        <IconLabel icon={entry.item.icon} name={entry.item.name} size={24} />
                       </td>
                       <td style={UI.td}>—</td>
                       <td style={{ ...UI.td, textAlign: "right" }}>—</td>
@@ -15293,12 +15358,27 @@ export function QualityPlanView({
                       </td>
                       <td style={UI.td}>—</td>
                     </tr>
-                    {entry.rows.map((row, childIndex) =>
+                    {entry.utilityRows.map((row, childIndex) =>
+                      operationRow(row, `${entry.item.key}-utility-${row.operation.qualityLevel}-${childIndex}`, {
+                        name: "Utility mining",
+                        indent: 34,
+                      }),
+                    )}
+                    {entry.qualitySourceRows.map((row, childIndex) =>
                       operationRow(
                         row,
-                        `${entry.recipe.key}-${row.operation.sourcePurpose ?? "utility"}-${row.operation.qualityLevel}-${childIndex}`,
-                        true,
+                        `${entry.item.key}-quality-source-${row.operation.qualityLevel}-${childIndex}`,
+                        {
+                          name: "Quality mining",
+                          indent: 34,
+                        },
                       ),
+                    )}
+                    {entry.recyclerRows.map((row, childIndex) =>
+                      operationRow(row, `${entry.item.key}-recycler-${row.operation.qualityLevel}-${childIndex}`, {
+                        name: "Recycling",
+                        indent: 34,
+                      }),
                     )}
                   </Fragment>
                 )

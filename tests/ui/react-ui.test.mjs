@@ -8,7 +8,7 @@ import { setupSpaceAgeFactory } from "../fixtures/factorio-runtime.mjs"
 
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
-const { CalculatorView, QualityPlanView, aggregateRecyclerDisplayRows, qualityPlanDisplayRows } = await import(
+const { CalculatorView, QualityPlanView, aggregateRecyclerDisplayRows, qualityPlanDisplayEntries } = await import(
   pathToFileURL(resolve(build, "main.js")).href
 )
 
@@ -184,11 +184,11 @@ test("settings are native React controls grouped by user intent", () => {
 test("quality results combine shared sushi recyclers and render their automatic equipment sprites", () => {
   const recyclerRows = [...qualityHtml.matchAll(/<tr[^>]*>.*?<\/tr>/g)]
     .map(([row]) => row)
-    .filter((row) => row.includes("recycle: Calcite recycling"))
+    .filter((row) => row.includes(">Recycling</span>"))
   assert.equal(recyclerRows.length, 1)
   const beaconRow = recyclerRows[0]
   assert.ok(beaconRow)
-  assert.match(beaconRow, /recycle: Calcite recycling/)
+  assert.match(beaconRow, />Recycling</)
   assert.match(beaconRow, /Normal–Epic/)
   assert.match(beaconRow, /title="Quality module 2"/)
   assert.match(beaconRow, /title="Normal Beacon"/)
@@ -256,11 +256,15 @@ test("recycler display rows represent physically shareable Stone recycler pools"
   assert.equal(aggregateRecyclerDisplayRows([...stoneDisposals, ...crafts], "vulcanus").length, 3)
 })
 
-test("quality plan groups one source recipe into physical child pools", () => {
+test("quality plan groups self-recycling resources into their physical machine pools", () => {
   const plan = qualityRuntime.specification.qualityPlans[0]
   assert.ok(plan)
   const source = plan.operations.find((operation) => operation.kind === "source")
+  const recycler = plan.operations.find(
+    (operation) => operation.kind === "recycle" && operation.recipe.key === "calcite-recycling",
+  )
   assert.ok(source)
+  assert.ok(recycler)
   const lava = qualityRuntime.recipes.get("lava")
   assert.ok(lava)
   const amount = (value) => qualityRuntime.math.Rational.from_integer(value)
@@ -301,20 +305,27 @@ test("quality plan groups one source recipe into physical child pools", () => {
     machineCount: amount(1),
     power: amount(1_000),
   }
+  const qualityRecycling = {
+    ...recycler,
+    rate: amount(30),
+    machineCount: amount(4),
+    power: amount(6_000),
+  }
 
-  const entries = qualityPlanDisplayRows([utility, quality, lavaUtility], "vulcanus")
+  const entries = qualityPlanDisplayEntries([utility, quality, qualityRecycling, lavaUtility], "vulcanus")
   assert.equal(entries.length, 2)
-  const calciteGroup = entries.find((entry) => entry.kind === "source-group")
+  const calciteGroup = entries.find((entry) => entry.kind === "resource-group")
   assert.ok(calciteGroup)
-  assert.equal(calciteGroup.recipe.key, source.recipe.key)
-  assert.equal(calciteGroup.rows.length, 2)
-  assert.deepEqual(
-    calciteGroup.rows.map((row) => row.operation.sourcePurpose),
-    ["utility", "quality"],
+  assert.equal(calciteGroup.item.key, "calcite")
+  assert.equal(calciteGroup.utilityRows.length, 1)
+  assert.equal(calciteGroup.qualitySourceRows.length, 1)
+  assert.equal(calciteGroup.recyclerRows.length, 1)
+  assert.equal(calciteGroup.machineCount.toString(), "9")
+  assert.equal(calciteGroup.power.toString(), "15000")
+  assert.notDeepEqual(
+    calciteGroup.utilityRows[0].operation.configuration,
+    calciteGroup.qualitySourceRows[0].operation.configuration,
   )
-  assert.equal(calciteGroup.machineCount.toString(), "5")
-  assert.equal(calciteGroup.power.toString(), "9000")
-  assert.notDeepEqual(calciteGroup.rows[0].operation.configuration, calciteGroup.rows[1].operation.configuration)
   const lavaEntry = entries.find((entry) => entry.kind === "operation")
   assert.ok(lavaEntry)
   assert.equal(lavaEntry.row.operation.recipe.key, "lava")
@@ -322,26 +333,48 @@ test("quality plan groups one source recipe into physical child pools", () => {
   const groupedHtml = renderToStaticMarkup(
     createElement(QualityPlanView, {
       specification: qualityRuntime.specification,
-      plan: { ...plan, operations: [utility, quality, lavaUtility] },
+      plan: { ...plan, operations: [utility, quality, qualityRecycling, lavaUtility] },
     }),
   )
   const tableRows = [...groupedHtml.matchAll(/<tr[^>]*>.*?<\/tr>/g)].map(([row]) => row)
   const calciteParentRows = tableRows.filter(
-    (row) => row.includes("Calcite mining") && !row.includes("Utility") && !row.includes("Quality feed"),
+    (row) => row.includes(">Calcite</span>") && !row.includes("Utility mining") && !row.includes("Quality mining"),
   )
   assert.equal(calciteParentRows.length, 1)
-  assert.match(calciteParentRows[0], /Machines:.*5/)
-  assert.match(calciteParentRows[0], /Power:.*9 kW/)
-  const utilityRow = tableRows.find((row) => row.includes("Utility"))
-  const qualityRow = tableRows.find((row) => row.includes("Quality feed"))
+  assert.match(calciteParentRows[0], /Machines:.*9/)
+  assert.match(calciteParentRows[0], /Power:.*15 kW/)
+  assert.doesNotMatch(calciteParentRows[0], /Rate \/ m:/)
+  const utilityRow = tableRows.find((row) => row.includes("Utility mining"))
+  const qualityRow = tableRows.find((row) => row.includes("Quality mining"))
+  const recyclerRow = tableRows.find((row) => row.includes(">Recycling</span>"))
   assert.ok(utilityRow)
   assert.ok(qualityRow)
+  assert.ok(recyclerRow)
+  assert.doesNotMatch(groupedHtml, /Quality loop/)
   assert.match(utilityRow, /Normal/)
   assert.match(qualityRow, /Mixed/)
   assert.match(utilityRow, /Machine: .*Modules: Empty/)
   assert.match(qualityRow, /Machine: .*Modules: .*Quality module/)
+  assert.match(recyclerRow, /Machine: .*Recycler.*Modules: .*Quality module/)
   assert.equal(tableRows.filter((row) => row.includes("Lava mining · utility")).length, 1)
-  assert.equal(tableRows.filter((row) => row.includes(">Lava mining<")).length, 0)
+  assert.equal(tableRows.filter((row) => row.includes(">Lava</span>") && !row.includes("mining · utility")).length, 0)
+
+  const ironOreSource = qualityRuntime.recipes.get("iron-ore")
+  const ironOreRecycling = qualityRuntime.recipes.get("iron-ore-recycling")
+  assert.ok(ironOreSource)
+  assert.ok(ironOreRecycling)
+  const ironEntries = qualityPlanDisplayEntries(
+    [
+      { ...quality, recipe: ironOreSource },
+      { ...qualityRecycling, recipe: ironOreRecycling },
+    ],
+    "nauvis",
+  )
+  assert.equal(ironEntries.length, 1)
+  assert.equal(ironEntries[0].kind, "resource-group")
+  assert.equal(ironEntries[0].item.key, "iron-ore")
+  assert.equal(ironEntries[0].qualitySourceRows.length, 1)
+  assert.equal(ironEntries[0].recyclerRows.length, 1)
 })
 
 test("visualizer is declarative SVG rendered by React", () => {
