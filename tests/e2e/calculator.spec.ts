@@ -302,7 +302,8 @@ test("quality factory equipment stays automatic and sprite-only", async ({ page 
   await openReadyCalculator(page)
 
   await page.getByLabel("Apply preset").selectOption("full-legendary")
-  await expect(page.getByText("Q-module equivalents", { exact: true })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText("Quality modules", { exact: true })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByText("Planning diagnostics", { exact: true })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Reset to automatic" })).toHaveCount(0)
   await expect(page.getByLabel(/Machine quality for .* at/)).toHaveCount(0)
 

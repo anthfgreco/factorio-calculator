@@ -15079,8 +15079,8 @@ function QualityPlanView({
             value={`${specification.format.rate(plan.requested)}/${specification.format.longRate}`}
           />
           <SummaryCard label="First-pass chance" value={formatPercent(plan.firstPassChance, 3)} />
-          <SummaryCard label="Machine count" value={specification.format.count(plan.totalMachineCount)} />
-          <SummaryCard label="Q-module equivalents" value={specification.format.count(plan.totalQualityModules)} />
+          <SummaryCard label="Machines" value={specification.format.count(plan.totalMachineCount)} />
+          <SummaryCard label="Quality modules" value={specification.format.count(plan.totalQualityModules)} />
           <SummaryCard label="Power" value={formatPower(specification, plan.totalPower)} />
           <SummaryCard label="Crafts" value={specification.format.rate(plan.totalCrafts)} />
           <SummaryCard label="Recycles" value={specification.format.rate(plan.totalRecycles)} />
@@ -15227,12 +15227,12 @@ function PlanningDetails({
   readonly totals: Totals
 }) {
   const planning = getPlanningSummary(specification, totals)
-  const hasDetails =
+  const hasDiagnostics =
     (specification.selectedPlanets.size > 1 && planning.perLocation.length > 0) ||
     planning.transport.length > 0 ||
     planning.freshness.length > 0 ||
-    planning.asteroidConstraints.length > 0 ||
-    planning.qualityPlans.length > 0
+    planning.asteroidConstraints.length > 0
+  const hasDetails = hasDiagnostics || planning.qualityPlans.length > 0
   if (!hasDetails) return null
   return (
     <section style={{ ...UI.stack, marginTop: 10 }}>
@@ -15243,58 +15243,60 @@ function PlanningDetails({
           plan={plan}
         />
       ))}
-      <details style={UI.details}>
-        <summary style={UI.detailsSummary}>Planning diagnostics</summary>
-        <div style={{ ...UI.stack, marginTop: 9 }}>
-          <div style={UI.summary}>
-            <SummaryCard label="Beacon power" value={formatPower(specification, planning.beaconPower)} />
-            <SummaryCard label="Pollution/min" value={specification.format.count(planning.pollution)} />
-            <SummaryCard label="Spores/min" value={specification.format.count(planning.spores)} />
-            <SummaryCard label="Aquilo heat" value={formatPower(specification, planning.aquiloHeat)} />
+      {hasDiagnostics ? (
+        <details style={UI.details}>
+          <summary style={UI.detailsSummary}>Planning diagnostics</summary>
+          <div style={{ ...UI.stack, marginTop: 9 }}>
+            <div style={UI.summary}>
+              <SummaryCard label="Beacon power" value={formatPower(specification, planning.beaconPower)} />
+              <SummaryCard label="Pollution/min" value={specification.format.count(planning.pollution)} />
+              <SummaryCard label="Spores/min" value={specification.format.count(planning.spores)} />
+              <SummaryCard label="Aquilo heat" value={formatPower(specification, planning.aquiloHeat)} />
+            </div>
+            {specification.selectedPlanets.size > 1 && planning.perLocation.length > 0 ? (
+              <div className="settings-columns" style={UI.twoColumns}>
+                {planning.perLocation.map((entry) => (
+                  <div key={entry.location.key} style={UI.summaryCard}>
+                    <IconLabel icon={entry.location.icon} name={entry.location.name} size={24} />
+                    <div>{specification.format.count(entry.machines)} machines</div>
+                    <div>{formatPower(specification, entry.electricPower.add(entry.beaconPower))}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {planning.transport.length > 0 ? (
+              <div>
+                <strong>Interplanetary flows</strong>
+                {planning.transport.map((flow, index) => (
+                  <div
+                    key={`${flow.item.key}-${flow.from.key}-${flow.to.key}-${index}`}
+                    style={{ ...UI.row, marginTop: 5 }}
+                  >
+                    <SpriteIcon icon={flow.item.icon} size={22} />
+                    {flow.from.name} → {flow.to.name}: {specification.format.rate(flow.rate)}/
+                    {specification.format.longRate}
+                    {flow.fuel ? " fuel" : ""}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {planning.freshness.map((entry) => (
+              <div key={entry.item.key} style={entry.expired ? UI.callout : UI.row}>
+                <SpriteIcon icon={entry.item.icon} size={22} />
+                {entry.item.name}: {formatPercent(entry.remaining)} freshness,{" "}
+                {specification.format.rate(entry.effectiveRate)} effective
+              </div>
+            ))}
+            {planning.asteroidConstraints.map((entry) => (
+              <div key={entry.item.key} style={entry.exceeded ? UI.callout : UI.row}>
+                <SpriteIcon icon={entry.item.icon} size={22} />
+                {entry.item.name}: {specification.format.rate(entry.required)} required /{" "}
+                {specification.format.rate(entry.limit)} cap
+              </div>
+            ))}
           </div>
-          {specification.selectedPlanets.size > 1 && planning.perLocation.length > 0 ? (
-            <div className="settings-columns" style={UI.twoColumns}>
-              {planning.perLocation.map((entry) => (
-                <div key={entry.location.key} style={UI.summaryCard}>
-                  <IconLabel icon={entry.location.icon} name={entry.location.name} size={24} />
-                  <div>{specification.format.count(entry.machines)} machines</div>
-                  <div>{formatPower(specification, entry.electricPower.add(entry.beaconPower))}</div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {planning.transport.length > 0 ? (
-            <div>
-              <strong>Interplanetary flows</strong>
-              {planning.transport.map((flow, index) => (
-                <div
-                  key={`${flow.item.key}-${flow.from.key}-${flow.to.key}-${index}`}
-                  style={{ ...UI.row, marginTop: 5 }}
-                >
-                  <SpriteIcon icon={flow.item.icon} size={22} />
-                  {flow.from.name} → {flow.to.name}: {specification.format.rate(flow.rate)}/
-                  {specification.format.longRate}
-                  {flow.fuel ? " fuel" : ""}
-                </div>
-              ))}
-            </div>
-          ) : null}
-          {planning.freshness.map((entry) => (
-            <div key={entry.item.key} style={entry.expired ? UI.callout : UI.row}>
-              <SpriteIcon icon={entry.item.icon} size={22} />
-              {entry.item.name}: {formatPercent(entry.remaining)} freshness,{" "}
-              {specification.format.rate(entry.effectiveRate)} effective
-            </div>
-          ))}
-          {planning.asteroidConstraints.map((entry) => (
-            <div key={entry.item.key} style={entry.exceeded ? UI.callout : UI.row}>
-              <SpriteIcon icon={entry.item.icon} size={22} />
-              {entry.item.name}: {specification.format.rate(entry.required)} required /{" "}
-              {specification.format.rate(entry.limit)} cap
-            </div>
-          ))}
-        </div>
-      </details>
+        </details>
+      ) : null}
     </section>
   )
 }

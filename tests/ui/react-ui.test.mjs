@@ -193,6 +193,7 @@ test("quality results combine shared sushi recyclers and render their automatic 
   assert.match(beaconRow, /title="Speed module 2 in beacon"/)
   assert.doesNotMatch(beaconRow, /\d+× (?:L-)?(?:Q2|Speed2)/)
   assert.doesNotMatch(qualityHtml, /Reset to automatic|Machine quality for .* at|<details style="margin-top:4px"/)
+  assert.doesNotMatch(qualityHtml, /Planning diagnostics/)
 })
 
 test("recycler display rows represent physically shareable Stone recycler pools", () => {
