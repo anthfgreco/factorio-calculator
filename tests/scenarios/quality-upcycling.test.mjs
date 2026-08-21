@@ -357,39 +357,22 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
       (entry) => entry.item.key === "calcite" && entry.qualityLevel === 4 && math.zero.less(entry.amount),
     ),
   )
-  const unbeaconedCalciteMining = plan.operations.find(
+  const utilityCalciteMining = plan.operations.find(
     (operation) =>
-      operation.kind === "source" && operation.recipe.key === "calcite" && operation.configuration.beaconCount.isZero(),
+      operation.kind === "source" && operation.recipe.key === "calcite" && operation.sourcePurpose === "utility",
   )
-  assert.ok(unbeaconedCalciteMining)
-  const beaconedCalciteMining = plan.operations.find(
+  const qualityCalciteMining = plan.operations.find(
     (operation) =>
-      operation.kind === "source" &&
-      operation.recipe.key === "calcite" &&
-      math.zero.less(operation.configuration.beaconCount),
+      operation.kind === "source" && operation.recipe.key === "calcite" && operation.sourcePurpose === "quality",
   )
-  assert.ok(beaconedCalciteMining)
-  assert.equal(beaconedCalciteMining.configuration.beaconCount.toString(), "4")
-  assert.equal(beaconedCalciteMining.configuration.beaconQuality.key, "normal")
-  assert.deepEqual(
-    beaconedCalciteMining.configuration.beaconModules.map((module) => module?.key ?? null),
-    ["speed-module-2", "speed-module-2"],
-  )
-  assert.deepEqual(
-    beaconedCalciteMining.configuration.beaconModuleQualities.map((quality) => quality.key),
-    ["normal", "normal"],
-  )
-  for (const calciteMining of [unbeaconedCalciteMining, beaconedCalciteMining]) {
-    assert.equal(calciteMining.selfRecyclingLegendary?.item.key, "calcite")
-    assert.equal(calciteMining.selfRecyclingLegendary?.recyclerRecipe.key, "calcite-recycling")
-    assert.ok(math.zero.less(calciteMining.selfRecyclingLegendary?.legendaryPerMinutePerMachine ?? math.zero))
-    assert.ok(math.zero.less(calciteMining.selfRecyclingLegendary?.score ?? math.zero))
-  }
-  assert.ok(
-    (unbeaconedCalciteMining.selfRecyclingLegendary?.score ?? math.zero).less(
-      beaconedCalciteMining.selfRecyclingLegendary?.score ?? math.zero,
-    ),
-  )
+  assert.ok(utilityCalciteMining)
+  assert.ok(qualityCalciteMining)
+  assert.equal(utilityCalciteMining.selfRecyclingLegendary, undefined)
+  assert.equal(qualityCalciteMining.selfRecyclingLegendary?.item.key, "calcite")
+  assert.equal(qualityCalciteMining.selfRecyclingLegendary?.recyclerRecipe.key, "calcite-recycling")
+  assert.ok(math.zero.less(qualityCalciteMining.selfRecyclingLegendary?.legendaryPerMinutePerMachine ?? math.zero))
+  assert.ok(math.zero.less(qualityCalciteMining.selfRecyclingLegendary?.score ?? math.zero))
+  assert.ok(plan.totalQualityModules.less(math.Rational.from_integer(300)))
   assert.equal(plan.importedInputs.length, 0)
   assert.equal(
     plan.freshInputs.some((entry) => entry.item.key === "iron-plate"),
@@ -400,13 +383,12 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
     false,
   )
 
-  const casting = plan.operations.find(
-    (operation) => operation.recipe.key === "casting-iron" && operation.qualityLevel === 0,
+  const finalSmelting = plan.operations.find(
+    (operation) => operation.recipe.key === "iron-plate" && operation.qualityLevel === 4,
   )
-  assert.ok(casting)
-  assert.equal(casting.configuration.qualityChance.toString(), "1/5")
+  assert.ok(finalSmelting)
   assert.equal(
-    casting.configuration.modules.every((module) => module?.key === "quality-module-2"),
+    finalSmelting.configuration.modules.every((module) => module === null),
     true,
   )
 
@@ -428,12 +410,10 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
   const recycling = plan.operations.filter(
     (operation) => operation.kind === "recycle" && operation.recipe.key === "iron-plate-recycling",
   )
-  assert.deepEqual(
-    recycling.map((operation) => operation.qualityLevel),
-    [0, 1, 2, 3],
-  )
   assert.equal(
-    recycling.every((operation) => operation.configuration.qualityChance.toString() === "1/5"),
+    recycling.every(
+      (operation) => operation.qualityLevel < 4 && operation.configuration.qualityChance.toString() === "1/5",
+    ),
     true,
   )
   for (const recipeKey of ["stone-brick", "concrete-from-molten-iron", "concrete-recycling", "iron-plate"]) {
@@ -446,7 +426,11 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
     plan.operations.some((operation) => operation.kind === "dispose" && operation.recipe.key === "stone-recycling"),
     false,
   )
-  assert.equal(plan.surplusOutputs.length, 0)
+  assert.ok(
+    plan.surplusOutputs.some(
+      (output) => output.item.key === "molten-iron" && output.qualityLevel === 0 && math.zero.less(output.amount),
+    ),
+  )
 
   specification.setDisable(requireValue(recipes, "concrete-from-molten-iron"))
   const fallback = vulcanusPlanner.planVulcanusQualityTarget({

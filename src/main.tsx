@@ -2039,7 +2039,7 @@ export function solve(spec: SolverSpec, fullOutputs: readonly SolverOutput[]): T
       }
       let normalizedWeight = weight.div(minimumWeight)
       normalizedTotal = normalizedTotal.add(normalizedWeight)
-      tableau.setIndex(row, columns - 1, priorityCost.mul(normalizedWeight))
+      tableau.setIndex(row, columns - 1, tableau.index(row, columns - 1).add(priorityCost.mul(normalizedWeight)))
     }
     if (!normalizedTotal.isZero()) {
       priorityCost = priorityCost.mul(costRatio).mul(normalizedTotal)
@@ -5045,6 +5045,7 @@ export interface QualityOperationRate {
   readonly machineCount: Rational
   readonly power: Rational
   readonly kind: "craft" | "recycle" | "source" | "dispose"
+  readonly sourcePurpose?: "utility" | "quality"
   readonly configuration: QualityTierConfiguration
   readonly selfRecyclingLegendary?: SelfRecyclingLegendaryMetrics
 }
@@ -5830,6 +5831,7 @@ export interface QualityGraphRecipeMetadata {
   readonly qualityLevel: number | null
   readonly kind: QualityGraphOperationKind
   readonly recycleRatesByQuality?: readonly Rational[]
+  readonly keepLevel?: number
   readonly sourceItem?: Item
   readonly configurationKey?: string
 }
@@ -6561,6 +6563,7 @@ export function addCraftRecipe(
       qualityLevel: inputQuality,
       kind: "craft",
       recycleRatesByQuality: recycleRates,
+      keepLevel,
       configurationKey: JSON.stringify([
         configuration.qualityLevel,
         configuration.building?.key ?? null,
@@ -6842,9 +6845,9 @@ export function planQualitySurplusDisposal(options: {
 
 // region quality/practical.ts
 const IMPORT_WEIGHT = Rational.from_integer(1_000_000)
-const LOCAL_RESOURCE_WEIGHT = one
-const LOCAL_OPERATION_LEVEL = 0
-const SOURCE_LEVEL = 1
+const TIEBREAK_LEVEL = 0
+const OBJECTIVE_LEVEL = 1
+const IMPORT_LEVEL = 2
 const FULGORA_CURATED_PRODUCERS = new Map<string, string>([
   ["water", "ice-melting"],
   ["light-oil", "heavy-oil-cracking"],
@@ -7052,7 +7055,7 @@ class PracticalQualityGraphBuilder {
       `${this.planet.key}:scrap-source`,
     )
     this.operations.set(miningOperation, miningConfiguration)
-    this.graph.setPriority(miningOperation, this.resourceWeight(miningRecipe, miningConfiguration), SOURCE_LEVEL)
+    this.setOperationPriorities(miningOperation, miningConfiguration)
 
     const queuedItems = new Set<string>([scrap.key])
     const recycledRecipes = new Set<Recipe>()
@@ -7084,7 +7087,7 @@ class PracticalQualityGraphBuilder {
           `${this.planet.key}:source-recycling`,
         )
         this.operations.set(operation, configuration)
-        this.setOperationTiebreak(operation, configuration)
+        this.setOperationPriorities(operation, configuration)
       }
 
       for (const product of recyclingRecipe.products) {
@@ -7173,7 +7176,7 @@ class PracticalQualityGraphBuilder {
       `${this.planet.key}:lds-shuffle`,
     )
     this.operations.set(operation, configuration)
-    this.setOperationTiebreak(operation, configuration)
+    this.setOperationPriorities(operation, configuration)
     for (const ingredient of operation.ingredients) this.ensureItem(ingredient.item)
   }
 
@@ -7235,7 +7238,7 @@ class PracticalQualityGraphBuilder {
         `${this.planet.key}:concrete-shuffle`,
       )
       this.operations.set(operation, configuration)
-      this.setOperationTiebreak(operation, configuration)
+      this.setOperationPriorities(operation, configuration)
       addedOperations.push(operation)
     }
     for (const operation of addedOperations) {
@@ -7247,7 +7250,7 @@ class PracticalQualityGraphBuilder {
     if (this.importedItems.has(graphItem)) return
     this.importedItems.add(graphItem)
     const qualityPenalty = graphItem.qualityLevel === null ? one : Rational.from_integer(10 ** graphItem.qualityLevel)
-    this.graph.source(graphItem, item, IMPORT_WEIGHT.mul(qualityPenalty), SOURCE_LEVEL)
+    this.graph.source(graphItem, item, IMPORT_WEIGHT.mul(qualityPenalty), IMPORT_LEVEL)
   }
 
   private ensureProducer(item: Item, keepLevel: number, recipe: Recipe): void {
@@ -7296,10 +7299,7 @@ class PracticalQualityGraphBuilder {
           `${this.planet.key}:${item.key}:direct`,
         )
         this.operations.set(directOperation, configuration)
-        this.setOperationTiebreak(directOperation, configuration)
-        if (recipe.isResource()) {
-          this.graph.setPriority(directOperation, this.resourceWeight(recipe, configuration), SOURCE_LEVEL)
-        }
+        this.setOperationPriorities(directOperation, configuration)
         for (const ingredient of directOperation.ingredients) this.ensureItem(ingredient.item)
       }
       const operation = addCraftRecipe(
@@ -7320,9 +7320,7 @@ class PracticalQualityGraphBuilder {
           configurations: recyclerConfigurations,
         })
       }
-      this.setOperationTiebreak(operation, configuration)
-      if (recipe.isResource())
-        this.graph.setPriority(operation, this.resourceWeight(recipe, configuration), SOURCE_LEVEL)
+      this.setOperationPriorities(operation, configuration)
       for (const ingredient of operation.ingredients) this.ensureItem(ingredient.item)
     }
   }
@@ -7679,44 +7677,65 @@ class PracticalQualityGraphBuilder {
     return configurations
   }
 
-  getSelfRecyclingConfiguration(recipe: Recipe): {
-    readonly recipe: Recipe
-    readonly configuration: QualityTierConfiguration
-  } | null {
-    if (recipe.products.length !== 1) return null
-    const product = recipe.products[0]
-    if (product === undefined || !isQualifiedSolid(product.item)) return null
-    const recyclerRecipe = quarterSelfRecyclerForItem(this.specification, product.item)
-    if (recyclerRecipe === null || !this.canRecycle(recyclerRecipe)) return null
-    const configurations = this.getRecyclerConfigurations(recyclerRecipe)
-    const configuration = configurations[0]
-    if (
-      configuration === undefined ||
-      configurations.some((candidate) => !candidate.qualityChance.equal(configuration.qualityChance))
-    ) {
-      return null
-    }
-    return { recipe: recyclerRecipe, configuration }
-  }
-
-  private resourceWeight(recipe: Recipe, configuration: QualityTierConfiguration): Rational {
-    return this.objective === "materials" && configuration.building instanceof Miner
-      ? resourceDrainRate(this.specification, recipe, configuration)
-      : LOCAL_RESOURCE_WEIGHT
-  }
-
-  private setOperationTiebreak(operation: QualityGraphRecipe, configuration: QualityTierConfiguration): void {
+  private operationCosts(
+    operation: QualityGraphRecipe,
+    configuration: QualityTierConfiguration,
+  ): {
+    readonly machines: Rational
+    readonly qualityModules: Rational
+    readonly power: Rational
+    readonly resources: Rational
+  } {
     const recipe = operation.metadata.baseRecipe
-    if (recipe === null || recipe.isResource()) return
+    if (recipe === null) return { machines: zero, qualityModules: zero, power: zero, resources: zero }
     const capacity = operationCapacity(this.specification, recipe, one, configuration)
-    const cost =
+    let machines = capacity.machineCount
+    let qualityModules = capacity.machineCount.mul(Rational.from_integer(qualityModuleCount(configuration)))
+    let power = capacity.power
+    const embedded = this.embeddedRecyclers.get(operation)
+    if (embedded !== undefined) {
+      for (let qualityLevel = 0; qualityLevel <= this.specification.maxQualityLevel; qualityLevel++) {
+        const recycleRate = operation.metadata.recycleRatesByQuality?.[qualityLevel] ?? zero
+        const recyclerConfiguration = embedded.configurations[qualityLevel]
+        if (recycleRate.isZero() || recyclerConfiguration === undefined) continue
+        const recyclerCapacity = operationCapacity(
+          this.specification,
+          embedded.recipe,
+          recycleRate,
+          recyclerConfiguration,
+        )
+        machines = machines.add(recyclerCapacity.machineCount)
+        qualityModules = qualityModules.add(
+          recyclerCapacity.machineCount.mul(Rational.from_integer(qualityModuleCount(recyclerConfiguration))),
+        )
+        power = power.add(recyclerCapacity.power)
+      }
+    }
+    return {
+      machines,
+      qualityModules,
+      power,
+      resources:
+        recipe.isResource() && configuration.building instanceof Miner
+          ? resourceDrainRate(this.specification, recipe, configuration)
+          : zero,
+    }
+  }
+
+  private setOperationPriorities(operation: QualityGraphRecipe, configuration: QualityTierConfiguration): void {
+    const costs = this.operationCosts(operation, configuration)
+    const objectiveCost =
       this.objective === "power"
-        ? capacity.power
+        ? costs.power
         : this.objective === "quality-modules"
-          ? capacity.machineCount.mul(Rational.from_integer(qualityModuleCount(configuration)))
-          : capacity.machineCount
-    if (this.objective === "quality-modules" && cost.isZero()) return
-    this.graph.setPriority(operation, cost.isZero() ? one : cost, LOCAL_OPERATION_LEVEL)
+          ? costs.qualityModules
+          : this.objective === "materials"
+            ? costs.resources
+            : costs.machines
+    if (!objectiveCost.isZero()) this.graph.setPriority(operation, objectiveCost, OBJECTIVE_LEVEL)
+    if (!costs.resources.isZero()) {
+      this.graph.setPriority(operation, costs.resources, TIEBREAK_LEVEL)
+    }
   }
 
   canRecycle(recipe: Recipe): boolean {
@@ -7842,6 +7861,9 @@ export function planPracticalQualityTarget(options: {
       machineCount: capacity.machineCount,
       power: capacity.power,
       kind,
+      ...(kind === "source"
+        ? { sourcePurpose: (solverRecipe.metadata.keepLevel ?? 0) > 0 ? ("quality" as const) : ("utility" as const) }
+        : {}),
       configuration,
     }
     const recyclerConfiguration = embedded?.configurations[0]
@@ -7850,17 +7872,14 @@ export function planPracticalQualityTarget(options: {
       embedded?.configurations.every((candidate) =>
         candidate.qualityChance.equal(recyclerConfiguration.qualityChance),
       ) === true
-    const standaloneSelfRecycler = kind === "source" ? builder.getSelfRecyclingConfiguration(baseRecipe) : null
-    const metricsRecyclerRecipe = embedded?.recipe ?? standaloneSelfRecycler?.recipe
-    const metricsRecyclerConfiguration = hasUniformRecyclerQuality
-      ? recyclerConfiguration
-      : standaloneSelfRecycler?.configuration
     const selfRecyclingLegendary =
-      qualityLevel === 4 &&
+      kind === "source" &&
       specification.maxQualityLevel === 4 &&
-      metricsRecyclerRecipe !== undefined &&
-      metricsRecyclerConfiguration !== undefined
-        ? selfRecyclingLegendaryMetrics(specification, operation, metricsRecyclerRecipe, metricsRecyclerConfiguration)
+      embedded !== undefined &&
+      hasUniformRecyclerQuality &&
+      recyclerConfiguration !== undefined &&
+      solverRecipe.metadata.recycleRatesByQuality?.some((recycleRate) => !recycleRate.isZero()) === true
+        ? selfRecyclingLegendaryMetrics(specification, operation, embedded.recipe, recyclerConfiguration)
         : null
     operations.push(selfRecyclingLegendary === null ? operation : { ...operation, selfRecyclingLegendary })
     if (kind === "source") {
@@ -11467,7 +11486,7 @@ function modelForGraph(graph: QualityGraph, output: QualityGraphItem, rate: Rati
       if (column === -1) continue
       const normalizedWeight = weight.div(minimumWeight)
       normalizedTotal = normalizedTotal.add(normalizedWeight)
-      combinedCosts[column] = one.add(priorityCost.mul(normalizedWeight))
+      combinedCosts[column] = combinedCosts[column]!.add(priorityCost.mul(normalizedWeight))
     }
     if (!normalizedTotal.isZero()) priorityCost = priorityCost.mul(costRatio).mul(normalizedTotal)
   }
@@ -14593,6 +14612,16 @@ function QualityPlanView({
   readonly plan: QualityTargetPlan
 }) {
   const beaconItem = specification.items.get("beacon")
+  const operationName = (operation: QualityOperationRate): string =>
+    operation.kind === "source"
+      ? `${operation.recipe.name} mining · ${operation.sourcePurpose ?? "utility"}`
+      : `${operation.kind}: ${operation.recipe.name}`
+  const operationQuality = (operation: QualityOperationRate): string => {
+    const quality = qualityName(operation.qualityLevel)
+    const hasSolidOutput = operation.recipe.products.some(({ item }) => isQualifiedSolid(item))
+    const hasFluidOutput = operation.recipe.products.some(({ item }) => !isQualifiedSolid(item))
+    return operation.qualityLevel > 0 && hasSolidOutput && hasFluidOutput ? `${quality} solid outputs` : quality
+  }
   return (
     <details open style={UI.details}>
       <summary style={UI.detailsSummary}>
@@ -14637,11 +14666,7 @@ function QualityPlanView({
               {plan.operations.map((operation, index) => (
                 <tr key={`${operation.recipe.key}-${operation.qualityLevel}-${operation.kind}-${index}`}>
                   <td style={UI.td}>
-                    <IconLabel
-                      icon={operation.recipe.icon}
-                      name={`${operation.kind}: ${operation.recipe.name}`}
-                      size={24}
-                    />
+                    <IconLabel icon={operation.recipe.icon} name={operationName(operation)} size={24} />
                     {operation.selfRecyclingLegendary === undefined ? null : (
                       <div
                         style={{
@@ -14673,7 +14698,7 @@ function QualityPlanView({
                       </div>
                     )}
                   </td>
-                  <td style={UI.td}>{qualityName(operation.qualityLevel)}</td>
+                  <td style={UI.td}>{operationQuality(operation)}</td>
                   <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.rate(operation.rate)}</td>
                   <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.count(operation.machineCount)}</td>
                   <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, operation.power)}</td>
