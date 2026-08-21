@@ -35,7 +35,6 @@ function snapshot(overrides = {}) {
     datasetKey: "space-age-2-1-13",
     activeTab: "totals",
     factoryDensity: "compact",
-    colorSchemeKey: "default",
     visualizerType: "sankey",
     visualizerRender: "zoom",
     visualizerDirection: "right",
@@ -178,6 +177,7 @@ test("settings are native React controls grouped by user intent", () => {
   assert.match(settingsHtml, /aria-label="Plan title"/)
   assert.match(settingsHtml, /<select/)
   assert.match(settingsHtml, /type="checkbox"/)
+  assert.doesNotMatch(settingsHtml, /Rate precision|Count precision|Format values as|Rationals|Color scheme/)
   assert.doesNotMatch(settingsHtml, /tippy|dropdownWrapper|display-row/)
 })
 

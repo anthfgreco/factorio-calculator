@@ -310,10 +310,9 @@ test("player number formatting uses exact Canadian grouping", () => {
 
   const formatter = new Formatter()
   formatter.setDisplayRate("s")
-  assert.equal(formatter.rate(Rational.from_string("1234567.89")), "1,234,567.89")
+  assert.equal(formatter.rate(Rational.from_string("1234567.89")), "1,234,567.9")
   assert.equal(formatter.count(Rational.from_integer(1_234_567)), "1,234,567")
-  formatter.displayFormat = "rational"
-  assert.equal(formatter.count(Rational.from_string("10000001/3")), "3,333,333 + 2/3")
+  assert.equal(formatter.count(Rational.from_string("10000001/3")), "3,333,333.7")
 })
 
 test("rational zero and equal-denominator operations keep exact fast paths", () => {

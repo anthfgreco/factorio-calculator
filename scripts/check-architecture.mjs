@@ -51,9 +51,9 @@ if (regions.length < 35 || regions.at(-1) !== "main.tsx") {
 for (const requiredText of [
   "const BASE_CSS = String.raw`",
   "const UI = {",
-  "function themeVariables(",
+  "const THEME_VARIABLES = {",
   "<style>{BASE_CSS}</style>",
-  "style={mergeStyles(UI.app, themeVariables(snapshot.colorSchemeKey))}",
+  "style={mergeStyles(UI.app, THEME_VARIABLES)}",
   "export function buildDeclarativeGraph(",
   'id="graph"',
   "export function CalculatorApp()",

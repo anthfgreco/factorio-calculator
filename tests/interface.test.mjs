@@ -37,8 +37,9 @@ test("runtime source is one React-owned TypeScript file", async () => {
   assert.match(main, /const BASE_CSS = String\.raw`/)
   assert.match(main, /<style>\{BASE_CSS\}<\/style>/)
   assert.match(main, /const UI = \{/)
-  assert.match(main, /themeVariables\(snapshot\.colorSchemeKey\)/)
-  assert.match(main, /readonly variables: Readonly<Record<`--\$\{string\}`, string>>/)
+  assert.match(main, /const THEME_VARIABLES = \{/)
+  assert.match(main, /mergeStyles\(UI\.app, THEME_VARIABLES\)/)
+  assert.doesNotMatch(main, /colorSchemes|colorSchemeKey|setColorScheme/)
   assert.doesNotMatch(main, /CALCULATOR_CSS|GLOBAL_CSS/)
 })
 

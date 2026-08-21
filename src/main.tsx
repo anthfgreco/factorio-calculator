@@ -1404,12 +1404,9 @@ export function simplex(tableau: Matrix): void {
 // Display formatting
 
 export const DEFAULT_RATE = "m"
-export const DEFAULT_RATE_PRECISION = 3
-export const DEFAULT_COUNT_PRECISION = 1
-export const DEFAULT_FORMAT = "decimal"
+const DISPLAY_PRECISION = 1
 
 export type DisplayRate = "s" | "m" | "h"
-export type DisplayFormat = "decimal" | "rational"
 
 const displayRates = new Map<DisplayRate, Rational>([
   ["s", one],
@@ -1427,9 +1424,6 @@ export class Formatter {
   rateName: DisplayRate = DEFAULT_RATE
   longRate = longRateNames.get(DEFAULT_RATE)!
   rateFactor = displayRates.get(DEFAULT_RATE)!
-  displayFormat: DisplayFormat = DEFAULT_FORMAT
-  ratePrecision = DEFAULT_RATE_PRECISION
-  countPrecision = DEFAULT_COUNT_PRECISION
 
   setDisplayRate(rate: DisplayRate): void {
     this.rateName = rate
@@ -1437,35 +1431,29 @@ export class Formatter {
     this.rateFactor = displayRates.get(rate)!
   }
 
-  private align(value: string, precision: number): string {
-    if (this.displayFormat === "rational") {
-      return value
-    }
+  private align(value: string): string {
     let decimalIndex = value.indexOf(".")
     if (decimalIndex === -1) {
       decimalIndex = value.length
     }
-    let padding = precision - value.length + decimalIndex + (precision > 0 ? 1 : 0)
+    let padding = DISPLAY_PRECISION - value.length + decimalIndex + 1
     return value + "\u00A0".repeat(Math.max(0, padding))
   }
 
   rate(rate: Rational): string {
-    let scaled = rate.mul(this.rateFactor)
-    const value = this.displayFormat === "rational" ? scaled.toMixed() : scaled.toDecimal(this.ratePrecision)
-    return formatCanadianNumber(value)
+    return formatCanadianNumber(rate.mul(this.rateFactor).toDecimal(DISPLAY_PRECISION))
   }
 
   alignRate(rate: Rational): string {
-    return this.align(this.rate(rate), this.ratePrecision)
+    return this.align(this.rate(rate))
   }
 
   count(count: Rational): string {
-    const value = this.displayFormat === "rational" ? count.toMixed() : count.toUpDecimal(this.countPrecision)
-    return formatCanadianNumber(value)
+    return formatCanadianNumber(count.toUpDecimal(DISPLAY_PRECISION))
   }
 
   alignCount(count: Rational): string {
-    return this.align(this.count(count), this.countPrecision)
+    return this.align(this.count(count))
   }
 }
 
@@ -9803,7 +9791,6 @@ export interface CalculatorSnapshot {
   readonly datasetKey: string
   readonly activeTab: CalculatorTab
   readonly factoryDensity: FactoryDensity
-  readonly colorSchemeKey: string
   readonly visualizerType: VisualizerType
   readonly visualizerRender: VisualizerRender
   readonly visualizerDirection: VisualizerDirection
@@ -10162,7 +10149,6 @@ const INITIAL_SNAPSHOT: CalculatorSnapshot = {
   datasetKey: DEFAULT_MODIFICATION,
   activeTab: DEFAULT_TAB,
   factoryDensity: "compact",
-  colorSchemeKey: "default",
   visualizerType: DEFAULT_VISUALIZER,
   visualizerRender: DEFAULT_RENDER,
   visualizerDirection: "right",
@@ -10190,7 +10176,6 @@ function createSnapshot(specification: FactorySpecification, revision: number): 
     datasetKey: currentMod(),
     activeTab: currentTab,
     factoryDensity,
-    colorSchemeKey: colorScheme.key,
     visualizerType,
     visualizerRender,
     visualizerDirection,
@@ -10278,50 +10263,21 @@ export function bindCalculatorSpecification(specification: FactorySpecification)
 }
 // endregion application/store.ts
 
-// region color-schemes.ts
-interface ColorScheme {
-  readonly name: string
-  readonly key: string
-  readonly variables: Readonly<Record<`--${string}`, string>>
-}
-
-export const colorSchemes = [
-  {
-    name: "Default",
-    key: "default",
-    variables: {
-      "--dark": "#171717",
-      "--dark-overlay": "rgba(23, 23, 23, 0.8)",
-      "--medium": "#212427",
-      "--main": "#272b30",
-      "--light": "#3a3f44",
-      "--rule": "#454b51",
-      "--foreground": "#c8c8c8",
-      "--muted": "#a7adb3",
-      "--accent": "#ff7200",
-      "--bright": "#f1fff2",
-      "--danger": "#f1a36c",
-    },
-  },
-  {
-    name: "Printer-friendly",
-    key: "printer",
-    variables: {
-      "--dark": "#f0f0f0",
-      "--dark-overlay": "#ffffff",
-      "--medium": "#ffffff",
-      "--main": "#ffffff",
-      "--light": "#dddddd",
-      "--rule": "#bbbbbb",
-      "--foreground": "#000000",
-      "--muted": "#555555",
-      "--accent": "#222222",
-      "--bright": "#111111",
-      "--danger": "#8a2f00",
-    },
-  },
-] as const satisfies readonly ColorScheme[]
-// endregion color-schemes.ts
+// region theme.ts
+const THEME_VARIABLES = {
+  "--dark": "#171717",
+  "--dark-overlay": "rgba(23, 23, 23, 0.8)",
+  "--medium": "#212427",
+  "--main": "#272b30",
+  "--light": "#3a3f44",
+  "--rule": "#454b51",
+  "--foreground": "#c8c8c8",
+  "--muted": "#a7adb3",
+  "--accent": "#ff7200",
+  "--bright": "#f1fff2",
+  "--danger": "#f1a36c",
+} as CSSProperties
+// endregion theme.ts
 
 // region settings/productivity-research.ts
 export const MAX_RECIPE_PRODUCTIVITY_PERCENT = 300
@@ -10601,9 +10557,6 @@ function applyFormatting(settings: SettingsMap): void {
   spec.format.setDisplayRate(
     rate !== undefined && longRateNames.has(rate as DisplayRate) ? (rate as DisplayRate) : DEFAULT_RATE,
   )
-  spec.format.ratePrecision = Number(settings.get("rp") ?? DEFAULT_RATE_PRECISION)
-  spec.format.countPrecision = Number(settings.get("cp") ?? DEFAULT_COUNT_PRECISION)
-  spec.format.displayFormat = settings.get("vf") === "r" ? "rational" : DEFAULT_FORMAT
 }
 
 function applyProductivity(settings: SettingsMap): void {
@@ -10615,13 +10568,6 @@ function applyProductivity(settings: SettingsMap): void {
     const level = Number(entry.slice(separator + 1))
     if (Number.isFinite(level) && level >= 0) spec.setRecipeProductivityLevel(entry.slice(0, separator), level)
   }
-}
-
-export const DEFAULT_COLOR_SCHEME = "default"
-export let colorScheme: ColorScheme = colorSchemes[0]!
-
-export function setColorScheme(schemeKey: string): void {
-  colorScheme = colorSchemes.find((scheme) => scheme.key === schemeKey) ?? colorSchemes[0]!
 }
 
 function applyBuildingPreferences(settings: SettingsMap): void {
@@ -10936,7 +10882,6 @@ export function applySettings(settings: SettingsMap): void {
   applyIgnore(settings)
   applyFormatting(settings)
   applyProductivity(settings)
-  setColorScheme(settings.get("c") ?? DEFAULT_COLOR_SCHEME)
   applyBuildingPreferences(settings)
   applyBeltsAndFuel(settings)
   applyPlanning(settings)
@@ -11153,20 +11098,8 @@ export function formatSettings(
   if (tab !== DEFAULT_TAB) {
     settings += "tab=" + tab + "&"
   }
-  if (colorScheme.key !== DEFAULT_COLOR_SCHEME) {
-    settings += "c=" + colorScheme.key + "&"
-  }
   if (factorySpec.format.rateName !== DEFAULT_RATE) {
     settings += "rate=" + factorySpec.format.rateName + "&"
-  }
-  if (factorySpec.format.ratePrecision !== DEFAULT_RATE_PRECISION) {
-    settings += "rp=" + factorySpec.format.ratePrecision + "&"
-  }
-  if (factorySpec.format.countPrecision !== DEFAULT_COUNT_PRECISION) {
-    settings += "cp=" + factorySpec.format.countPrecision + "&"
-  }
-  if (factorySpec.format.displayFormat !== DEFAULT_FORMAT) {
-    settings += "vf=" + factorySpec.format.displayFormat[0] + "&"
   }
   if (!factorySpec.miningProd.isZero()) {
     let hundred = Rational.from_float(100)
@@ -12463,11 +12396,6 @@ const UI = {
 
 function mergeStyles(...styles: (CSSProperties | false | null | undefined)[]): CSSProperties {
   return Object.assign({}, ...styles.filter(Boolean))
-}
-
-function themeVariables(key: string): CSSProperties {
-  const scheme = colorSchemes.find((candidate) => candidate.key === key) ?? colorSchemes[0]
-  return scheme.variables as CSSProperties
 }
 
 function runMutation(specification: FactorySpecification, operation: () => void, recalculate = true): void {
@@ -16240,101 +16168,6 @@ function GeneralSettings({ snapshot, commands }: CalculatorViewProps) {
             ))}
           </fieldset>
         </SettingsRow>
-        <SettingsPair>
-          <SettingsRow label="Rate precision" style={{ width: 240 }}>
-            <CommitInput
-              key={specification.format.ratePrecision}
-              value={String(specification.format.ratePrecision)}
-              ariaLabel="Rate precision"
-              inputMode="numeric"
-              style={{ width: 56 }}
-              onCommit={(value) => {
-                const precision = Number(value)
-                if (Number.isInteger(precision) && precision >= 0) {
-                  runMutation(
-                    specification,
-                    () => {
-                      specification.format.ratePrecision = precision
-                    },
-                    false,
-                  )
-                }
-              }}
-            />
-          </SettingsRow>
-          <SettingsRow label="Count precision" style={{ width: 240 }}>
-            <CommitInput
-              key={specification.format.countPrecision}
-              value={String(specification.format.countPrecision)}
-              ariaLabel="Count precision"
-              inputMode="numeric"
-              style={{ width: 56 }}
-              onCommit={(value) => {
-                const precision = Number(value)
-                if (Number.isInteger(precision) && precision >= 0) {
-                  runMutation(
-                    specification,
-                    () => {
-                      specification.format.countPrecision = precision
-                    },
-                    false,
-                  )
-                }
-              }}
-            />
-          </SettingsRow>
-        </SettingsPair>
-        <SettingsRow label="Format values as">
-          <fieldset
-            style={{
-              display: "grid",
-              gap: 2,
-              margin: 0,
-              padding: 0,
-              border: 0,
-            }}
-          >
-            {(
-              [
-                ["decimal", "Decimals"],
-                ["rational", "Rationals"],
-              ] as const
-            ).map(([value, label]) => (
-              <label key={value} style={{ display: "inline-flex", alignItems: "center" }}>
-                <input
-                  type="radio"
-                  name="number-format"
-                  value={value}
-                  checked={specification.format.displayFormat === value}
-                  onChange={() =>
-                    runMutation(
-                      specification,
-                      () => {
-                        specification.format.displayFormat = value
-                      },
-                      false,
-                    )
-                  }
-                />
-                {label}
-              </label>
-            ))}
-          </fieldset>
-        </SettingsRow>
-        <SettingsRow label="Color scheme" style={{ width: 150 }}>
-          <select
-            value={snapshot.colorSchemeKey}
-            aria-label="Color scheme"
-            style={compactSettingControl}
-            onChange={(event) => runMutation(specification, () => setColorScheme(event.currentTarget.value), false)}
-          >
-            {colorSchemes.map((scheme) => (
-              <option key={scheme.key} value={scheme.key}>
-                {scheme.name}
-              </option>
-            ))}
-          </select>
-        </SettingsRow>
       </SettingSection>
     </Fragment>
   )
@@ -17651,7 +17484,7 @@ export function CalculatorView({ snapshot, commands }: CalculatorViewProps) {
       <div
         className="calculator-app"
         data-density={snapshot.factoryDensity}
-        style={mergeStyles(UI.app, themeVariables(snapshot.colorSchemeKey))}
+        style={mergeStyles(UI.app, THEME_VARIABLES)}
       >
         <div style={UI.page}>
           <TargetsPanel snapshot={snapshot} commands={commands} />
