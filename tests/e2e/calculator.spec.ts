@@ -297,18 +297,18 @@ test("factory equipment, quality, beacons, and location are edited inline", asyn
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
-test("quality factory equipment survives a page-wide text selection", async ({ page }) => {
+test("quality factory equipment stays automatic and sprite-only", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page)
   await openReadyCalculator(page)
 
   await page.getByLabel("Apply preset").selectOption("full-legendary")
   await expect(page.getByText("Q-module equivalents", { exact: true })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByRole("button", { name: "Reset to automatic" })).toHaveCount(0)
+  await expect(page.getByLabel(/Machine quality for .* at/)).toHaveCount(0)
 
-  await page.keyboard.press("Control+A")
-  const factoryCopy = await page.evaluate(() => window.getSelection()?.toString() ?? "")
-  expect(factoryCopy).toMatch(/Machine: (?:Uncommon |Rare |Epic |Legendary )?[^.]+\. Modules: /)
-  expect(factoryCopy).toMatch(/Modules: [^.]*Quality module/)
-  expect(factoryCopy).toMatch(/Beacons: \d+(?:\.\d+)? (?:Uncommon |Rare |Epic |Legendary )?beacon; modules: /)
+  await expect(page.locator('[role="img"][aria-label="Quality module 2"]').first()).toBeVisible()
+  await expect(page.locator('[role="img"][aria-label$="Beacon"]').first()).toBeVisible()
+  await expect(page.getByText(/\d+× (?:[NUREL]-)?(?:Q|Prod|Speed)\d/)).toHaveCount(0)
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
@@ -392,10 +392,7 @@ test("popout target link opens the item calculation in a new tab", async ({ page
   await expect(popoutLink).toHaveAttribute("rel", "noopener noreferrer")
   await expect(popoutLink).toHaveAttribute("href", /^#/)
 
-  const [newPage] = await Promise.all([
-    context.waitForEvent("page"),
-    popoutLink.click(),
-  ])
+  const [newPage] = await Promise.all([context.waitForEvent("page"), popoutLink.click()])
 
   await newPage.waitForLoadState()
   await expect(newPage.getByRole("button", { name: "Choose output for target 1: Electronic circuit" })).toBeVisible()

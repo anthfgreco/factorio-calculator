@@ -5072,6 +5072,7 @@ export interface QualityTargetPlan {
   readonly totalPower: Rational
   readonly warnings: readonly string[]
 }
+
 // endregion quality/contracts.ts
 
 // region quality/math.ts
@@ -6171,12 +6172,13 @@ function configurationFromModuleSpec(
   recipe: Recipe,
   qualityLevel: number,
   moduleSpec: ModuleSpec,
+  machineQuality = specification.getMachineQuality(recipe),
 ): QualityTierConfiguration {
   const building = moduleSpec.building
   return {
     qualityLevel,
     building,
-    machineQuality: specification.getMachineQuality(recipe),
+    machineQuality,
     modules: [...moduleSpec.modules],
     moduleQualities: [...moduleSpec.moduleQualities],
     beaconModules: [...moduleSpec.beaconModules],
@@ -8016,7 +8018,38 @@ class PracticalQualityGraphBuilder {
   disposalConfiguration(recipe: Recipe, qualityLevel: number): QualityTierConfiguration {
     const configuration = this.getRecyclerConfigurations(recipe)[qualityLevel]
     if (configuration === undefined) throw new Error(`Missing recycler configuration for ${recipe.name}`)
-    return configuration
+    const moduleSpec = moduleSpecFromConfiguration(this.specification, recipe, configuration)
+    if (moduleSpec === null) return configuration
+    const moduleQuality = this.plannerQuality
+    const candidates = [...this.specification.modules.values()].filter(
+      (module) => module.category !== "quality" && module.canUse(recipe, moduleSpec.building),
+    )
+    const preferred = candidates.reduce<Module | null>((best, candidate) => {
+      if (this.objective !== "machines" && this.objective !== "power") return best
+      if (best === null) return candidate
+      return this.objective === "machines"
+        ? best.speedFor(moduleQuality).less(candidate.speedFor(moduleQuality))
+          ? candidate
+          : best
+        : candidate.powerFor(moduleQuality).less(best.powerFor(moduleQuality))
+          ? candidate
+          : best
+    }, null)
+    for (let index = 0; index < moduleSpec.modules.length; index++) {
+      const current = moduleSpec.modules[index]
+      if (current?.category === "quality") void moduleSpec.setModule(index, preferred)
+      if (preferred !== null) void moduleSpec.setModuleQuality(index, moduleQuality)
+    }
+    for (let index = 0; index < moduleSpec.beaconModules.length; index++) {
+      if (moduleSpec.beaconModules[index]?.category === "quality") moduleSpec.setBeaconModule(null, index)
+    }
+    return configurationFromModuleSpec(
+      this.specification,
+      recipe,
+      qualityLevel,
+      moduleSpec,
+      configuration.machineQuality,
+    )
   }
 }
 
@@ -14905,26 +14938,38 @@ function QualifiedAmountList({
   )
 }
 
-function QualityPlanView({
-  specification,
-  plan,
-}: {
-  readonly specification: FactorySpecification
-  readonly plan: QualityTargetPlan
-}) {
-  const beaconItem = specification.items.get("beacon")
-  interface QualityOperationDisplayRow {
-    readonly operation: QualityOperationRate
-    readonly qualityLevels: readonly number[]
-    readonly rate: Rational
-    readonly machineCount: Rational
-    readonly power: Rational
-  }
-  const equipmentKey = (operation: QualityOperationRate): string => {
+export interface QualityOperationDisplayRow {
+  readonly operation: QualityOperationRate
+  readonly qualityLevels: readonly number[]
+  readonly rate: Rational
+  readonly machineCount: Rational
+  readonly power: Rational
+}
+
+export function aggregateRecyclerDisplayRows(
+  operations: readonly QualityOperationRate[],
+  locationKey: string,
+): QualityOperationDisplayRow[] {
+  const rows: QualityOperationDisplayRow[] = []
+  const recyclerPools = new Map<string, number>()
+  for (const operation of operations) {
+    const row = {
+      operation,
+      qualityLevels: [operation.qualityLevel],
+      rate: operation.rate,
+      machineCount: operation.machineCount,
+      power: operation.power,
+    }
+    if (operation.kind !== "recycle" && operation.kind !== "dispose") {
+      rows.push(row)
+      continue
+    }
     const configuration = operation.configuration
-    return JSON.stringify([
-      operation.recipe.key,
+    const key = JSON.stringify([
       operation.kind,
+      operation.recipe.key,
+      operation.recipe.ingredients.map(({ item }) => item.key),
+      locationKey,
       configuration.building?.key ?? null,
       configuration.machineQuality.key,
       configuration.modules.map((module) => module?.key ?? null),
@@ -14934,40 +14979,33 @@ function QualityPlanView({
       configuration.beaconQuality.key,
       configuration.beaconCount.toString(),
     ])
-  }
-  const displayRows = (() => {
-    const rows: QualityOperationDisplayRow[] = []
-    const recyclers = new Map<string, number>()
-    for (const operation of plan.operations) {
-      const row = {
-        operation,
-        qualityLevels: [operation.qualityLevel],
-        rate: operation.rate,
-        machineCount: operation.machineCount,
-        power: operation.power,
-      }
-      if (operation.kind !== "recycle") {
-        rows.push(row)
-        continue
-      }
-      const key = equipmentKey(operation)
-      const existingIndex = recyclers.get(key)
-      if (existingIndex === undefined) {
-        recyclers.set(key, rows.length)
-        rows.push(row)
-        continue
-      }
-      const existing = rows[existingIndex]!
-      rows[existingIndex] = {
-        ...existing,
-        qualityLevels: [...existing.qualityLevels, operation.qualityLevel],
-        rate: existing.rate.add(operation.rate),
-        machineCount: existing.machineCount.add(operation.machineCount),
-        power: existing.power.add(operation.power),
-      }
+    const existingIndex = recyclerPools.get(key)
+    if (existingIndex === undefined) {
+      recyclerPools.set(key, rows.length)
+      rows.push(row)
+      continue
     }
-    return rows
-  })()
+    const existing = rows[existingIndex]!
+    rows[existingIndex] = {
+      ...existing,
+      qualityLevels: [...existing.qualityLevels, operation.qualityLevel],
+      rate: existing.rate.add(operation.rate),
+      machineCount: existing.machineCount.add(operation.machineCount),
+      power: existing.power.add(operation.power),
+    }
+  }
+  return rows
+}
+
+function QualityPlanView({
+  specification,
+  plan,
+}: {
+  readonly specification: FactorySpecification
+  readonly plan: QualityTargetPlan
+}) {
+  const beaconItem = specification.items.get("beacon")
+  const displayRows = aggregateRecyclerDisplayRows(plan.operations, plan.planetKey)
   const operationName = (operation: QualityOperationRate): string =>
     operation.kind === "source"
       ? `${operation.recipe.name} mining · ${operation.sourcePurpose ?? "utility"}`
@@ -15068,10 +15106,7 @@ function QualityPlanView({
                     <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.count(row.machineCount)}</td>
                     <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, row.power)}</td>
                     <td style={UI.td}>
-                      <div style={UI.row}>
-                        <CopyFriendlyText>
-                          {`Machine: ${operation.configuration.building === null ? "None" : qualifiedEquipmentName(operation.configuration.building, operation.configuration.machineQuality)}. Modules: ${moduleSelectionText(operation.configuration.modules, operation.configuration.moduleQualities, specification.getNormalQuality())}. Beacons: ${operation.configuration.beaconCount.toString()} ${qualifiedEquipmentName({ name: "beacon" }, operation.configuration.beaconQuality)}; modules: ${moduleSelectionText(operation.configuration.beaconModules, operation.configuration.beaconModuleQualities, specification.getNormalQuality())}. `}
-                        </CopyFriendlyText>
+                      <div style={{ ...UI.row, gap: 3, flexWrap: "nowrap" }}>
                         {operation.configuration.building === null ? null : (
                           <SpriteIcon
                             icon={operation.configuration.building.icon}
@@ -15086,7 +15121,7 @@ function QualityPlanView({
                               key={`${module.key}-${moduleIndex}`}
                               icon={module.icon}
                               quality={operation.configuration.moduleQualities[moduleIndex] ?? null}
-                              size={22}
+                              size={21}
                               title={module.name}
                             />
                           ),
@@ -15094,14 +15129,12 @@ function QualityPlanView({
                         {!operation.configuration.beaconCount.isZero() &&
                         operation.configuration.beaconModules.some((module) => module !== null) ? (
                           <>
-                            <span style={{ ...UI.muted, margin: "0 1px" }}>+</span>
-                            {beaconItem === undefined ? (
-                              <span style={UI.muted}>{operation.configuration.beaconQuality.name} beacon</span>
-                            ) : (
+                            <span style={UI.muted}>+</span>
+                            {beaconItem === undefined ? null : (
                               <SpriteIcon
                                 icon={beaconItem.icon}
                                 quality={operation.configuration.beaconQuality}
-                                size={22}
+                                size={21}
                                 title={`${operation.configuration.beaconQuality.name} Beacon`}
                               />
                             )}
@@ -15111,14 +15144,11 @@ function QualityPlanView({
                                   key={`beacon-${module.key}-${moduleIndex}`}
                                   icon={module.icon}
                                   quality={operation.configuration.beaconModuleQualities[moduleIndex] ?? null}
-                                  size={20}
+                                  size={19}
                                   title={`${module.name} in beacon`}
                                 />
                               ),
                             )}
-                            <span style={{ ...UI.muted, fontFamily: "monospace" }}>
-                              ×{operation.configuration.beaconCount.toDecimal()}
-                            </span>
                           </>
                         ) : null}
                       </div>

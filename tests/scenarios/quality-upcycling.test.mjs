@@ -382,7 +382,6 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
     plan.fluidInputs.some((entry) => entry.item.key === "molten-iron"),
     false,
   )
-
   const finalSmelting = plan.operations.find(
     (operation) => operation.recipe.key === "iron-plate" && operation.qualityLevel === 4,
   )
@@ -446,6 +445,43 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
   )
   assert.ok(
     fallback.operations.some((operation) => operation.kind === "dispose" && operation.recipe.key === "stone-recycling"),
+  )
+  const stoneDisposals = fallback.operations.filter(
+    (operation) => operation.kind === "dispose" && operation.recipe.key === "stone-recycling",
+  )
+  assert.equal(
+    stoneDisposals.every(
+      (operation) =>
+        operation.configuration.modules.every((module) => module === null) &&
+        operation.configuration.modules.every((module) => module?.category !== "quality") &&
+        operation.configuration.beaconModules.every((module) => module?.category !== "quality"),
+    ),
+    true,
+  )
+
+  specification.qualityPlannerObjective = "machines"
+  const machineOptimizedFallback = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: ironPlate,
+    recipe: normalSmelting,
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  const machineOptimizedDisposals = machineOptimizedFallback.operations.filter(
+    (operation) => operation.kind === "dispose" && operation.recipe.key === "stone-recycling",
+  )
+  assert.ok(machineOptimizedDisposals.length > 0)
+  assert.equal(
+    machineOptimizedDisposals.some((operation) =>
+      operation.configuration.modules.some((module) => module?.category === "speed"),
+    ),
+    true,
+  )
+  assert.equal(
+    machineOptimizedDisposals.every((operation) =>
+      operation.configuration.modules.every((module) => module?.category !== "quality"),
+    ),
+    true,
   )
 })
 

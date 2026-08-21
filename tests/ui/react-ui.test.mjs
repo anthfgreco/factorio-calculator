@@ -8,7 +8,7 @@ import { setupSpaceAgeFactory } from "../fixtures/factorio-runtime.mjs"
 
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
-const { CalculatorView } = await import(pathToFileURL(resolve(build, "main.js")).href)
+const { CalculatorView, aggregateRecyclerDisplayRows } = await import(pathToFileURL(resolve(build, "main.js")).href)
 
 const commands = new Proxy(
   {},
@@ -179,7 +179,7 @@ test("settings are native React controls grouped by user intent", () => {
   assert.doesNotMatch(settingsHtml, /tippy|dropdownWrapper|display-row/)
 })
 
-test("quality results combine shared sushi recyclers and render their beacon equipment", () => {
+test("quality results combine shared sushi recyclers and render their automatic equipment sprites", () => {
   const recyclerRows = [...qualityHtml.matchAll(/<tr[^>]*>.*?<\/tr>/g)]
     .map(([row]) => row)
     .filter((row) => row.includes("recycle: Calcite recycling"))
@@ -188,9 +188,67 @@ test("quality results combine shared sushi recyclers and render their beacon equ
   assert.ok(beaconRow)
   assert.match(beaconRow, /recycle: Calcite recycling/)
   assert.match(beaconRow, /Normal–Epic/)
+  assert.match(beaconRow, /title="Quality module 2"/)
   assert.match(beaconRow, /title="Normal Beacon"/)
   assert.match(beaconRow, /title="Speed module 2 in beacon"/)
-  assert.match(beaconRow, />×1<\/span>/)
+  assert.doesNotMatch(beaconRow, /\d+× (?:L-)?(?:Q2|Speed2)/)
+  assert.doesNotMatch(qualityHtml, /Reset to automatic|Machine quality for .* at|<details style="margin-top:4px"/)
+})
+
+test("recycler display rows represent physically shareable Stone recycler pools", () => {
+  const plan = qualityRuntime.specification.qualityPlans[0]
+  assert.ok(plan)
+  const recycler = plan.operations.find((operation) => operation.kind === "recycle")
+  assert.ok(recycler)
+  const stoneRecycling = qualityRuntime.recipes.get("stone-recycling")
+  assert.ok(stoneRecycling)
+  const amount = (value) => qualityRuntime.math.Rational.from_integer(value)
+  const stoneDisposals = Array.from({ length: 5 }, (_, qualityLevel) => ({
+    ...recycler,
+    recipe: stoneRecycling,
+    kind: "dispose",
+    qualityLevel,
+    rate: amount(qualityLevel + 1),
+    machineCount: amount(qualityLevel + 2),
+    power: amount(qualityLevel + 3),
+  }))
+
+  const pooled = aggregateRecyclerDisplayRows(stoneDisposals, "vulcanus")
+  assert.equal(pooled.length, 1)
+  assert.deepEqual(pooled[0].qualityLevels, [0, 1, 2, 3, 4])
+  assert.equal(pooled[0].rate.toString(), "15")
+  assert.equal(pooled[0].machineCount.toString(), "20")
+  assert.equal(pooled[0].power.toString(), "25")
+
+  const differentModules = {
+    ...stoneDisposals[0],
+    configuration: {
+      ...stoneDisposals[0].configuration,
+      moduleQualities: stoneDisposals[0].configuration.moduleQualities.map((quality) =>
+        qualityRuntime.specification.qualities.get(quality.key === "normal" ? "legendary" : "normal"),
+      ),
+    },
+  }
+  const differentBeacons = {
+    ...stoneDisposals[1],
+    configuration: {
+      ...stoneDisposals[1].configuration,
+      beaconCount: stoneDisposals[1].configuration.beaconCount.add(amount(1)),
+    },
+  }
+  assert.equal(
+    aggregateRecyclerDisplayRows([...stoneDisposals, differentModules, differentBeacons], "vulcanus").length,
+    3,
+  )
+
+  const recycle = { ...stoneDisposals[0], kind: "recycle" }
+  assert.equal(aggregateRecyclerDisplayRows([...stoneDisposals, recycle], "vulcanus").length, 2)
+
+  const crafts = [
+    { ...stoneDisposals[0], kind: "craft", qualityLevel: 0 },
+    { ...stoneDisposals[1], kind: "craft", qualityLevel: 1 },
+  ]
+  assert.equal(aggregateRecyclerDisplayRows([...stoneDisposals, ...crafts], "vulcanus").length, 3)
 })
 
 test("visualizer is declarative SVG rendered by React", () => {
