@@ -7376,19 +7376,63 @@ class PracticalQualityGraphBuilder {
       building === null
         ? null
         : bestModule(this.specification, recipe, building, this.productivityQuality, "productivity")
+    const configuredSpeedModule = this.specification.qualityPlannerMiningModule
+    const speedModule =
+      building !== null &&
+      configuredSpeedModule !== null &&
+      configuredSpeedModule.canUse(recipe, building) &&
+      zero.less(configuredSpeedModule.speedFor(this.miningModuleQuality))
+        ? configuredSpeedModule
+        : null
     configurations = Array.from({ length: this.specification.maxQualityLevel + 1 }, (_, qualityLevel) => {
       const qualityGoal = this.profile === "planet" ? this.targetQualityLevel : keepLevel
-      const wantsQuality = qualityGoal > qualityLevel && recipe.allow_quality
-      const configured = moduleTierConfiguration({
-        specification: this.specification,
-        recipe,
-        qualityLevel,
-        building,
-        module: wantsQuality ? qualityModule : productivityModule,
-        moduleQuality: wantsQuality ? this.plannerQuality : this.productivityQuality,
-        preserveBeacons: false,
+      const producesQuality = qualityGoal > qualityLevel && recipe.allow_quality
+      const targetQuality = qualityGoal > 0 && qualityLevel >= qualityGoal
+      const configuration = (module: Module | null, moduleQuality: Quality) =>
+        moduleTierConfiguration({
+          specification: this.specification,
+          recipe,
+          qualityLevel,
+          building,
+          module,
+          moduleQuality,
+          preserveBeacons: false,
+        })
+      if (producesQuality) {
+        const configured = configuration(qualityModule, this.plannerQuality)
+        return qualityLevel === 0 ? this.optimizeSelfRecyclingFactory(recipe, configured) : configured
+      }
+      if (targetQuality) {
+        return productivityModule !== null
+          ? configuration(productivityModule, this.productivityQuality)
+          : configuration(speedModule, this.miningModuleQuality)
+      }
+
+      const candidates = [
+        configuration(null, this.specification.getNormalQuality()),
+        ...(productivityModule === null ? [] : [configuration(productivityModule, this.productivityQuality)]),
+        ...(speedModule === null ? [] : [configuration(speedModule, this.miningModuleQuality)]),
+      ]
+      const cost = (candidate: QualityTierConfiguration) => {
+        const craftRate = candidate.productivity.reciprocate()
+        const capacity = operationCapacity(this.specification, recipe, craftRate, candidate)
+        return {
+          primary:
+            this.objective === "materials"
+              ? craftRate
+              : this.objective === "power"
+                ? capacity.power
+                : capacity.machineCount,
+          machines: capacity.machineCount,
+        }
+      }
+      return candidates.reduce((best, candidate) => {
+        const bestCost = cost(best)
+        const candidateCost = cost(candidate)
+        if (candidateCost.primary.less(bestCost.primary)) return candidate
+        if (bestCost.primary.less(candidateCost.primary)) return best
+        return candidateCost.machines.less(bestCost.machines) ? candidate : best
       })
-      return qualityLevel === 0 && wantsQuality ? this.optimizeSelfRecyclingFactory(recipe, configured) : configured
     })
     this.configurations.set(cacheKey, configurations)
     return configurations

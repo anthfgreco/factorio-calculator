@@ -564,6 +564,16 @@ test("Vulcanus practical electronics honor the dedicated productivity module pro
   )
   assert.ok(plan.operations.some((operation) => operation.recipe.key === "casting-iron"))
   assert.ok(plan.operations.some((operation) => operation.recipe.key === "casting-copper-cable"))
+  const feederOperations = (candidatePlan) =>
+    candidatePlan.operations.filter(
+      (operation) => operation.recipe.key === "casting-iron" || operation.recipe.key === "casting-copper-cable",
+    )
+  assert.equal(
+    feederOperations(plan).every((operation) =>
+      operation.configuration.modules.every((module) => module?.category === "speed"),
+    ),
+    true,
+  )
 
   const qualityStages = plan.operations.filter(
     (operation) => operation.recipe.key === "electronic-circuit" && operation.qualityLevel < 4,
@@ -591,6 +601,38 @@ test("Vulcanus practical electronics honor the dedicated productivity module pro
   )
   assert.equal(
     legendaryStage.configuration.moduleQualities.every((quality) => quality.key === "rare"),
+    true,
+  )
+
+  specification.qualityPlannerObjective = "machines"
+  const machinePlan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: requireValue(items, "electronic-circuit"),
+    recipe: requireValue(recipes, "electronic-circuit"),
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  assert.equal(machinePlan.requested.toString(), plan.requested.toString())
+  assert.equal(
+    feederOperations(machinePlan).every((operation) =>
+      operation.configuration.modules.every((module) => module?.category === "speed"),
+    ),
+    true,
+  )
+
+  specification.qualityPlannerObjective = "materials"
+  const materialPlan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: requireValue(items, "electronic-circuit"),
+    recipe: requireValue(recipes, "electronic-circuit"),
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  assert.equal(materialPlan.requested.toString(), plan.requested.toString())
+  assert.equal(
+    feederOperations(materialPlan).every((operation) =>
+      operation.configuration.modules.every((module) => module?.category === "productivity"),
+    ),
     true,
   )
 })
