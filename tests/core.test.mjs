@@ -513,8 +513,18 @@ test("simplex productivity excludes catalyst and coolant returns", () => {
 })
 
 test("priority model stays deterministic without a DOM", () => {
-  const low = { key: "low", isResource: () => true, defaultPriority: 0, defaultWeight: Rational.from_integer(2) }
-  const high = { key: "high", isResource: () => true, defaultPriority: 0, defaultWeight: Rational.from_integer(1) }
+  const low = {
+    key: "low",
+    isResource: () => true,
+    defaultPriority: 0,
+    defaultWeight: Rational.from_integer(2),
+  }
+  const high = {
+    key: "high",
+    isResource: () => true,
+    defaultPriority: 0,
+    defaultWeight: Rational.from_integer(1),
+  }
   const defaults = PriorityList.getDefaultArray(
     new Map([
       [low.key, low],
@@ -550,7 +560,10 @@ test("speedEffect clamps total speed multiplier to 20% minimum floor", () => {
       return this.speed
     },
   }
-  const spec = new ModuleSpec(null, { defaultBeacon: [], defaultBeaconCount: zero })
+  const spec = new ModuleSpec(null, {
+    defaultBeacon: [],
+    defaultBeaconCount: zero,
+  })
   spec.modules = Array(8).fill(prod3)
   assert.equal(spec.speedEffect().toString(), "1/5")
 })
@@ -1137,7 +1150,13 @@ test(
   "solver returns a typed failure for an infeasible zero-net cycle",
   { timeout: SYNTHETIC_SOLVER_TIMEOUT_MS },
   () => {
-    const item = { key: "closed-loop", name: "Closed loop", recipes: [], uses: [], disableRecipe: null }
+    const item = {
+      key: "closed-loop",
+      name: "Closed loop",
+      recipes: [],
+      uses: [],
+      disableRecipe: null,
+    }
     const recipe = {
       key: "closed-loop",
       name: "Closed loop",
@@ -1229,7 +1248,9 @@ test("Space Age rocket silos overlap crafting and expose the launch-animation ca
   assert.equal(factorySpec.getRecipeRate(recipe).toString(), "1/3")
   assert.equal(stats.launchLimited, false)
 
-  let report = getRocketLaunchReport(factorySpec, { rates: new Map([[recipe, Rational.from_floats(1, 3)]]) })
+  let report = getRocketLaunchReport(factorySpec, {
+    rates: new Map([[recipe, Rational.from_floats(1, 3)]]),
+  })
   assert.equal(report.launches.toString(), "1/150")
   assert.equal(report.exactSilos.toString(), "1")
 
@@ -1253,7 +1274,9 @@ test("Space Age rocket silos overlap crafting and expose the launch-animation ca
   assert.equal(stats.craftsPerLaunch.toString(), "250/7")
   assert.equal(stats.launchLimited, true)
 
-  report = getRocketLaunchReport(factorySpec, { rates: new Map([[recipe, stats.craftsPerLaunch]]) })
+  report = getRocketLaunchReport(factorySpec, {
+    rates: new Map([[recipe, stats.craftsPerLaunch]]),
+  })
   assert.equal(report.launches.toString(), "1")
   assert.equal(report.exactSilos.toString(), Rational.from_floats(1614, 60).toString())
 
@@ -1306,7 +1329,6 @@ test("default advanced circuit quality target recommends assembling machine 2 an
       item,
       recipe,
       qualityLevel: 1,
-      qualityStrategy: "direct",
       changedBuilding: false,
       getRate: () => one,
     },
@@ -1351,14 +1373,10 @@ test("target quality handler enables automatic planet planning without mutating 
     item,
     recipe,
     qualityLevel: 0,
-    qualityStrategy: "direct",
     changedBuilding: false,
     getRate: () => one,
-    setQuality(level) {
+    setQuality(level, preservedRate) {
       this.qualityLevel = level
-    },
-    setQualityStrategy(strategy, preservedRate) {
-      this.qualityStrategy = strategy
       this.preservedRate = preservedRate
     },
   }
@@ -1367,7 +1385,6 @@ test("target quality handler enables automatic planet planning without mutating 
   handleTargetQualityChange(factorySpec, target, 4)
 
   assert.equal(target.qualityLevel, 4)
-  assert.equal(target.qualityStrategy, "auto")
   assert.equal(target.preservedRate.toString(), "1")
   assert.equal(factorySpec.spec.has(recipe), hadRecipeCustomization)
   assert.equal(factorySpec.getBuilding(recipe), originalBuilding)
@@ -1379,7 +1396,6 @@ test("target quality handler enables automatic planet planning without mutating 
 
   handleTargetQualityChange(factorySpec, target, 0)
   assert.equal(target.qualityLevel, 0)
-  assert.equal(target.qualityStrategy, "direct")
   assert.equal(factorySpec.qualityPlans.length, 0)
   assert.equal(factorySpec.spec.has(recipe), hadRecipeCustomization)
   assert.equal(factorySpec.getBuilding(recipe), originalBuilding)
@@ -1463,52 +1479,6 @@ test("quality feasibility reports unavailable module and machine paths without s
   assert.equal(factorySpec.getBuilding(recipe), assemblingMachine1)
 })
 
-test("the solver still rejects a manually constructed impossible quality target", async () => {
-  const { factorySpec, recipes, items, planets } = await setupTestFactory()
-  factorySpec.selectOnePlanet(planets.get("nauvis"))
-  const recipe = recipes.get("advanced-circuit")
-  factorySpec.buildTargets = [
-    {
-      item: items.get("advanced-circuit"),
-      recipe,
-      qualityLevel: 1,
-      qualityStrategy: "direct",
-      changedBuilding: false,
-      getRate: () => one,
-    },
-  ]
-  assert.throws(() => factorySpec.solve(), /cannot produce Uncommon output/)
-})
-
-test("exact-quality targets scale the selected recipe by its direct yield", async () => {
-  const { factorySpec, recipes, items, modules, planets } = await setupTestFactory()
-  factorySpec.selectOnePlanet(planets.get("nauvis"))
-  const item = items.get("electronic-circuit")
-  const recipe = recipes.get("electronic-circuit")
-  factorySpec.setBuildingOverride(recipe, factorySpec.buildingKeys.get("assembling-machine-3"))
-  const moduleSpec = factorySpec.getModuleSpec(recipe)
-  const qualityModule = modules.get("quality-module-3")
-  for (let index = 0; index < moduleSpec.modules.length; index++) {
-    moduleSpec.setModule(index, qualityModule)
-  }
-  const chance = qualityModule.quality.mul(Rational.from_integer(moduleSpec.modules.length))
-  const probability = qualityProbability(chance, 1, 4)
-  factorySpec.buildTargets = [
-    {
-      item,
-      recipe,
-      qualityLevel: 1,
-      qualityStrategy: "direct",
-      changedBuilding: false,
-      getRate: () => one,
-    },
-  ]
-
-  const totals = factorySpec.solve()
-  assert.equal(totals.products.get(item).toString(), probability.reciprocate().toString())
-  assert.ok(totals.rates.has(recipe))
-})
-
 test("recipe location pins produce explicit interplanetary transport flows", async () => {
   const { factorySpec, recipes, items, planets } = await setupTestFactory()
   factorySpec.selectOnePlanet(planets.get("nauvis"))
@@ -1519,7 +1489,15 @@ test("recipe location pins produce explicit interplanetary transport flows", asy
   factorySpec.setRecipeLocation(circuits, planets.get("nauvis"))
   const copperCable = items.get("copper-cable")
   const totals = {
-    proportionate: [{ item: copperCable, from: cable, to: circuits, rate: Rational.from_float(6), fuel: false }],
+    proportionate: [
+      {
+        item: copperCable,
+        from: cable,
+        to: circuits,
+        rate: Rational.from_float(6),
+        fuel: false,
+      },
+    ],
   }
   const flows = getTransportFlows(factorySpec, totals)
   assert.equal(flows.length, 1)

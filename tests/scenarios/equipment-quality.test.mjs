@@ -171,13 +171,9 @@ test("the low-level Full Legendary quality operation preserves factory progressi
   const targetRate = math.Rational.from_integer(17)
   const target = {
     qualityLevel: 0,
-    qualityStrategy: "direct",
     getRate: () => targetRate,
-    setQuality(level) {
+    setQuality(level, preservedRate) {
       this.qualityLevel = Number(level)
-    },
-    setQualityStrategy(strategy, preservedRate) {
-      this.qualityStrategy = strategy
       this.preservedRate = preservedRate
     },
   }
@@ -198,7 +194,6 @@ test("the low-level Full Legendary quality operation preserves factory progressi
   assert.equal(moduleSpec.beaconQuality, legendary)
   assert.equal(moduleSpec.beaconQualityOverride, false)
   assert.equal(target.qualityLevel, 4)
-  assert.equal(target.qualityStrategy, "auto")
   assert.equal(target.preservedRate, targetRate)
 
   assert.deepEqual([...specification.selectedPlanets], [vulcanus])
@@ -247,13 +242,9 @@ test("the Full Legendary preset applies Late Space Age progression before Legend
   const targetRate = math.Rational.from_integer(17)
   const target = {
     qualityLevel: 0,
-    qualityStrategy: "direct",
     getRate: () => targetRate,
-    setQuality(level) {
+    setQuality(level, preservedRate) {
       this.qualityLevel = Number(level)
-    },
-    setQualityStrategy(strategy, preservedRate) {
-      this.qualityStrategy = strategy
       this.preservedRate = preservedRate
     },
   }
@@ -282,6 +273,5 @@ test("the Full Legendary preset applies Late Space Age progression before Legend
   assert.equal(specification.qualityPlannerModuleQuality, legendary)
   assert.equal(specification.qualityPlannerProductivityModuleQuality, legendary)
   assert.equal(target.qualityLevel, 4)
-  assert.equal(target.qualityStrategy, "auto")
   assert.equal(target.preservedRate, targetRate)
 })

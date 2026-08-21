@@ -64,7 +64,7 @@ summary { list-style-position: outside; }
   .target-machines { grid-column: 2; width: calc(50% - 4px); }
   .target-rate { grid-column: 2; width: calc(50% - 4px); margin-left: calc(50% + 4px); margin-top: -53px; }
   .target-belts { grid-column: 2; max-width: 135px; margin-top: -11px; }
-  .target-strategy, .target-warning { grid-column: 1 / -1 !important; margin-left: 40px; }
+  .target-warning { grid-column: 1 / -1 !important; margin-left: 40px; }
   .planner-toolbar { display: grid !important; justify-items: start; gap: 10.5px !important; }
   .planner-toolbar > label { display: grid !important; grid-template-columns: auto 158px; align-items: center; gap: 8px; width: max-content !important; padding-left: 0 !important; border-left: 0 !important; }
   .planner-toolbar > label select { width: 158px !important; }
@@ -1473,7 +1473,10 @@ export class Formatter {
 
 const powerSuffixes = ["W", "kW", "MW", "GW", "TW", "PW"] as const
 
-export function powerRepresentation(value: Rational): { power: Rational; suffix: string } {
+export function powerRepresentation(value: Rational): {
+  power: Rational
+  suffix: string
+} {
   let thousand = Rational.from_float(1000)
   let power = value
   let suffixIndex = 0
@@ -2184,7 +2187,10 @@ export function getRecipeProductivityResearch(
       icon_row: entry.icon_row,
       effects,
     }
-    const research: RecipeProductivityResearch = { ...iconTarget, icon: new Icon(iconTarget) }
+    const research: RecipeProductivityResearch = {
+      ...iconTarget,
+      icon: new Icon(iconTarget),
+    }
     result.set(entry.key, research)
   }
   return result
@@ -4347,7 +4353,7 @@ export class ResourceRecipe extends Recipe {
       item.order,
       item.icon_col,
       item.icon_row,
-      false,
+      true,
       true,
       category,
       zero,
@@ -4777,8 +4783,16 @@ export function getRecipeSelectorGroups(recipes: readonly Recipe[], activeRecipe
   const productionRecipes = recipes.filter((recipe) => !isRecyclingRecipe(recipe))
   const recyclingRecipes = recipes.filter(isRecyclingRecipe)
   return [
-    { key: "production", name: "Production", recipes: orderGroup(productionRecipes) },
-    { key: "recycling", name: "Recycling", recipes: orderGroup(recyclingRecipes) },
+    {
+      key: "production",
+      name: "Production",
+      recipes: orderGroup(productionRecipes),
+    },
+    {
+      key: "recycling",
+      name: "Recycling",
+      recipes: orderGroup(recyclingRecipes),
+    },
   ].filter((group) => group.recipes.length > 0)
 }
 
@@ -4984,17 +4998,12 @@ export function isFactoryTarget(specification: RecipeSettingsSpecification, reci
 // endregion recipes.ts
 
 // region quality/contracts.ts
-export type QualityStrategy = "direct" | "auto"
-export type QualityOptimizationObjective = "configured" | "materials" | "machines" | "power"
-export type QualityPlannerObjective = "practical" | "materials" | "machines" | "power"
+export type QualityOptimizationObjective = "configured" | "quality-modules" | "materials" | "machines" | "power"
+export type QualityPlannerObjective = "quality-modules" | "materials" | "machines" | "power"
 export type QualityPlanProfile = "planet" | "vulcanus"
 
-export function isQualityStrategy(value: string): value is QualityStrategy {
-  return value === "direct" || value === "auto"
-}
-
 export function isQualityPlannerObjective(value: string): value is QualityPlannerObjective {
-  return value === "practical" || value === "materials" || value === "machines" || value === "power"
+  return value === "quality-modules" || value === "materials" || value === "machines" || value === "power"
 }
 
 export interface QualifiedItemAmount {
@@ -5058,6 +5067,7 @@ export interface QualityTargetPlan {
   readonly totalCrafts: Rational
   readonly totalRecycles: Rational
   readonly totalMachineCount: Rational
+  readonly totalQualityModules: Rational
   readonly totalPower: Rational
   readonly warnings: readonly string[]
 }
@@ -5271,7 +5281,6 @@ export interface PlanningTarget {
   readonly item: Item
   readonly recipe: Recipe | null
   readonly qualityLevel: number
-  readonly qualityStrategy: QualityStrategy
   getRate(): Rational
 }
 
@@ -5321,19 +5330,6 @@ export interface PollutionComponents {
   readonly machine: Rational
   readonly process: Rational
   readonly total: Rational
-}
-
-export interface QualityTargetRow {
-  readonly item: Item
-  readonly recipe: Recipe
-  readonly tier: (typeof QUALITY_TIERS)[number]
-  readonly qualityLevel: number
-  readonly chance: Rational
-  readonly probability: Rational
-  readonly requested: Rational
-  readonly totalProduction: Rational
-  readonly otherQualityByproduct: Rational
-  readonly strategy: "direct"
 }
 
 export type QualityTargetFeasibility =
@@ -5514,23 +5510,6 @@ export function getQualityTargetFeasibility(
   return { status: "unavailable", reason: "module-incompatible" }
 }
 
-export function getQualityTargetMultiplier(
-  specification: PlanningSpecification,
-  recipe: Recipe,
-  qualityLevel: number,
-): Rational {
-  if (!qualityLevel) return one
-  const chance = getRecipeQualityChance(specification, recipe)
-  const probability = qualityProbability(chance, qualityLevel, specification.maxQualityLevel)
-  if (probability.isZero()) {
-    const tier = QUALITY_TIERS[qualityLevel] ?? `quality ${qualityLevel}`
-    throw new Error(
-      `${recipe.name} cannot produce ${tier} output with the current quality settings. Choose a lower tier or add quality modules.`,
-    )
-  }
-  return probability.reciprocate()
-}
-
 export function getCompatibleLocations(
   specification: PlanningSpecification,
   recipe: Recipe,
@@ -5566,7 +5545,13 @@ export function getTransportFlows(specification: PlanningSpecification, totals: 
     if (existing) {
       existing.rate = existing.rate.add(link.rate)
     } else {
-      flows.set(key, { from, to, item: link.item, rate: link.rate, fuel: link.fuel })
+      flows.set(key, {
+        from,
+        to,
+        item: link.item,
+        rate: link.rate,
+        fuel: link.fuel,
+      })
     }
   }
   return [...flows.values()].sort((a, b) =>
@@ -5695,36 +5680,6 @@ export function getAquiloHeat(specification: PlanningSpecification, recipe: Reci
   return Rational.from_float(heatKw * 1000).mul(specification.getCount(recipe, rate).ceil())
 }
 
-export function getQualityTargetReport(specification: PlanningSpecification): QualityTargetRow[] {
-  const rows: QualityTargetRow[] = []
-  for (const target of specification.buildTargets ?? []) {
-    if (!target.qualityLevel || target.qualityStrategy !== "direct") continue
-    const recipe =
-      target.recipe ?? specification.getRecipes(target.item).find((candidate) => candidate instanceof Recipe)
-    if (!recipe) continue
-    const chance = getRecipeQualityChance(specification, recipe)
-    const probability = qualityProbability(chance, target.qualityLevel, specification.maxQualityLevel)
-    if (probability.isZero()) continue
-    const requested = target.getRate()
-    const totalProduction = requested.div(probability)
-    const tier = QUALITY_TIERS[target.qualityLevel]
-    if (tier === undefined) continue
-    rows.push({
-      item: target.item,
-      recipe,
-      tier,
-      qualityLevel: target.qualityLevel,
-      chance,
-      probability,
-      requested,
-      totalProduction,
-      otherQualityByproduct: totalProduction.sub(requested),
-      strategy: "direct",
-    })
-  }
-  return rows
-}
-
 export function getPlanningSummary(specification: PlanningSpecification, totals: Totals) {
   let beaconPower = zero
   let pollution = zero
@@ -5802,7 +5757,11 @@ export function getPlanningSummary(specification: PlanningSpecification, totals:
     pollution,
     spores,
     emissions: {
-      pollution: { machine: pollutionMachine, process: pollutionProcess, total: pollution },
+      pollution: {
+        machine: pollutionMachine,
+        process: pollutionProcess,
+        total: pollution,
+      },
       spores: { machine: sporeMachine, process: sporeProcess, total: spores },
     },
     rocket: getRocketLaunchReport(specification, totals),
@@ -5813,7 +5772,6 @@ export function getPlanningSummary(specification: PlanningSpecification, totals:
     transport: getTransportFlows(specification, totals),
     freshness: getFreshnessReport(specification, totals),
     asteroidConstraints: getAsteroidConstraintReport(specification, totals),
-    qualityTargets: getQualityTargetReport(specification),
     qualityPlans: specification.qualityPlans,
   }
 }
@@ -6072,7 +6030,11 @@ export class QualityGraph {
   solve(output: QualityGraphItem, rate: Rational, optimizer: QualityGraphOptimizer | null = null): Totals {
     const viableRecipes = this.solverRecipes()
     const spec = this.solverSpec(viableRecipes)
-    spec.buildTargets.push({ item: output, recipe: null, changedBuilding: false })
+    spec.buildTargets.push({
+      item: output,
+      recipe: null,
+      changedBuilding: false,
+    })
 
     try {
       const optimized = optimizer?.solve(this, output, rate) ?? null
@@ -6292,22 +6254,75 @@ function moduleSpecFromConfiguration(
   return moduleSpec
 }
 
+function configurationWithModuleLoadout(
+  specification: FactorySpecification,
+  recipe: Recipe,
+  configuration: QualityTierConfiguration,
+  qualityModule: Module | null,
+  qualityModuleQuality: Quality,
+  qualityModuleCount: number,
+  productivityModule: Module | null,
+  productivityModuleQuality: Quality,
+  productivityModuleCount: number,
+): QualityTierConfiguration {
+  const moduleSpec = moduleSpecFromConfiguration(specification, recipe, configuration)
+  if (moduleSpec === null) return configuration
+  const normal = specification.getNormalQuality()
+  for (let index = 0; index < moduleSpec.modules.length; index++) {
+    const useQuality =
+      index < qualityModuleCount && qualityModule !== null && qualityModule.canUse(recipe, moduleSpec.building)
+    const useProductivity =
+      !useQuality &&
+      index < qualityModuleCount + productivityModuleCount &&
+      productivityModule !== null &&
+      productivityModule.canUse(recipe, moduleSpec.building)
+    moduleSpec.modules[index] = useQuality ? qualityModule : useProductivity ? productivityModule : null
+    moduleSpec.moduleQualities[index] = useQuality
+      ? qualityModuleQuality
+      : useProductivity
+        ? productivityModuleQuality
+        : normal
+  }
+  return configurationFromModuleSpec(specification, recipe, configuration.qualityLevel, moduleSpec)
+}
+
 function configurationWithBeaconSetup(
   specification: FactorySpecification,
   recipe: Recipe,
   configuration: QualityTierConfiguration,
   beaconModule: Module | null,
   beaconModuleQuality: Quality,
+  beaconModuleSlots: number,
   beaconQuality: Quality,
   beaconCount: Rational,
 ): QualityTierConfiguration {
   const moduleSpec = moduleSpecFromConfiguration(specification, recipe, configuration)
   if (moduleSpec === null) return configuration
-  moduleSpec.beaconModules.fill(beaconModule)
-  moduleSpec.beaconModuleQualities.fill(beaconModuleQuality)
+  const normal = specification.getNormalQuality()
+  for (let index = 0; index < moduleSpec.beaconModules.length; index++) {
+    const useModule = index < beaconModuleSlots && beaconModule !== null
+    moduleSpec.beaconModules[index] = useModule ? beaconModule : null
+    moduleSpec.beaconModuleQualities[index] = useModule ? beaconModuleQuality : normal
+  }
   moduleSpec.beaconQuality = beaconQuality
   moduleSpec.beaconCount = beaconCount
   return configurationFromModuleSpec(specification, recipe, configuration.qualityLevel, moduleSpec)
+}
+
+function qualityModuleCount(configuration: QualityTierConfiguration): number {
+  return configuration.modules.filter((module) => module?.category === "quality").length
+}
+
+function resourceDrainRate(
+  specification: FactorySpecification,
+  recipe: Recipe,
+  configuration: QualityTierConfiguration,
+): Rational {
+  if (!(configuration.building instanceof Miner)) return one
+  const adapter = Object.create(specification) as FactorySpecification
+  adapter.getMachineQuality = (candidate: Recipe) =>
+    candidate === recipe ? configuration.machineQuality : specification.getMachineQuality(candidate)
+  return configuration.building.getResourceDrainRate(adapter, recipe)
 }
 
 export function operationCapacity(
@@ -6568,7 +6583,11 @@ export function addCraftRecipe(
 export function sortedQualifiedAmounts(values: Iterable<[QualityGraphItem, Rational]>): QualifiedItemAmount[] {
   return [...values]
     .filter(([, amount]) => !amount.isZero())
-    .map(([item, amount]) => ({ item: item.item, qualityLevel: item.qualityLevel ?? 0, amount }))
+    .map(([item, amount]) => ({
+      item: item.item,
+      qualityLevel: item.qualityLevel ?? 0,
+      amount,
+    }))
     .sort((left, right) =>
       left.item.order === right.item.order
         ? left.qualityLevel - right.qualityLevel
@@ -6647,7 +6666,11 @@ function recyclerDescriptor(
     for (let outputQuality = inputQuality; outputQuality <= specification.maxQualityLevel; outputQuality++) {
       const probability = distribution[outputQuality] ?? zero
       if (probability.isZero()) continue
-      products.push({ item: product.item, qualityLevel: outputQuality, amount: amount.mul(probability) })
+      products.push({
+        item: product.item,
+        qualityLevel: outputQuality,
+        amount: amount.mul(probability),
+      })
     }
   }
   return { products, extraIngredients }
@@ -6793,10 +6816,16 @@ export function planQualitySurplusDisposal(options: {
     totalMachineCount = totalMachineCount.add(capacity.machineCount)
     totalPower = totalPower.add(capacity.power)
     for (const [, value] of terminalByState[index] ?? []) {
-      addMapAmount(terminal, { ...value, amount: value.amount.mul(visitCount) })
+      addMapAmount(terminal, {
+        ...value,
+        amount: value.amount.mul(visitCount),
+      })
     }
     for (const [, value] of extraByState[index] ?? []) {
-      addMapAmount(extraFresh, { ...value, amount: value.amount.mul(visitCount) })
+      addMapAmount(extraFresh, {
+        ...value,
+        amount: value.amount.mul(visitCount),
+      })
     }
   }
 
@@ -6956,13 +6985,16 @@ function bestModule(
 }
 
 function objectiveForPlan(specification: FactorySpecification): QualityOptimizationObjective {
-  return specification.qualityPlannerObjective === "practical" ? "configured" : specification.qualityPlannerObjective
+  return (specification.qualityPlannerObjective as string) === "practical"
+    ? "quality-modules"
+    : specification.qualityPlannerObjective
 }
 
 class PracticalQualityGraphBuilder {
   readonly graph = new QualityGraph()
   readonly operations = new Map<QualityGraphRecipe, QualityTierConfiguration>()
   readonly embeddedRecyclers = new Map<QualityGraphRecipe, EmbeddedRecycler>()
+  private readonly directSelfRecyclingRecipes = new Set<Recipe>()
   private readonly expandedItems = new Set<string>()
   private readonly expandedProducers = new Set<string>()
   private readonly expandedVulcanusShuffles = new Set<string>()
@@ -7020,7 +7052,7 @@ class PracticalQualityGraphBuilder {
       `${this.planet.key}:scrap-source`,
     )
     this.operations.set(miningOperation, miningConfiguration)
-    this.graph.setPriority(miningOperation, LOCAL_RESOURCE_WEIGHT, SOURCE_LEVEL)
+    this.graph.setPriority(miningOperation, this.resourceWeight(miningRecipe, miningConfiguration), SOURCE_LEVEL)
 
     const queuedItems = new Set<string>([scrap.key])
     const recycledRecipes = new Set<Recipe>()
@@ -7227,6 +7259,7 @@ class PracticalQualityGraphBuilder {
     const recycler = keepLevel > 0 && isQualifiedSolid(item) ? findRecyclerRecipe(this.specification, item) : null
     const usableRecycler =
       recycler !== null &&
+      !this.directSelfRecyclingRecipes.has(recipe) &&
       !this.userDisabledRecipes.has(recycler) &&
       isLocalRecipe(this.planet, recycler) &&
       choosePracticalBuilding(this.specification, this.planet, recycler) !== null
@@ -7250,6 +7283,25 @@ class PracticalQualityGraphBuilder {
     for (let inputQuality = 0; inputQuality <= highestInputQuality; inputQuality++) {
       const configuration = craftConfigurations[inputQuality]
       if (configuration === undefined) throw new Error(`Missing practical configuration for ${recipe.name}`)
+      if (usableRecycler !== null && item === this.target && keepLevel === this.targetQualityLevel) {
+        const directOperation = addCraftRecipe(
+          this.graph,
+          item,
+          recipe,
+          inputQuality,
+          0,
+          this.specification.maxQualityLevel,
+          configuration,
+          [],
+          `${this.planet.key}:${item.key}:direct`,
+        )
+        this.operations.set(directOperation, configuration)
+        this.setOperationTiebreak(directOperation, configuration)
+        if (recipe.isResource()) {
+          this.graph.setPriority(directOperation, this.resourceWeight(recipe, configuration), SOURCE_LEVEL)
+        }
+        for (const ingredient of directOperation.ingredients) this.ensureItem(ingredient.item)
+      }
       const operation = addCraftRecipe(
         this.graph,
         item,
@@ -7263,10 +7315,14 @@ class PracticalQualityGraphBuilder {
       )
       this.operations.set(operation, configuration)
       if (usableRecycler !== null) {
-        this.embeddedRecyclers.set(operation, { recipe: usableRecycler, configurations: recyclerConfigurations })
+        this.embeddedRecyclers.set(operation, {
+          recipe: usableRecycler,
+          configurations: recyclerConfigurations,
+        })
       }
       this.setOperationTiebreak(operation, configuration)
-      if (recipe.isResource()) this.graph.setPriority(operation, LOCAL_RESOURCE_WEIGHT, SOURCE_LEVEL)
+      if (recipe.isResource())
+        this.graph.setPriority(operation, this.resourceWeight(recipe, configuration), SOURCE_LEVEL)
       for (const ingredient of operation.ingredients) this.ensureItem(ingredient.item)
     }
   }
@@ -7294,105 +7350,311 @@ class PracticalQualityGraphBuilder {
         moduleQuality: wantsQuality ? this.plannerQuality : this.productivityQuality,
         preserveBeacons: false,
       })
-      return qualityLevel === 0 && wantsQuality
-        ? this.optimizeSelfRecyclingMinerBeacons(recipe, configured)
-        : configured
+      return qualityLevel === 0 && wantsQuality ? this.optimizeSelfRecyclingFactory(recipe, configured) : configured
     })
     this.configurations.set(cacheKey, configurations)
     return configurations
   }
 
-  private optimizeSelfRecyclingMinerBeacons(
+  // ponytail: this focused search keeps one loadout across recycler quality tiers and puts speed in beacons;
+  // add tier-specific or direct speed-module loadouts if those extra degrees of freedom become worth the search cost.
+  private selfRecyclingConfigurations(
     recipe: Recipe,
-    configured: QualityTierConfiguration,
-  ): QualityTierConfiguration {
-    if (this.objective !== "configured") return configured
+    building: Building,
+    qualityModule: Module | null,
+    productivityModule: Module | null,
+  ): readonly (readonly QualityTierConfiguration[])[] {
+    const normal = this.specification.getNormalQuality()
+    const base = Array.from({ length: this.specification.maxQualityLevel + 1 }, (_, qualityLevel) =>
+      moduleTierConfiguration({
+        specification: this.specification,
+        recipe,
+        qualityLevel,
+        building,
+        module: null,
+        moduleQuality: normal,
+        preserveBeacons: false,
+      }),
+    )
+    const qualityModuleCounts =
+      qualityModule === null ? [0] : Array.from({ length: building.moduleSlots + 1 }, (_, i) => i)
+    const speedModule = this.specification.qualityPlannerMiningModule
+    const canSpeedBeacon =
+      speedModule !== null &&
+      speedModule.canBeacon() &&
+      speedModule.canUse(recipe, building) &&
+      zero.less(speedModule.speedFor(normal))
+    const beaconQualities = this.specification
+      .getAvailableQualities()
+      .slice(0, this.specification.getQualityIndex(this.miningBeaconQuality) + 1)
+    const maximumBeacons = Math.max(0, this.specification.qualityPlannerMiningBeaconCount.floor().toFloat())
+    const result: QualityTierConfiguration[][] = []
+
+    for (const qualityModuleCount of qualityModuleCounts) {
+      const maximumProductivityModules =
+        productivityModule !== null && productivityModule.canUse(recipe, building)
+          ? building.moduleSlots - qualityModuleCount
+          : 0
+      for (
+        let productivityModuleCount = 0;
+        productivityModuleCount <= maximumProductivityModules;
+        productivityModuleCount++
+      ) {
+        const direct = base.map((configuration) =>
+          configurationWithModuleLoadout(
+            this.specification,
+            recipe,
+            configuration,
+            qualityModule,
+            this.plannerQuality,
+            qualityModuleCount,
+            productivityModule,
+            this.productivityQuality,
+            productivityModuleCount,
+          ),
+        )
+        result.push(direct)
+        if (this.objective === "materials" || !canSpeedBeacon || maximumBeacons === 0 || speedModule === null) continue
+
+        for (let beaconCount = 1; beaconCount <= maximumBeacons; beaconCount++) {
+          for (const beaconQuality of beaconQualities) {
+            for (let beaconModuleSlots = 1; beaconModuleSlots <= direct[0]!.beaconModules.length; beaconModuleSlots++) {
+              result.push(
+                direct.map((configuration) =>
+                  configurationWithBeaconSetup(
+                    this.specification,
+                    recipe,
+                    configuration,
+                    speedModule,
+                    this.miningModuleQuality,
+                    beaconModuleSlots,
+                    beaconQuality,
+                    Rational.from_integer(beaconCount),
+                  ),
+                ),
+              )
+            }
+          }
+        }
+      }
+    }
+    return result
+  }
+
+  private optimizeSelfRecyclingFactory(recipe: Recipe, configured: QualityTierConfiguration): QualityTierConfiguration {
+    if (this.objective === "configured") return configured
     if (this.targetQualityLevel !== 4 || this.specification.maxQualityLevel !== 4) return configured
-    if (!(configured.building instanceof Miner)) return configured
-    if (recipe.products.length !== 1) return configured
+    if (!(configured.building instanceof Miner) || recipe.products.length !== 1) return configured
 
     const product = recipe.products[0]
     if (product === undefined || !isQualifiedSolid(product.item)) return configured
     const recyclerRecipe = quarterSelfRecyclerForItem(this.specification, product.item)
     if (recyclerRecipe === null || !this.canRecycle(recyclerRecipe)) return configured
+    const recyclerBuilding = choosePracticalBuilding(this.specification, this.planet, recyclerRecipe)
+    if (recyclerBuilding === null) return configured
 
-    const recyclerConfigurations = this.getRecyclerConfigurations(recyclerRecipe)
-    const recyclerConfiguration = recyclerConfigurations[0]
-    if (recyclerConfiguration === undefined) return configured
-    if (
-      recyclerConfigurations.some((candidate) => !candidate.qualityChance.equal(recyclerConfiguration.qualityChance))
-    ) {
-      return configured
-    }
-
-    const miningModule = this.specification.qualityPlannerMiningModule
-    if (
-      miningModule === null ||
-      !miningModule.canBeacon() ||
-      !miningModule.canUse(recipe, configured.building) ||
-      !zero.less(miningModule.speedFor(this.specification.getNormalQuality()))
-    ) {
-      return configured
-    }
-
-    const maxBeaconCount = Rational.max(zero, this.specification.qualityPlannerMiningBeaconCount)
-    const candidateCounts: Rational[] = [zero]
-    const wholeBeaconCount = maxBeaconCount.floor().toFloat()
-    for (let count = 1; count <= wholeBeaconCount; count++) {
-      candidateCounts.push(Rational.from_integer(count))
-    }
-    if (!maxBeaconCount.equal(maxBeaconCount.floor())) candidateCounts.push(maxBeaconCount)
-
-    const outputPerCraft = addProductivity(recipe, product, configured.productivity)
-    let best = configurationWithBeaconSetup(
+    const sourceQualityModule = bestModule(
       this.specification,
       recipe,
-      configured,
-      null,
-      this.specification.getNormalQuality(),
-      this.specification.getNormalQuality(),
-      zero,
+      configured.building,
+      this.plannerQuality,
+      "quality",
     )
-    let bestScore = zero
+    const sourceProductivityModule = bestModule(
+      this.specification,
+      recipe,
+      configured.building,
+      this.productivityQuality,
+      "productivity",
+    )
+    const recyclerQualityModule = bestModule(
+      this.specification,
+      recyclerRecipe,
+      recyclerBuilding,
+      this.plannerQuality,
+      "quality",
+    )
+    const recyclerProductivityModule = bestModule(
+      this.specification,
+      recyclerRecipe,
+      recyclerBuilding,
+      this.productivityQuality,
+      "productivity",
+    )
+    const sourceCandidates = this.selfRecyclingConfigurations(
+      recipe,
+      configured.building,
+      sourceQualityModule,
+      sourceProductivityModule,
+    )
+    const recyclerCandidates = this.selfRecyclingConfigurations(
+      recyclerRecipe,
+      recyclerBuilding,
+      recyclerQualityModule,
+      recyclerProductivityModule,
+    )
+    const sourceMetrics = sourceCandidates.flatMap((configurations) => {
+      const configuration = configurations[0]
+      if (configuration === undefined) return []
+      const capacity = operationCapacity(this.specification, recipe, one, configuration)
+      if (capacity.machineCount.isZero()) return []
+      return [
+        {
+          configuration,
+          capacity,
+          outputPerCraft: addProductivity(recipe, product, configuration.productivity),
+          distribution: qualityTransitionDistribution(
+            configuration.qualityChance,
+            0,
+            this.specification.maxQualityLevel,
+          ),
+          qualityModules: capacity.machineCount.mul(Rational.from_integer(qualityModuleCount(configuration))),
+          materialCost: resourceDrainRate(this.specification, recipe, configuration),
+        },
+      ]
+    })
+    const graph = new QualityGraph()
+    const recyclerMetrics = recyclerCandidates.flatMap((configurations) => {
+      const configuration = configurations[0]
+      if (configuration === undefined) return []
+      const capacityPerOperation = operationCapacity(this.specification, recyclerRecipe, one, configuration)
+      if (capacityPerOperation.machineCount.isZero()) return []
+      const closures = recyclerClosure(
+        graph,
+        product.item,
+        recyclerRecipe,
+        4,
+        this.specification.maxQualityLevel,
+        configurations,
+      )
+      const recyclerChance = configuration.qualityChance
+      const three = Rational.from_integer(3)
+      const probabilityFactor = recyclerChance
+        .mul(Rational.from_integer(10))
+        .add(three)
+        .pow(3)
+        .div(Rational.from_integer(1000).mul(recyclerChance.add(three).pow(4)))
+      return [
+        {
+          configurations,
+          configuration,
+          capacityPerOperation,
+          closures,
+          recyclerChance,
+          probabilityFactor,
+          operationsPerInitialQuality: closures.map((closure) =>
+            closure.operationsByInputQuality.reduce((total, rate) => total.add(rate), zero),
+          ),
+          qualityModulesPerMachine: Rational.from_integer(qualityModuleCount(configuration)),
+        },
+      ]
+    })
+    // ponytail: plans use continuous machine/module equivalents; exact installed module counts require integer optimization.
+    let bestSource = configured
+    let bestRecycler: readonly QualityTierConfiguration[] | null = null
+    let bestCost: Rational | null = null
+    let bestMaterialCost: Rational | null = null
 
-    for (const beaconCount of candidateCounts) {
-      const beaconQualities = beaconCount.isZero()
-        ? [this.specification.getNormalQuality()]
-        : this.specification
-            .getAvailableQualities()
-            .slice(0, this.specification.getQualityIndex(this.miningBeaconQuality) + 1)
-      for (const beaconQuality of beaconQualities) {
-        const moduleQualities = beaconCount.isZero()
-          ? [this.specification.getNormalQuality()]
-          : this.specification
-              .getAvailableQualities()
-              .slice(0, this.specification.getQualityIndex(this.miningModuleQuality) + 1)
-        for (const moduleQuality of moduleQualities) {
-          const candidate = configurationWithBeaconSetup(
-            this.specification,
-            recipe,
-            configured,
-            beaconCount.isZero() ? null : miningModule,
-            moduleQuality,
-            beaconQuality,
-            beaconCount,
-          )
-          const capacity = operationCapacity(this.specification, recipe, one, candidate)
-          if (capacity.machineCount.isZero()) continue
-          const outputPerSecond = outputPerCraft.div(capacity.machineCount)
-          const score = quarterSelfRecycleLegendaryScore(
-            outputPerSecond,
-            candidate.qualityChance,
-            recyclerConfiguration.qualityChance,
-          )
-          if (bestScore.less(score) || (bestScore.equal(score) && candidate.beaconCount.less(best.beaconCount))) {
-            best = candidate
-            bestScore = score
-          }
-        }
+    for (const source of sourceMetrics) {
+      const legendaryYield = source.outputPerCraft.mul(source.distribution[4] ?? zero)
+      if (legendaryYield.isZero()) continue
+      const numerator =
+        this.objective === "quality-modules"
+          ? source.qualityModules
+          : this.objective === "materials"
+            ? source.materialCost
+            : this.objective === "power"
+              ? source.capacity.power
+              : source.capacity.machineCount
+      const cost = numerator.div(legendaryYield)
+      const normalizedMaterialCost = source.materialCost.div(legendaryYield)
+      if (
+        bestCost === null ||
+        cost.less(bestCost) ||
+        (cost.equal(bestCost) && (bestMaterialCost === null || normalizedMaterialCost.less(bestMaterialCost)))
+      ) {
+        bestCost = cost
+        bestMaterialCost = normalizedMaterialCost
+        bestSource = source.configuration
+        bestRecycler = null
       }
     }
-    return best
+
+    for (const recycler of recyclerMetrics) {
+      for (const source of sourceMetrics) {
+        const probability = source.configuration.qualityChance
+          .mul(Rational.from_integer(3))
+          .add(recycler.recyclerChance)
+          .mul(recycler.probabilityFactor)
+        const legendaryYield = source.outputPerCraft.mul(probability)
+        if (legendaryYield.isZero()) continue
+
+        let recyclerOperationsPerOutput = zero
+        for (let initialQuality = 0; initialQuality < 4; initialQuality++) {
+          recyclerOperationsPerOutput = recyclerOperationsPerOutput.add(
+            (source.distribution[initialQuality] ?? zero).mul(
+              recycler.operationsPerInitialQuality[initialQuality] ?? zero,
+            ),
+          )
+        }
+        const recyclerOperations = source.outputPerCraft.mul(recyclerOperationsPerOutput)
+        const recyclerMachines = recycler.capacityPerOperation.machineCount.mul(recyclerOperations)
+        const recyclerQualityModules = recyclerMachines.mul(recycler.qualityModulesPerMachine)
+        let recyclerPower = recycler.capacityPerOperation.power.mul(recyclerOperations)
+        if (this.objective === "power") {
+          const recycleRates = Array.from({ length: 4 }, () => zero)
+          for (let initialQuality = 0; initialQuality < 4; initialQuality++) {
+            const closure = recycler.closures[initialQuality]
+            if (closure === undefined) continue
+            const sourceAmount = source.outputPerCraft.mul(source.distribution[initialQuality] ?? zero)
+            for (let recyclerQuality = 0; recyclerQuality < 4; recyclerQuality++) {
+              recycleRates[recyclerQuality] = recycleRates[recyclerQuality]!.add(
+                sourceAmount.mul(closure.operationsByInputQuality[recyclerQuality] ?? zero),
+              )
+            }
+          }
+          recyclerPower = zero
+          for (let recyclerQuality = 0; recyclerQuality < 4; recyclerQuality++) {
+            const recycleRate = recycleRates[recyclerQuality] ?? zero
+            const configuration = recycler.configurations[recyclerQuality]
+            if (recycleRate.isZero() || configuration === undefined) continue
+            recyclerPower = recyclerPower.add(
+              operationCapacity(this.specification, recyclerRecipe, recycleRate, configuration).power,
+            )
+          }
+        }
+
+        const machineCost = source.capacity.machineCount.add(recyclerMachines)
+        const qualityModuleCost = source.qualityModules.add(recyclerQualityModules)
+        const powerCost = source.capacity.power.add(recyclerPower)
+        const numerator =
+          this.objective === "quality-modules"
+            ? qualityModuleCost
+            : this.objective === "materials"
+              ? source.materialCost
+              : this.objective === "power"
+                ? powerCost
+                : machineCost
+        const cost = numerator.div(legendaryYield)
+        const normalizedMaterialCost = source.materialCost.div(legendaryYield)
+        const better =
+          bestCost === null ||
+          cost.less(bestCost) ||
+          (cost.equal(bestCost) && (bestMaterialCost === null || normalizedMaterialCost.less(bestMaterialCost)))
+        if (!better) continue
+        bestCost = cost
+        bestMaterialCost = normalizedMaterialCost
+        bestSource = source.configuration
+        bestRecycler = recycler.configurations
+      }
+    }
+
+    if (bestRecycler !== null) {
+      this.configurations.set(`recycler:${recyclerRecipe.key}`, bestRecycler)
+    } else if (bestCost !== null) {
+      this.directSelfRecyclingRecipes.add(recipe)
+    }
+    return bestSource
   }
 
   private getRecyclerConfigurations(recipe: Recipe): readonly QualityTierConfiguration[] {
@@ -7437,11 +7699,23 @@ class PracticalQualityGraphBuilder {
     return { recipe: recyclerRecipe, configuration }
   }
 
+  private resourceWeight(recipe: Recipe, configuration: QualityTierConfiguration): Rational {
+    return this.objective === "materials" && configuration.building instanceof Miner
+      ? resourceDrainRate(this.specification, recipe, configuration)
+      : LOCAL_RESOURCE_WEIGHT
+  }
+
   private setOperationTiebreak(operation: QualityGraphRecipe, configuration: QualityTierConfiguration): void {
     const recipe = operation.metadata.baseRecipe
     if (recipe === null || recipe.isResource()) return
     const capacity = operationCapacity(this.specification, recipe, one, configuration)
-    const cost = this.objective === "power" ? capacity.power : capacity.machineCount
+    const cost =
+      this.objective === "power"
+        ? capacity.power
+        : this.objective === "quality-modules"
+          ? capacity.machineCount.mul(Rational.from_integer(qualityModuleCount(configuration)))
+          : capacity.machineCount
+    if (this.objective === "quality-modules" && cost.isZero()) return
     this.graph.setPriority(operation, cost.isZero() ? one : cost, LOCAL_OPERATION_LEVEL)
   }
 
@@ -7510,7 +7784,12 @@ export function planPracticalQualityTarget(options: {
   const operations: QualityOperationRate[] = []
   const hiddenRecyclerRates = new Map<
     string,
-    { recipe: Recipe; qualityLevel: number; rate: Rational; configuration: QualityTierConfiguration }
+    {
+      recipe: Recipe
+      qualityLevel: number
+      rate: Rational
+      configuration: QualityTierConfiguration
+    }
   >()
   let totalCrafts = zero
   let totalRecycles = zero
@@ -7519,7 +7798,13 @@ export function planPracticalQualityTarget(options: {
 
   const addSource = (graphItem: QualityGraphItem, amount: Rational): void => {
     if (amount.isZero()) return
-    mergeQualifiedAmounts(sourceAmounts, [{ item: graphItem.item, qualityLevel: graphItem.qualityLevel ?? 0, amount }])
+    mergeQualifiedAmounts(sourceAmounts, [
+      {
+        item: graphItem.item,
+        qualityLevel: graphItem.qualityLevel ?? 0,
+        amount,
+      },
+    ])
   }
 
   for (const [solverRecipe, rate] of totals.rates) {
@@ -7532,7 +7817,11 @@ export function planPracticalQualityTarget(options: {
           const amount = rate.mul(product.amount)
           addSource(product.item, amount)
           mergeQualifiedAmounts(importedAmounts, [
-            { item: product.item.item, qualityLevel: product.item.qualityLevel ?? 0, amount },
+            {
+              item: product.item.item,
+              qualityLevel: product.item.qualityLevel ?? 0,
+              amount,
+            },
           ])
         }
       }
@@ -7637,6 +7926,12 @@ export function planPracticalQualityTarget(options: {
   totalMachineCount = totalMachineCount.add(disposal.totalMachineCount)
   totalPower = totalPower.add(disposal.totalPower)
 
+  const totalQualityModules = operations.reduce(
+    (total, operation) =>
+      total.add(operation.machineCount.mul(Rational.from_integer(qualityModuleCount(operation.configuration)))),
+    zero,
+  )
+
   operations.sort((left, right) => {
     const kindOrder = { source: 0, craft: 1, recycle: 2, dispose: 3 } as const
     const kind = kindOrder[left.kind] - kindOrder[right.kind]
@@ -7683,6 +7978,7 @@ export function planPracticalQualityTarget(options: {
     totalCrafts,
     totalRecycles,
     totalMachineCount,
+    totalQualityModules,
     totalPower,
     warnings,
   }
@@ -8063,7 +8359,7 @@ export class FactorySpecification {
   qualityPlannerMiningModuleQuality: Quality = normalQuality
   qualityPlannerMiningBeaconQuality: Quality = normalQuality
   qualityPlannerMiningBeaconCount = Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT)
-  qualityPlannerObjective: QualityPlannerObjective = "practical"
+  qualityPlannerObjective: QualityPlannerObjective = "quality-modules"
   readonly defaultBeacon: (Module | null)[] = [null, null]
   defaultBeaconCount = zero
   belt: Belt | null = null
@@ -8112,9 +8408,7 @@ export class FactorySpecification {
     return this.qualityGraphOptimizer
   }
   private deferForQualityGraphOptimizer(): boolean {
-    const needsOptimizer = this.buildTargets.some(
-      (target) => target.qualityLevel > 0 && target.qualityStrategy === "auto",
-    )
+    const needsOptimizer = this.buildTargets.some((target) => target.qualityLevel > 0)
     if (!needsOptimizer || this.qualityGraphOptimizer !== null || this.qualityGraphOptimizerLoader === null) {
       return false
     }
@@ -8196,7 +8490,7 @@ export class FactorySpecification {
     this.qualityPlannerMiningBeaconQuality =
       this.qualities.get(DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) ?? normal
     this.qualityPlannerMiningBeaconCount = Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT)
-    this.qualityPlannerObjective = "practical"
+    this.qualityPlannerObjective = "quality-modules"
     this.machineQualityOverrides.clear()
     replaceMap(this.buildings, getBuildingGroups(buildings, recipes.values()))
     this.buildingKeys.clear()
@@ -8420,8 +8714,7 @@ export class FactorySpecification {
 
     for (const target of this.buildTargets) {
       const currentRate = target.getRate()
-      target.setQuality(qualityLevel)
-      target.setQualityStrategy("auto", currentRate)
+      target.setQuality(qualityLevel, currentRate)
     }
 
     for (const moduleSpec of this.spec.values()) {
@@ -8982,35 +9275,30 @@ export class FactorySpecification {
           onlySelectedPlanet ??
           this.recipeLocations.get(qualityRecipe) ??
           (vulcanus !== null && this.selectedPlanets.has(vulcanus) ? vulcanus : null)
-        if (target.qualityStrategy === "direct") {
-          rate = rate.mul(getQualityTargetMultiplier(this, qualityRecipe, target.qualityLevel))
-          recipe = qualityRecipe
-        } else {
-          if (automaticPlanet === null) {
-            throw new Error(
-              `Automatic quality planning for ${item.name} requires one selected planet or an assigned recipe location.`,
-            )
-          }
-          const plan =
-            automaticPlanet.key === "vulcanus"
-              ? planVulcanusQualityTarget({
-                  specification: this,
-                  item,
-                  recipe: qualityRecipe,
-                  requested: rate,
-                  qualityLevel: target.qualityLevel,
-                })
-              : planPlanetQualityTarget({
-                  specification: this,
-                  planet: automaticPlanet,
-                  item,
-                  recipe: qualityRecipe,
-                  requested: rate,
-                  qualityLevel: target.qualityLevel,
-                })
-          this.qualityPlans.push(plan)
-          continue
+        if (automaticPlanet === null) {
+          throw new Error(
+            `Automatic quality planning for ${item.name} requires one selected planet or an assigned recipe location.`,
+          )
         }
+        const plan =
+          automaticPlanet.key === "vulcanus"
+            ? planVulcanusQualityTarget({
+                specification: this,
+                item,
+                recipe: qualityRecipe,
+                requested: rate,
+                qualityLevel: target.qualityLevel,
+              })
+            : planPlanetQualityTarget({
+                specification: this,
+                planet: automaticPlanet,
+                item,
+                recipe: qualityRecipe,
+                requested: rate,
+                qualityLevel: target.qualityLevel,
+              })
+        this.qualityPlans.push(plan)
+        continue
       }
       outputs.push({ item, rate, recipe })
     }
@@ -9020,7 +9308,10 @@ export class FactorySpecification {
       for (let index = 0; index < dedupedOutputs.length; index++) {
         const existing = dedupedOutputs[index]
         if (existing !== undefined && existing.recipe === output.recipe && existing.item === output.item) {
-          dedupedOutputs[index] = { ...existing, rate: existing.rate.add(output.rate) }
+          dedupedOutputs[index] = {
+            ...existing,
+            rate: existing.rate.add(output.rate),
+          }
           continue outer
         }
       }
@@ -9390,7 +9681,7 @@ export class Modification {
 }
 
 export const MODIFICATIONS = new Map([
-  ["space-age-2-1-13", new Modification("Space Age 2.1.14 (EXPERIMENTAL)", "space-age-2.1.13.json", false)],
+  ["space-age-2-1-13", new Modification("Space Age 2.1.14", "space-age-2.1.13.json", false)],
   ["2-0-55", new Modification("Vanilla 2.0.55", "vanilla-2.0.55.json", false)],
   ["1-1-110", new Modification("Vanilla 1.1.110", "vanilla-1.1.110.json", true)],
   ["1-1-110x", new Modification("Vanilla 1.1.110 - Expensive", "vanilla-1.1.110-expensive.json", true)],
@@ -9741,14 +10032,12 @@ export interface TargetSetting {
   readonly value: string
   readonly recipeKey: string | null
   readonly qualityLevel: number
-  readonly qualityStrategy: QualityStrategy
 }
 
 export function formatTargetSetting(target: TargetSetting): string {
   let setting = `${target.itemKey}:${target.mode}:${target.value}`
   if (target.mode === "f" && target.recipeKey !== null) setting += `:${target.recipeKey}`
   if (target.qualityLevel > 0) setting += `:q${target.qualityLevel}`
-  if (target.qualityStrategy !== "direct") setting += `:qs-${target.qualityStrategy}`
   return setting
 }
 
@@ -9762,7 +10051,6 @@ export function parseTargetSetting(setting: string): TargetSetting | null {
 
   let recipeKey: string | null = null
   let qualityLevel = 0
-  let qualityStrategy: QualityStrategy = "direct"
   let seenQuality = false
   let seenStrategy = false
 
@@ -9775,8 +10063,7 @@ export function parseTargetSetting(setting: string): TargetSetting | null {
     }
     if (part.startsWith("qs-")) {
       const strategy = part.slice(3)
-      if (seenStrategy || !isQualityStrategy(strategy)) return null
-      qualityStrategy = strategy
+      if (seenStrategy || (strategy !== "direct" && strategy !== "auto")) return null
       seenStrategy = true
       continue
     }
@@ -9784,15 +10071,12 @@ export function parseTargetSetting(setting: string): TargetSetting | null {
     recipeKey = part
   }
 
-  if (qualityLevel === 0 && qualityStrategy !== "direct") return null
-
   return {
     itemKey,
     mode,
     value,
     recipeKey,
     qualityLevel,
-    qualityStrategy,
   }
 }
 
@@ -10083,7 +10367,11 @@ function applyQualityPlanner(settings: SettingsMap): void {
   )
   const objective = settings.get("qpo")
   spec.qualityPlannerObjective =
-    objective !== undefined && isQualityPlannerObjective(objective) ? objective : "practical"
+    objective === "practical"
+      ? "quality-modules"
+      : objective !== undefined && isQualityPlannerObjective(objective)
+        ? objective
+        : "quality-modules"
 }
 
 function applyDefaultModules(settings: SettingsMap): void {
@@ -10176,7 +10464,6 @@ function applyTargets(settings: SettingsMap): void {
     else if (parsed.mode === "r") target.setRate(parsed.value)
     else target.setBelts(parsed.value)
     target.setQuality(parsed.qualityLevel)
-    target.setQualityStrategy(parsed.qualityStrategy)
     target.refreshRecipes()
   }
   if (spec.buildTargets.length === 0) spec.addTarget()
@@ -10508,7 +10795,8 @@ export function formatSettings(
   if (factorySpec.belt !== null && factorySpec.belt.key !== DEFAULT_BELT) {
     settings += "belt=" + factorySpec.belt.key + "&"
   }
-  if (!factorySpec.beltStackSize.equal(Rational.from_float(1))) settings += "bstack=" + factorySpec.beltStackSize.toString() + "&"
+  if (!factorySpec.beltStackSize.equal(Rational.from_float(1)))
+    settings += "bstack=" + factorySpec.beltStackSize.toString() + "&"
   const beltStackOverrides = serializeBeltStackOverrides(factorySpec)
   if (
     !factorySpec.beltStackSize.equal(Rational.from_float(1)) ||
@@ -10518,8 +10806,10 @@ export function formatSettings(
     settings += "bstackmode=" + factorySpec.beltStackDefaultPolicy + "&"
   }
   if (beltStackOverrides !== "") settings += "bstackitems=" + beltStackOverrides + "&"
-  if (!factorySpec.bufferMinutes.equal(Rational.from_float(1))) settings += "buffer=" + factorySpec.bufferMinutes.toString() + "&"
-  if (!factorySpec.freshnessDelayMinutes.isZero()) settings += "fresh=" + factorySpec.freshnessDelayMinutes.toString() + "&"
+  if (!factorySpec.bufferMinutes.equal(Rational.from_float(1)))
+    settings += "buffer=" + factorySpec.bufferMinutes.toString() + "&"
+  if (!factorySpec.freshnessDelayMinutes.isZero())
+    settings += "fresh=" + factorySpec.freshnessDelayMinutes.toString() + "&"
   let resourceYields = [...factorySpec.resourceYields]
     .filter(([recipe, value]) => recipe.categories?.has("basic-fluid") && !value.equal(Rational.from_float(1)))
     .sort(([a], [b]) => a.key.localeCompare(b.key))
@@ -10550,7 +10840,8 @@ export function formatSettings(
   if (factorySpec.defaultModule !== null) {
     settings += "dm=" + factorySpec.defaultModule.shortName() + "&"
   }
-  if (factorySpec.defaultMachineQuality.key !== "normal") settings += "dmachq=" + factorySpec.defaultMachineQuality.key + "&"
+  if (factorySpec.defaultMachineQuality.key !== "normal")
+    settings += "dmachq=" + factorySpec.defaultMachineQuality.key + "&"
   if (factorySpec.defaultModuleQuality.key !== "normal") settings += "dmq=" + factorySpec.defaultModuleQuality.key + "&"
   if (factorySpec.defaultBeaconQuality.key !== "normal") settings += "dbq=" + factorySpec.defaultBeaconQuality.key + "&"
   const defaultQualityPlannerModule = factorySpec.modules.get(DEFAULT_QUALITY_PLANNER_MODULE_KEY) ?? null
@@ -10565,7 +10856,9 @@ export function formatSettings(
   if (factorySpec.qualityPlannerProductivityModule !== defaultQualityPlannerProductivityModule) {
     settings += "qppm=" + getModuleKey(factorySpec.qualityPlannerProductivityModule) + "&"
   }
-  if (factorySpec.qualityPlannerProductivityModuleQuality.key !== DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY) {
+  if (
+    factorySpec.qualityPlannerProductivityModuleQuality.key !== DEFAULT_QUALITY_PLANNER_PRODUCTIVITY_MODULE_QUALITY_KEY
+  ) {
     settings += "qppmq=" + factorySpec.qualityPlannerProductivityModuleQuality.key + "&"
   }
   const defaultQualityPlannerMiningModule = factorySpec.modules.get(DEFAULT_QUALITY_PLANNER_MINING_MODULE_KEY) ?? null
@@ -10578,10 +10871,15 @@ export function formatSettings(
   if (factorySpec.qualityPlannerMiningBeaconQuality.key !== DEFAULT_QUALITY_PLANNER_MINING_BEACON_QUALITY_KEY) {
     settings += "qpmbq=" + factorySpec.qualityPlannerMiningBeaconQuality.key + "&"
   }
-  if (!factorySpec.qualityPlannerMiningBeaconCount.equal(Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT))) {
+  if (
+    !factorySpec.qualityPlannerMiningBeaconCount.equal(
+      Rational.from_integer(DEFAULT_QUALITY_PLANNER_MINING_BEACON_COUNT),
+    )
+  ) {
     settings += "qpmbc=" + factorySpec.qualityPlannerMiningBeaconCount.toString() + "&"
   }
-  if (factorySpec.qualityPlannerObjective !== "practical") settings += "qpo=" + factorySpec.qualityPlannerObjective + "&"
+  if (factorySpec.qualityPlannerObjective !== "quality-modules")
+    settings += "qpo=" + factorySpec.qualityPlannerObjective + "&"
   if (factorySpec.secondaryDefaultModule !== null) {
     settings += "dm2=" + factorySpec.secondaryDefaultModule.shortName() + "&"
   }
@@ -10637,7 +10935,6 @@ export function formatSettings(
           recipeKey:
             mode === "f" && target.recipe !== null && target.recipe !== target.defaultRecipe ? target.recipe.key : null,
           qualityLevel: target.qualityLevel,
-          qualityStrategy: target.qualityStrategy,
         }),
       )
     }
@@ -10895,12 +11192,11 @@ function hasRecipeCategories(recipe: Recipe | null | undefined): boolean {
 
 export function handleTargetQualityChange(
   specification: FactorySpecification,
-  target: Pick<BuildTarget, "getRate" | "qualityLevel" | "setQuality" | "setQualityStrategy">,
+  target: Pick<BuildTarget, "getRate" | "setQuality">,
   requestedQuality: number,
 ): void {
   const currentRate = target.getRate()
-  target.setQuality(requestedQuality)
-  target.setQualityStrategy(target.qualityLevel > 0 ? "auto" : "direct", currentRate)
+  target.setQuality(requestedQuality, currentRate)
   specification.updateSolution()
 }
 
@@ -10912,7 +11208,6 @@ export class BuildTarget {
   rate = zero
   belts = zero
   qualityLevel = 0
-  qualityStrategy: QualityStrategy = "direct"
   compatibleLocations: Planet[] = []
   private buildingInputValue = "1"
   private beltInputValue = ""
@@ -10990,17 +11285,6 @@ export class BuildTarget {
       if (baseRate !== null) recipeRate = baseRate.mul(recipe.gives(this.item))
     }
 
-    const plannedQuality = this.qualityLevel > 0 && this.qualityStrategy !== "direct"
-    if (recipeRate !== null && recipe !== null && this.qualityLevel > 0 && !plannedQuality) {
-      recipeRate = recipeRate.mul(
-        qualityProbability(
-          getRecipeQualityChance(this.specification, recipe),
-          this.qualityLevel,
-          this.specification.maxQualityLevel,
-        ),
-      )
-    }
-
     if (this.basis === "machines") return recipeRate === null ? zero : recipeRate.mul(this.buildings)
     if (this.basis === "belts") {
       return this.specification.getRateForBeltCount(this.item, this.belts, this.recipe ?? this.defaultRecipe)
@@ -11009,22 +11293,13 @@ export class BuildTarget {
   }
 
   getDisplayedBuildings(): string {
-    if (this.qualityLevel > 0 && this.qualityStrategy !== "direct") return "Plan"
+    if (this.qualityLevel > 0) return "Plan"
     if (this.basis === "machines") return this.buildingInputValue
     const recipe = this.recipe
     if (recipe === null) return "N/A"
     let outputRate = this.specification.getRecipeRate(recipe)
     if (outputRate === null) return "N/A"
     outputRate = outputRate.mul(recipe.gives(this.item))
-    if (this.qualityLevel > 0) {
-      outputRate = outputRate.mul(
-        qualityProbability(
-          getRecipeQualityChance(this.specification, recipe),
-          this.qualityLevel,
-          this.specification.maxQualityLevel,
-        ),
-      )
-    }
     return outputRate.isZero() ? "N/A" : this.specification.format.count(this.getRate().div(outputRate))
   }
 
@@ -11091,20 +11366,14 @@ export class BuildTarget {
     this.beltInputValue = ""
   }
 
-  setQuality(level: number | string): void {
+  setQuality(level: number | string, preservedRate: Rational | null = null): void {
+    const previousRate = preservedRate ?? (this.qualityLevel === 0 ? this.getRate() : null)
     const maxLevel = Math.max(0, Math.min(QUALITY_TIERS.length - 1, this.specification.maxQualityLevel))
     this.qualityLevel = Math.max(0, Math.min(maxLevel, Number(level) || 0))
-    if (this.qualityLevel === 0) this.qualityStrategy = "direct"
-  }
-
-  setQualityStrategy(strategy: QualityStrategy, preservedRate: Rational | null = null): void {
-    const switchToRate = strategy !== "direct" && this.qualityLevel > 0 && this.basis !== "rate"
-    const currentRate = switchToRate ? (preservedRate ?? this.getRate()) : null
-    this.qualityStrategy = strategy
-    if (currentRate !== null) {
+    if (this.qualityLevel > 0 && this.basis !== "rate" && previousRate !== null) {
       this.basis = "rate"
       this.buildings = zero
-      this.rate = currentRate
+      this.rate = previousRate
       this.belts = zero
       this.beltInputValue = ""
     }
@@ -11527,7 +11796,10 @@ export class HighsQualityOptimizer implements QualityGraphOptimizer {
     if (certified !== null && !rate.isZero()) {
       const unitRates = baseModel.recipes.map((recipe) => (certified.rates.get(recipe) ?? zero).div(rate))
       const unitSurplus = baseModel.items.map((item) => (certified.surplus.get(item) ?? zero).div(rate))
-      this.solutionCache.set(signature, { rates: unitRates, surplus: unitSurplus })
+      this.solutionCache.set(signature, {
+        rates: unitRates,
+        surplus: unitSurplus,
+      })
       if (this.solutionCache.size > 8) {
         const oldest = this.solutionCache.keys().next().value
         if (oldest !== undefined) this.solutionCache.delete(oldest)
@@ -11654,15 +11926,28 @@ const UI = {
     fontWeight: 600,
     cursor: "pointer",
   },
-  activeTab: { color: "var(--bright)", borderBottomColor: "var(--accent)", background: "transparent" },
-  summary: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 0 },
+  activeTab: {
+    color: "var(--bright)",
+    borderBottomColor: "var(--accent)",
+    background: "transparent",
+  },
+  summary: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))",
+    gap: 0,
+  },
   summaryCard: {
     padding: "8px 12px 8px 0",
     border: 0,
     borderRadius: 0,
     background: "transparent",
   },
-  summaryValue: { color: "var(--bright)", fontFamily: "monospace", fontSize: 16, fontWeight: 650 },
+  summaryValue: {
+    color: "var(--bright)",
+    fontFamily: "monospace",
+    fontSize: 16,
+    fontWeight: 650,
+  },
   tableWrap: { width: "100%", overflowX: "auto" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
   th: {
@@ -11674,8 +11959,17 @@ const UI = {
     textAlign: "left",
     whiteSpace: "nowrap",
   },
-  td: { padding: "var(--cell-padding)", borderBottom: "1px solid #30353a", verticalAlign: "middle" },
-  iconLabel: { display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 },
+  td: {
+    padding: "var(--cell-padding)",
+    borderBottom: "1px solid #30353a",
+    verticalAlign: "middle",
+  },
+  iconLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 0,
+  },
   details: {
     padding: "7px 0",
     border: 0,
@@ -11683,7 +11977,11 @@ const UI = {
     borderRadius: 0,
     background: "transparent",
   },
-  detailsSummary: { color: "var(--bright)", fontWeight: 700, cursor: "pointer" },
+  detailsSummary: {
+    color: "var(--bright)",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
   callout: {
     padding: "9px 11px",
     borderLeft: "3px solid var(--accent)",
@@ -11723,7 +12021,11 @@ const UI = {
     borderRadius: 3,
     background: "transparent",
   },
-  moduleGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 6 },
+  moduleGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
+    gap: 6,
+  },
   visuallyHidden: {
     position: "absolute",
     width: 1,
@@ -11756,7 +12058,12 @@ const UI = {
     background: "var(--dark)",
   },
   help: { maxWidth: 900, lineHeight: 1.55 },
-  footer: { marginTop: 36, paddingTop: 12, borderTop: "1px solid var(--rule)", fontSize: 12 },
+  footer: {
+    marginTop: 36,
+    paddingTop: 12,
+    borderTop: "1px solid var(--rule)",
+    fontSize: 12,
+  },
 } satisfies StyleMap
 
 function mergeStyles(...styles: (CSSProperties | false | null | undefined)[]): CSSProperties {
@@ -11852,7 +12159,10 @@ function UiGlyph({
       viewBox={name === "popout" ? "0 0 24 24" : "0 0 18 16"}
       width={size}
       height={size}
-      style={{ display: "block", transform: rotate === 0 ? undefined : `rotate(${rotate}deg)` }}
+      style={{
+        display: "block",
+        transform: rotate === 0 ? undefined : `rotate(${rotate}deg)`,
+      }}
     >
       <use href={`images/icons.svg#${name}`} />
     </svg>
@@ -11895,7 +12205,13 @@ function CompactIconSelect({
     <span
       className="compact-icon-select"
       title={`${label}: ${selectedLabel}`}
-      style={{ position: "relative", display: "inline-grid", width: 36, height: 36, verticalAlign: "middle" }}
+      style={{
+        position: "relative",
+        display: "inline-grid",
+        width: 36,
+        height: 36,
+        verticalAlign: "middle",
+      }}
     >
       <span
         style={{
@@ -12077,7 +12393,12 @@ function LocationSelector({ specification }: { readonly specification: FactorySp
     <div
       className="location-selector"
       aria-label="Production locations"
-      style={{ display: "grid", gridTemplateColumns: "auto auto", alignItems: "center", gap: "1.6px 5.6px" }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "auto auto",
+        alignItems: "center",
+        gap: "1.6px 5.6px",
+      }}
     >
       <span
         style={{
@@ -12192,7 +12513,13 @@ function TargetItemPicker({
   return (
     <div
       data-target-item-picker={pickerKey}
-      style={{ position: "relative", display: "block", width: 217, height: 40, zIndex: open ? 60 : undefined }}
+      style={{
+        position: "relative",
+        display: "block",
+        width: 217,
+        height: 40,
+        zIndex: open ? 60 : undefined,
+      }}
     >
       <button
         ref={trigger}
@@ -12215,7 +12542,14 @@ function TargetItemPicker({
         onClick={() => setOpen((current) => !current)}
       >
         <SpriteIcon icon={target.item.icon} size={32} quality={quality} title={target.item.name} />
-        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {target.item.name}
         </span>
       </button>
@@ -12260,11 +12594,25 @@ function TargetItemPicker({
               }
             }}
           />
-          <div style={{ minHeight: 0, overflowY: "auto", scrollbarGutter: "stable" }}>
+          <div
+            style={{
+              minHeight: 0,
+              overflowY: "auto",
+              scrollbarGutter: "stable",
+            }}
+          >
             {groupedItems.map((group, groupIndex) => (
               <div key={groupIndex} style={groupIndex === 0 ? undefined : { marginTop: 3 }}>
                 {group.map((subgroup, subgroupIndex) => (
-                  <div key={subgroupIndex} style={{ display: "flex", flexWrap: "wrap", gap: 2, minHeight: 34 }}>
+                  <div
+                    key={subgroupIndex}
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 2,
+                      minHeight: 34,
+                    }}
+                  >
                     {subgroup.map((item) => {
                       const selected = item === target.item
                       return (
@@ -12315,7 +12663,15 @@ function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonl
   const targetRateUnit = rateUnit === "minute" ? "min" : rateUnit
 
   return (
-    <li className="target-grid" style={{ ...UI.targetGrid, minHeight: 40, listStyle: "none", margin: "0.7px 0 0" }}>
+    <li
+      className="target-grid"
+      style={{
+        ...UI.targetGrid,
+        minHeight: 40,
+        listStyle: "none",
+        margin: "0.7px 0 0",
+      }}
+    >
       <button
         type="button"
         aria-label={`Remove ${target.item.name} target`}
@@ -12355,7 +12711,7 @@ function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonl
           key={`machines-${snapshot.revision}-${target.getDisplayedBuildings()}`}
           ariaLabel={`Machine count for ${target.item.name}`}
           value={target.getDisplayedBuildings()}
-          disabled={target.recipe === null || (target.qualityLevel > 0 && target.qualityStrategy === "auto")}
+          disabled={target.recipe === null || target.qualityLevel > 0}
           style={{ height: 29, minHeight: 29, textAlign: "right" }}
           onCommit={(value) => runMutation(specification, () => target.setBuildings(value, target.recipe))}
         />
@@ -12373,7 +12729,14 @@ function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonl
 
       {target.item.phase === "solid" ? (
         <Field label="Belts" className="target-belts">
-          <span style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center", gap: 3 }}>
+          <span
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
             <CommitInput
               key={`belts-${snapshot.revision}-${target.getDisplayedBelts()}`}
               ariaLabel={`Belt count for ${target.item.name}`}
@@ -12381,7 +12744,13 @@ function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonl
               style={{ height: 29, minHeight: 29, textAlign: "right" }}
               onCommit={(value) => runMutation(specification, () => target.setBelts(value))}
             />
-            <span style={{ ...UI.muted, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+            <span
+              style={{
+                ...UI.muted,
+                fontFamily: "monospace",
+                whiteSpace: "nowrap",
+              }}
+            >
               {target.getBeltStackHeight()}
             </span>
           </span>
@@ -12389,25 +12758,6 @@ function TargetRow({ target, snapshot }: { readonly target: BuildTarget; readonl
       ) : (
         <span />
       )}
-
-      {target.qualityLevel > 0 ? (
-        <Field label="Quality strategy" className="target-strategy" style={{ gridColumn: "2 / 4" }}>
-          <select
-            value={target.qualityStrategy}
-            style={UI.control}
-            onChange={(event) => {
-              const strategy = event.currentTarget.value
-              if (isQualityStrategy(strategy)) {
-                const currentRate = target.getRate()
-                runMutation(specification, () => target.setQualityStrategy(strategy, currentRate))
-              }
-            }}
-          >
-            <option value="auto">Automatic quality factory</option>
-            <option value="direct">Direct roll only</option>
-          </select>
-        </Field>
-      ) : null}
 
       {availableRecipes.length === 0 && target.compatibleLocations.length > 0 ? (
         <div className="target-warning" style={{ ...UI.callout, gridColumn: "2 / -1" }}>
@@ -12431,7 +12781,12 @@ function TargetsPanel({ snapshot, commands }: CalculatorViewProps) {
     <section aria-labelledby="targets-title">
       <strong
         id="targets-title"
-        style={{ color: "var(--bright)", fontSize: 12, letterSpacing: "0.04em", textTransform: "uppercase" }}
+        style={{
+          color: "var(--bright)",
+          fontSize: 12,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
       >
         Production targets
       </strong>
@@ -12441,7 +12796,8 @@ function TargetsPanel({ snapshot, commands }: CalculatorViewProps) {
         <span style={UI.label}>Quality</span>
         <span style={UI.label}>Machines</span>
         <span style={UI.label}>
-          Rate/{specification.format.longRate === "minute" ? "min" : specification.format.longRate}
+          Rate/
+          {specification.format.longRate === "minute" ? "min" : specification.format.longRate}
         </span>
         <span style={UI.label}>Belts</span>
       </div>
@@ -12485,7 +12841,12 @@ function TargetsPanel({ snapshot, commands }: CalculatorViewProps) {
           <select
             aria-label="Apply preset"
             defaultValue=""
-            style={{ ...UI.control, width: 158, minHeight: 30, fontSize: 13.75 }}
+            style={{
+              ...UI.control,
+              width: 158,
+              minHeight: 30,
+              fontSize: 13.75,
+            }}
             onChange={(event) => {
               const value = event.currentTarget.value
               if (isProgressionPreset(value)) commands.applyProgressionPreset(value)
@@ -12541,7 +12902,14 @@ function TabBar({ snapshot, commands }: CalculatorViewProps) {
         <fieldset
           className="density-switch"
           aria-label="Factory row density"
-          style={{ ...UI.row, gap: 0, margin: "0 0 0 auto", padding: 0, border: 0, fontSize: 11 }}
+          style={{
+            ...UI.row,
+            gap: 0,
+            margin: "0 0 0 auto",
+            padding: 0,
+            border: 0,
+            fontSize: 11,
+          }}
         >
           <legend style={UI.visuallyHidden}>Factory row density</legend>
           <span style={{ ...UI.muted, marginRight: 5 }}>Rows</span>
@@ -12559,7 +12927,13 @@ function TabBar({ snapshot, commands }: CalculatorViewProps) {
                 checked={snapshot.factoryDensity === value}
                 onChange={() => commands.setFactoryDensity(value)}
               />
-              <span style={{ display: "inline-block", padding: "3.2px 6px", borderBottom: "1px solid transparent" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "3.2px 6px",
+                  borderBottom: "1px solid transparent",
+                }}
+              >
                 {label}
               </span>
             </label>
@@ -12599,7 +12973,13 @@ function FactorySummaryView({
   return (
     <section
       className="factory-summary"
-      style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: 28, margin: "4px 0 10px" }}
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "baseline",
+        gap: 28,
+        margin: "4px 0 10px",
+      }}
       aria-label="Factory summary"
     >
       <div className="factory-summary-card" style={{ display: "inline-flex", alignItems: "baseline", gap: 7 }}>
@@ -12627,7 +13007,14 @@ function FactorySummaryView({
           style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
         >
           <span style={UI.summaryValue}>{specification.format.rate(rate)}</span>
-          <span style={{ ...UI.muted, display: "inline-flex", alignItems: "center", gap: 3 }}>
+          <span
+            style={{
+              ...UI.muted,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 3,
+            }}
+          >
             <SpriteIcon icon={fuel.icon} size={18} /> {fuel.name} / {specification.format.longRate}
           </span>
         </div>
@@ -12658,7 +13045,12 @@ function RecipeIconPicker({
   const root = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
-  const [position, setPosition] = useState({ top: 8, left: 8, width: 392, maxHeight: 308 })
+  const [position, setPosition] = useState({
+    top: 8,
+    left: 8,
+    width: 392,
+    maxHeight: 308,
+  })
   const recipes = getItemProductionRecipes(item)
   const groups = getRecipeSelectorGroups(recipes, activeRecipe)
 
@@ -12754,12 +13146,26 @@ function RecipeIconPicker({
             boxShadow: "0 10px 24px rgba(0, 0, 0, 0.55)",
           }}
         >
-          <strong style={{ display: "block", marginBottom: 5, color: "var(--bright)" }}>Recipes for {item.name}</strong>
+          <strong
+            style={{
+              display: "block",
+              marginBottom: 5,
+              color: "var(--bright)",
+            }}
+          >
+            Recipes for {item.name}
+          </strong>
           {groups.map((group, groupIndex) => (
             <section
               key={group.key}
               style={
-                groupIndex === 0 ? undefined : { marginTop: 7, paddingTop: 7, borderTop: "1px solid var(--light)" }
+                groupIndex === 0
+                  ? undefined
+                  : {
+                      marginTop: 7,
+                      paddingTop: 7,
+                      borderTop: "1px solid var(--light)",
+                    }
               }
             >
               <div
@@ -12851,7 +13257,15 @@ function getItemBreakdown(specification: FactorySpecification, item: Item, total
           count = specification.getCount(producer, recipeRate)
         }
       }
-      rows.push({ item: ingredient.item, recipe, rate, building, count, percent: null, divider: false })
+      rows.push({
+        item: ingredient.item,
+        recipe,
+        rate,
+        building,
+        count,
+        percent: null,
+        divider: false,
+      })
       foundIngredient = true
     }
   }
@@ -12911,8 +13325,21 @@ function ItemBreakdown({
       <tbody>
         {rows.map((row, index) => (
           <tr key={`${row.recipe.key}-${row.item.key}-${index}`}>
-            <td style={{ width: 85, padding: "2px 1px", borderTop: row.divider ? "1px solid var(--rule)" : undefined }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 0, verticalAlign: "middle" }}>
+            <td
+              style={{
+                width: 85,
+                padding: "2px 1px",
+                borderTop: row.divider ? "1px solid var(--rule)" : undefined,
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0,
+                  verticalAlign: "middle",
+                }}
+              >
                 <SpriteIcon icon={row.recipe.icon} size={32} title={row.recipe.name} />
                 <UiGlyph name="rightarrow" size={18} rotate={180} />
                 <SpriteIcon icon={row.item.icon} size={32} title={row.item.name} />
@@ -12939,7 +13366,14 @@ function ItemBreakdown({
               }}
             >
               {row.item.phase === "solid" && belt !== null ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 2, lineHeight: 1.42 }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 2,
+                    lineHeight: 1.42,
+                  }}
+                >
                   <SpriteIcon icon={belt.icon} size={32} title={belt.name} /> ×
                   <span style={{ fontFamily: "monospace" }}>
                     {specification.format.count(specification.getBeltCount(row.item, row.rate))}
@@ -12958,7 +13392,14 @@ function ItemBreakdown({
               }}
             >
               {row.building === null || row.count === null ? null : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 2, lineHeight: 1.42 }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 2,
+                    lineHeight: 1.42,
+                  }}
+                >
                   <SpriteIcon icon={row.building.icon} size={32} title={row.building.name} /> ×
                   <span style={{ fontFamily: "monospace" }}>{specification.format.count(row.count)}</span>
                 </span>
@@ -13187,7 +13628,11 @@ function ItemTable({
                       >
                         <span
                           className="item-name"
-                          style={{ position: "relative", display: "inline-flex", fontWeight: 600 }}
+                          style={{
+                            position: "relative",
+                            display: "inline-flex",
+                            fontWeight: 600,
+                          }}
                         >
                           <IconLabel icon={item.icon} name={item.name} dimmed={imported} size={32} />
                           {target ? (
@@ -13209,14 +13654,27 @@ function ItemTable({
                       </button>
                     )}
                   </td>
-                  <td style={{ ...UI.td, textAlign: "right", fontFamily: "monospace" }}>
+                  <td
+                    style={{
+                      ...UI.td,
+                      textAlign: "right",
+                      fontFamily: "monospace",
+                    }}
+                  >
                     {item === null ? null : specification.format.rate(rate)}
                   </td>
                   <td style={UI.td}>
                     {item === null || belts === null ? (
                       <span style={UI.muted}>{item === null || item.phase === "fluid" ? "" : "—"}</span>
                     ) : (
-                      <div className="belt-controls" style={{ ...UI.row, gap: 4, justifyContent: "flex-end" }}>
+                      <div
+                        className="belt-controls"
+                        style={{
+                          ...UI.row,
+                          gap: 4,
+                          justifyContent: "flex-end",
+                        }}
+                      >
                         <span style={{ fontFamily: "monospace" }}>{specification.format.count(belts)}</span>
                         <select
                           aria-label={`Belt stacking for ${item.name}`}
@@ -13225,7 +13683,13 @@ function ItemTable({
                               ? ""
                               : specification.getBeltStackPolicy(item)
                           }
-                          style={{ ...UI.control, width: 85, minHeight: 28, padding: "2px 4px", fontSize: 12 }}
+                          style={{
+                            ...UI.control,
+                            width: 85,
+                            minHeight: 28,
+                            padding: "2px 4px",
+                            fontSize: 12,
+                          }}
                           onChange={(event) => {
                             const value = event.currentTarget.value
                             runMutation(specification, () =>
@@ -13249,7 +13713,15 @@ function ItemTable({
                   </td>
                   <td className="factory-machine" style={UI.td}>
                     {recipe === null || building === null ? null : (
-                      <div style={{ ...UI.row, position: "relative", left: 20, gap: 4, justifyContent: "center" }}>
+                      <div
+                        style={{
+                          ...UI.row,
+                          position: "relative",
+                          left: 20,
+                          gap: 4,
+                          justifyContent: "center",
+                        }}
+                      >
                         {item === null ? (
                           <SpriteIcon icon={recipe.icon} size={32} title={recipe.name} />
                         ) : (
@@ -13337,7 +13809,11 @@ function ItemTable({
                           key={`${recipe.key}-${moduleSpec.beaconCount.toString()}`}
                           ariaLabel={`Beacon count for ${recipe.name}`}
                           value={moduleSpec.beaconCount.toString()}
-                          style={{ width: 58, minHeight: 28, padding: "2px 4px" }}
+                          style={{
+                            width: 58,
+                            minHeight: 28,
+                            padding: "2px 4px",
+                          }}
                           onCommit={(value) =>
                             runMutation(specification, () => moduleSpec.setBeaconCount(Rational.from_string(value)))
                           }
@@ -13345,7 +13821,14 @@ function ItemTable({
                       </div>
                     )}
                   </td>
-                  <td className="factory-power" style={{ ...UI.td, textAlign: "right", fontFamily: "monospace" }}>
+                  <td
+                    className="factory-power"
+                    style={{
+                      ...UI.td,
+                      textAlign: "right",
+                      fontFamily: "monospace",
+                    }}
+                  >
                     {power === null || power.fuel === null
                       ? null
                       : power.fuel === "electric"
@@ -13353,7 +13836,13 @@ function ItemTable({
                         : (() => {
                             const fuel = recipe === null ? null : specification.getFuelForRecipe(recipe)
                             return fuel === null ? null : (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 3,
+                                }}
+                              >
                                 <SpriteIcon icon={fuel.icon} size={24} /> ×{" "}
                                 {specification.format.rate(power.power.div(fuel.value))} /
                                 {specification.format.rateName}
@@ -13398,7 +13887,13 @@ function ItemTable({
                         whiteSpace: "normal",
                       }}
                     >
-                      <div style={{ ...UI.stack, width: "max-content", maxWidth: "100%" }}>
+                      <div
+                        style={{
+                          ...UI.stack,
+                          width: "max-content",
+                          maxWidth: "100%",
+                        }}
+                      >
                         <ItemBreakdown specification={specification} item={item} totals={totals} />
                       </div>
                     </td>
@@ -13478,7 +13973,10 @@ function InlineEquipmentPopover({
         ...(align === "right"
           ? { right: Math.max(12, window.innerWidth - rect.right) }
           : align === "machine"
-            ? { left: rect.left + rect.width / 2, transform: "translateX(-30%)" }
+            ? {
+                left: rect.left + rect.width / 2,
+                transform: "translateX(-30%)",
+              }
             : { left: rect.left }),
       })
     }
@@ -13495,7 +13993,11 @@ function InlineEquipmentPopover({
     <span
       ref={root}
       data-inline-equipment-picker={pickerKey}
-      style={{ position: "relative", display: "inline-flex", zIndex: open ? 40 : undefined }}
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        zIndex: open ? 40 : undefined,
+      }}
     >
       {trigger}
       {open && panelPosition !== null ? (
@@ -13545,7 +14047,13 @@ function EquipmentQualityStrip({
     <span
       role="group"
       aria-label={label}
-      style={{ display: "flex", gap: 4, marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--rule)" }}
+      style={{
+        display: "flex",
+        gap: 4,
+        marginBottom: 6,
+        paddingBottom: 6,
+        borderBottom: "1px solid var(--rule)",
+      }}
     >
       {qualities.map((quality) => {
         const chosen = quality === selected
@@ -13737,7 +14245,13 @@ function InlineLocationSelect({
       aria-label={`Choose production location for ${recipe.name}`}
       value={assigned?.key ?? ""}
       title={`Production location for ${recipe.name}`}
-      style={{ ...UI.control, minWidth: 146, minHeight: 28, padding: "2px 5px", fontSize: 12 }}
+      style={{
+        ...UI.control,
+        minWidth: 146,
+        minHeight: 28,
+        padding: "2px 5px",
+        fontSize: 12,
+      }}
       onChange={(event) =>
         runMutation(specification, () => {
           const location =
@@ -14092,6 +14606,7 @@ function QualityPlanView({
           />
           <SummaryCard label="First-pass chance" value={formatPercent(plan.firstPassChance, 3)} />
           <SummaryCard label="Machine count" value={specification.format.count(plan.totalMachineCount)} />
+          <SummaryCard label="Q-module equivalents" value={specification.format.count(plan.totalQualityModules)} />
           <SummaryCard label="Power" value={formatPower(specification, plan.totalPower)} />
           <SummaryCard label="Crafts" value={specification.format.rate(plan.totalCrafts)} />
           <SummaryCard label="Recycles" value={specification.format.rate(plan.totalRecycles)} />
@@ -14128,7 +14643,14 @@ function QualityPlanView({
                       size={24}
                     />
                     {operation.selfRecyclingLegendary === undefined ? null : (
-                      <div style={{ ...UI.muted, marginTop: 3, fontSize: 11.5, lineHeight: 1.35 }}>
+                      <div
+                        style={{
+                          ...UI.muted,
+                          marginTop: 3,
+                          fontSize: 11.5,
+                          lineHeight: 1.35,
+                        }}
+                      >
                         <div>
                           {formatCanadianNumber(
                             operation.selfRecyclingLegendary.legendaryPerMinutePerMachine.toDecimal(3),
@@ -14410,7 +14932,11 @@ function FactoryPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
         <div
           id="module_pipette_ghost"
           aria-hidden="true"
-          style={{ ...UI.pipetteGhost, left: pointerPosition.x, top: pointerPosition.y }}
+          style={{
+            ...UI.pipetteGhost,
+            left: pointerPosition.x,
+            top: pointerPosition.y,
+          }}
         >
           <SpriteIcon
             icon={pipetteSelection.module.icon}
@@ -14442,7 +14968,10 @@ interface GraphLink {
   readonly fuel: boolean
 }
 
-export function buildDeclarativeGraph(totals: Totals): { readonly nodes: GraphNode[]; readonly links: GraphLink[] } {
+export function buildDeclarativeGraph(totals: Totals): {
+  readonly nodes: GraphNode[]
+  readonly links: GraphLink[]
+} {
   const rates = [...totals.rates].filter((entry): entry is [FactoryRecipe, Rational] => isFactoryRecipe(entry[0]))
   const recipeSet = new Set(rates.map(([recipe]) => recipe))
   const dependencies = new Map<FactoryRecipe, FactoryRecipe[]>()
@@ -14551,7 +15080,10 @@ function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
     const count = nodesPerColumn.get(node.column) ?? 1
     const centeredRow = node.row - (count - 1) / 2
     return horizontal
-      ? { x: 20 + node.column * columnStep, y: height * 0.34 - nodeHeight / 2 + centeredRow * (nodeHeight + rowGap) }
+      ? {
+          x: 20 + node.column * columnStep,
+          y: height * 0.34 - nodeHeight / 2 + centeredRow * (nodeHeight + rowGap),
+        }
       : {
           x: width / 2 - nodeWidth / 2 + centeredRow * (nodeWidth + rowGap),
           y: 20 + node.column * ((height - nodeHeight - 40) / Math.max(1, columns - 1)),
@@ -14603,7 +15135,13 @@ function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
                   )
                 }
               />
-              <span style={{ display: "inline-block", padding: "3px 5px", borderBottom: "1px solid transparent" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "3px 5px",
+                  borderBottom: "1px solid transparent",
+                }}
+              >
                 {label}
               </span>
             </label>
@@ -14625,7 +15163,13 @@ function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
                 checked={visualizerRender === value}
                 onChange={() => runMutation(specification, () => setVisualizerRender(value), false)}
               />
-              <span style={{ display: "inline-block", padding: "3px 5px", borderBottom: "1px solid transparent" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "3px 5px",
+                  borderBottom: "1px solid transparent",
+                }}
+              >
                 {label}
               </span>
             </label>
@@ -14647,7 +15191,13 @@ function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
                 checked={visualizerDirection === value}
                 onChange={() => runMutation(specification, () => setVisualizerDirection(value), false)}
               />
-              <span style={{ display: "inline-block", padding: "3px 5px", borderBottom: "1px solid transparent" }}>
+              <span
+                style={{
+                  display: "inline-block",
+                  padding: "3px 5px",
+                  borderBottom: "1px solid transparent",
+                }}
+              >
                 {label}
               </span>
             </label>
@@ -14666,7 +15216,10 @@ function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
           viewBox={`0 0 ${width} ${height}`}
           width={visualizerRender === "zoom" ? width : "100%"}
           height={height}
-          style={{ display: "block", minWidth: visualizerRender === "zoom" ? width : undefined }}
+          style={{
+            display: "block",
+            minWidth: visualizerRender === "zoom" ? width : undefined,
+          }}
         >
           <title>Factory recipe flow graph</title>
           {graph.links.map((link) => {
@@ -14771,8 +15324,22 @@ function PriorityPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) 
       <p style={{ maxWidth: 370, margin: "18px 0 14px" }}>
         Drag resources between tiers to choose what your factory should conserve. Higher tiers are preferred.
       </p>
-      <div style={{ width: "min(100%, 720px)", border: "1px solid var(--rule)", background: "var(--dark)" }}>
-        <div style={{ padding: "2px 4px", color: "var(--foreground)", background: "var(--rule)" }}>less valuable</div>
+      <div
+        style={{
+          width: "min(100%, 720px)",
+          border: "1px solid var(--rule)",
+          background: "var(--dark)",
+        }}
+      >
+        <div
+          style={{
+            padding: "2px 4px",
+            color: "var(--foreground)",
+            background: "var(--rule)",
+          }}
+        >
+          less valuable
+        </div>
         {priorities.map((level, levelIndex) => (
           <div
             key={levelIndex}
@@ -14796,7 +15363,12 @@ function PriorityPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) 
                 key={resource.recipe.key}
                 draggable
                 title={`${resource.recipe.name}. Drag to another tier.`}
-                style={{ position: "relative", display: "grid", gap: 3, width: 65 }}
+                style={{
+                  position: "relative",
+                  display: "grid",
+                  gap: 3,
+                  width: 65,
+                }}
                 onDragStart={(event) => event.dataTransfer.setData("text/plain", resource.recipe.key)}
               >
                 <span style={{ display: "grid", placeItems: "center", height: 48 }}>
@@ -14806,7 +15378,14 @@ function PriorityPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) 
                   aria-label={`Priority tier for ${resource.recipe.name}`}
                   value={levelIndex}
                   title={`Priority tier for ${resource.recipe.name}`}
-                  style={{ position: "absolute", inset: "0 0 auto", width: 65, height: 48, opacity: 0, cursor: "grab" }}
+                  style={{
+                    position: "absolute",
+                    inset: "0 0 auto",
+                    width: 65,
+                    height: 48,
+                    opacity: 0,
+                    cursor: "grab",
+                  }}
                   onChange={(event) => moveResource(resource.recipe.key, Number(event.currentTarget.value))}
                 >
                   {priorities.map((_, index) => (
@@ -14831,7 +15410,15 @@ function PriorityPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) 
             ))}
           </div>
         ))}
-        <div style={{ padding: "2px 4px", color: "var(--foreground)", background: "var(--rule)" }}>more valuable</div>
+        <div
+          style={{
+            padding: "2px 4px",
+            color: "var(--foreground)",
+            background: "var(--rule)",
+          }}
+        >
+          more valuable
+        </div>
       </div>
       <button
         type="button"
@@ -14854,7 +15441,13 @@ function SettingSection({
   readonly wide?: boolean
 }) {
   return (
-    <section style={{ width: wide ? "min(90rem, 100%)" : "min(65rem, 100%)", maxWidth: "100%", marginTop: 25 }}>
+    <section
+      style={{
+        width: wide ? "min(90rem, 100%)" : "min(65rem, 100%)",
+        maxWidth: "100%",
+        marginTop: 25,
+      }}
+    >
       <h3
         style={{
           margin: "0 0 13px",
@@ -14883,7 +15476,15 @@ function SettingsRow({
   return (
     <div
       className="settings-row"
-      style={mergeStyles({ display: "grid", gap: 5, width: "min(30rem, 100%)", marginBottom: 15 }, style)}
+      style={mergeStyles(
+        {
+          display: "grid",
+          gap: 5,
+          width: "min(30rem, 100%)",
+          marginBottom: 15,
+        },
+        style,
+      )}
     >
       <div style={{ color: "var(--foreground)", fontSize: 13, fontWeight: 500 }}>{label}</div>
       <div>{children}</div>
@@ -14895,7 +15496,12 @@ function SettingsPair({ children }: { readonly children: ReactNode }) {
   return (
     <div
       className="settings-columns"
-      style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 15rem))", gap: "0 24px", maxWidth: 504 }}
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 15rem))",
+        gap: "0 24px",
+        maxWidth: 504,
+      }}
     >
       {children}
     </div>
@@ -14943,7 +15549,15 @@ function GeneralSettings({ snapshot, commands }: CalculatorViewProps) {
           />
         </SettingsRow>
         <SettingsRow label="Display rates as">
-          <fieldset style={{ display: "grid", gap: 2, margin: 0, padding: 0, border: 0 }}>
+          <fieldset
+            style={{
+              display: "grid",
+              gap: 2,
+              margin: 0,
+              padding: 0,
+              border: 0,
+            }}
+          >
             {(
               [
                 ["s", "items/second"],
@@ -15018,7 +15632,15 @@ function GeneralSettings({ snapshot, commands }: CalculatorViewProps) {
           </SettingsRow>
         </SettingsPair>
         <SettingsRow label="Format values as">
-          <fieldset style={{ display: "grid", gap: 2, margin: 0, padding: 0, border: 0 }}>
+          <fieldset
+            style={{
+              display: "grid",
+              gap: 2,
+              margin: 0,
+              padding: 0,
+              border: 0,
+            }}
+          >
             {(
               [
                 ["decimal", "Decimals"],
@@ -15096,7 +15718,10 @@ function LogisticsSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot
           value={specification.beltStackSize.toString()}
           style={compactSettingControl}
           onChange={(event) =>
-            applyPlanningSetting(specification, { id: "belt_stack_size", value: event.currentTarget.value })
+            applyPlanningSetting(specification, {
+              id: "belt_stack_size",
+              value: event.currentTarget.value,
+            })
           }
         >
           <option value="1">×1 — No belt stacking</option>
@@ -15112,7 +15737,10 @@ function LogisticsSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot
           value={specification.beltStackDefaultPolicy}
           style={compactSettingControl}
           onChange={(event) =>
-            applyPlanningSetting(specification, { id: "belt_stack_default_policy", value: event.currentTarget.value })
+            applyPlanningSetting(specification, {
+              id: "belt_stack_default_policy",
+              value: event.currentTarget.value,
+            })
           }
         >
           <option value="auto">Auto — direct output only</option>
@@ -15131,7 +15759,12 @@ function LogisticsSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot
               value={specification.bufferMinutes.toString()}
               ariaLabel="Buffer minutes"
               style={{ width: 168 }}
-              onCommit={(value) => applyPlanningSetting(specification, { id: "buffer_minutes", value })}
+              onCommit={(value) =>
+                applyPlanningSetting(specification, {
+                  id: "buffer_minutes",
+                  value,
+                })
+              }
             />
             minutes
           </span>
@@ -15143,7 +15776,12 @@ function LogisticsSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot
               value={specification.freshnessDelayMinutes.toString()}
               ariaLabel="Freshness delay"
               style={{ width: 168 }}
-              onCommit={(value) => applyPlanningSetting(specification, { id: "freshness_delay", value })}
+              onCommit={(value) =>
+                applyPlanningSetting(specification, {
+                  id: "freshness_delay",
+                  value,
+                })
+              }
             />
             minutes
           </span>
@@ -15155,7 +15793,10 @@ function LogisticsSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot
           value={specification.maxQualityLevel}
           style={compactSettingControl}
           onChange={(event) =>
-            applyPlanningSetting(specification, { id: "max_quality", value: event.currentTarget.value })
+            applyPlanningSetting(specification, {
+              id: "max_quality",
+              value: event.currentTarget.value,
+            })
           }
         >
           {specification.qualityTiers.map((quality, index) =>
@@ -15223,7 +15864,14 @@ function DefaultEquipmentSettings({
       {qualities.length <= 1 ? null : (
         <SettingsRow label="Equipment quality defaults" style={{ width: 520 }}>
           <div style={{ ...UI.row, alignItems: "flex-end", gap: 12 }}>
-            <label style={{ display: "inline-grid", gridTemplateColumns: "auto 104px", alignItems: "center", gap: 6 }}>
+            <label
+              style={{
+                display: "inline-grid",
+                gridTemplateColumns: "auto 104px",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
               <span style={UI.muted}>Machine</span>
               <select
                 aria-label="Default machine quality"
@@ -15250,7 +15898,14 @@ function DefaultEquipmentSettings({
                 ))}
               </select>
             </label>
-            <label style={{ display: "inline-grid", gridTemplateColumns: "auto 104px", alignItems: "center", gap: 6 }}>
+            <label
+              style={{
+                display: "inline-grid",
+                gridTemplateColumns: "auto 104px",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
               <span style={UI.muted}>Module</span>
               <select
                 aria-label="Default module quality"
@@ -15277,7 +15932,14 @@ function DefaultEquipmentSettings({
                 ))}
               </select>
             </label>
-            <label style={{ display: "inline-grid", gridTemplateColumns: "auto 104px", alignItems: "center", gap: 6 }}>
+            <label
+              style={{
+                display: "inline-grid",
+                gridTemplateColumns: "auto 104px",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
               <span style={UI.muted}>Beacon</span>
               <select
                 aria-label="Default beacon quality"
@@ -15380,7 +16042,15 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
   }
   return (
     <SettingsRow label="Quality factory" style={{ width: 520, minHeight: 280 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "end", gap: "7px 13px", maxWidth: 504 }}>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "end",
+          gap: "7px 13px",
+          maxWidth: 504,
+        }}
+      >
         <Field label="Quality module" style={{ width: "max-content" }}>
           <select
             aria-label="Quality factory quality module"
@@ -15460,9 +16130,9 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
             ))}
           </select>
         </Field>
-        <Field label="Mining speed module" style={{ width: "max-content" }}>
+        <Field label="Speed beacon module" style={{ width: "max-content" }}>
           <select
-            aria-label="Quality factory mining speed module"
+            aria-label="Quality factory speed beacon module"
             value={specification.qualityPlannerMiningModule?.key ?? ""}
             style={{ ...plannerSelectStyle, width: 203 }}
             onChange={(event) =>
@@ -15471,7 +16141,7 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
               })
             }
           >
-            <option value="">No mining beacons</option>
+            <option value="">No speed beacons</option>
             {speedModules.map((module) => (
               <option key={module.key} value={module.key}>
                 {module.name}
@@ -15479,9 +16149,9 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
             ))}
           </select>
         </Field>
-        <Field label="Maximum module quality" style={{ width: "max-content" }}>
+        <Field label="Speed module quality" style={{ width: "max-content" }}>
           <select
-            aria-label="Quality factory maximum mining module quality"
+            aria-label="Quality factory speed module quality"
             value={specification.qualityPlannerMiningModuleQuality.key}
             style={{ ...plannerSelectStyle, width: 144 }}
             onChange={(event) => {
@@ -15501,7 +16171,7 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
         </Field>
         <Field label="Maximum beacon quality" style={{ width: "max-content" }}>
           <select
-            aria-label="Quality factory maximum mining beacon quality"
+            aria-label="Quality factory maximum beacon quality"
             value={specification.qualityPlannerMiningBeaconQuality.key}
             style={{ ...plannerSelectStyle, width: 203 }}
             onChange={(event) => {
@@ -15519,11 +16189,11 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
             ))}
           </select>
         </Field>
-        <Field label="Maximum beacons" style={{ width: "max-content" }}>
+        <Field label="Maximum beacons per machine" style={{ width: "max-content" }}>
           <CommitInput
             key={specification.qualityPlannerMiningBeaconCount.toString()}
             value={specification.qualityPlannerMiningBeaconCount.toString()}
-            ariaLabel="Quality factory maximum mining beacon count"
+            ariaLabel="Quality factory maximum beacon count"
             style={{ ...plannerSelectStyle, width: 144 }}
             onCommit={(value) =>
               runMutation(specification, () => {
@@ -15533,34 +16203,36 @@ function QualityPlannerSettings({ snapshot }: { readonly snapshot: CalculatorSna
           />
         </Field>
       </div>
+      <label
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 7,
+          marginTop: 8,
+        }}
+      >
+        <span>Optimize quality for</span>
+        <select
+          aria-label="Quality factory optimization objective"
+          value={specification.qualityPlannerObjective}
+          style={compactSettingControl}
+          onChange={(event) =>
+            applyPlanningSetting(specification, {
+              id: "quality_planner_objective",
+              value: event.currentTarget.value,
+            })
+          }
+        >
+          <option value="quality-modules">Fewer quality modules (recommended)</option>
+          <option value="materials">Fewer raw resources</option>
+          <option value="machines">Fewer machines</option>
+          <option value="power">Lower power</option>
+        </select>
+      </label>
       <div style={{ ...UI.muted, marginTop: 5, maxWidth: 510 }}>
-        Quality-producing stages and recyclers use the quality selection. Guaranteed target-quality crafting uses the
-        productivity selection where compatible. In Practical mode, self-recycling miners compare no beacons with every
-        count through the mining maximum, using the selected speed-module type and every module and beacon quality up to
-        their configured maximums. These limits do not change ordinary factory equipment.
+        For self-recycling ores, choose whether to save raw ore or save quality modules. Miners and recyclers are
+        optimized together, and speed beacons can be used on either.
       </div>
-      <details style={{ marginTop: 6 }}>
-        <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>Advanced priority</summary>
-        <label style={{ display: "inline-flex", alignItems: "center", gap: 7, marginTop: 6 }}>
-          <span>Prefer</span>
-          <select
-            aria-label="Quality factory optimization objective"
-            value={specification.qualityPlannerObjective}
-            style={compactSettingControl}
-            onChange={(event) =>
-              applyPlanningSetting(specification, { id: "quality_planner_objective", value: event.currentTarget.value })
-            }
-          >
-            <option value="practical">Practical factory (recommended)</option>
-            <option value="materials">Fewer raw resources</option>
-            <option value="machines">Fewer machines</option>
-            <option value="power">Lower power</option>
-          </select>
-        </label>
-        <div style={{ ...UI.muted, marginTop: 4 }}>
-          Used as a route tiebreaker after meeting the target and preferring local resources.
-        </div>
-      </details>
     </SettingsRow>
   )
 }
@@ -15604,9 +16276,10 @@ function BuildingSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot 
 
 function ProductivityResearchSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
   const specification = snapshot.specification
-  const [transferStatus, setTransferStatus] = useState<{ readonly message: string; readonly error: boolean } | null>(
-    null,
-  )
+  const [transferStatus, setTransferStatus] = useState<{
+    readonly message: string
+    readonly error: boolean
+  } | null>(null)
   const miningIcon = specification.items.get("electric-mining-drill") ?? specification.items.get("burner-mining-drill")
   const research = [...specification.recipeProductivityResearch.values()].sort((a, b) => a.name.localeCompare(b.name))
 
@@ -15615,7 +16288,10 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
       await navigator.clipboard.writeText(FACTORIO_PRODUCTIVITY_EXPORT_COMMAND)
       setTransferStatus({ message: "Game command copied.", error: false })
     } catch {
-      setTransferStatus({ message: "Could not copy the game command.", error: true })
+      setTransferStatus({
+        message: "Could not copy the game command.",
+        error: true,
+      })
     }
   }
 
@@ -15624,7 +16300,10 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
     try {
       text = await navigator.clipboard.readText()
     } catch {
-      setTransferStatus({ message: "Clipboard access was not allowed.", error: true })
+      setTransferStatus({
+        message: "Clipboard access was not allowed.",
+        error: true,
+      })
       return
     }
 
@@ -15651,7 +16330,12 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
       <SettingsRow label="Productivity" style={{ width: 504 }}>
         <div style={{ display: "grid", gap: 5.5 }}>
           <label
-            style={{ display: "grid", gridTemplateColumns: "26px minmax(0, 1fr) auto", alignItems: "center", gap: 6 }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "26px minmax(0, 1fr) auto",
+              alignItems: "center",
+              gap: 6,
+            }}
           >
             {miningIcon === undefined ? (
               <span />
@@ -15665,7 +16349,13 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
                 value={specification.miningProd.mul(Rational.from_integer(100)).toString()}
                 ariaLabel="Mining productivity bonus percentage"
                 inputMode="numeric"
-                style={{ width: 44, minHeight: 27, height: 27, padding: 0, fontSize: 12.5 }}
+                style={{
+                  width: 44,
+                  minHeight: 27,
+                  height: 27,
+                  padding: 0,
+                  fontSize: 12.5,
+                }}
                 onCommit={(value) =>
                   runMutation(specification, () => {
                     specification.miningProd = Rational.from_string(value || "0").div(Rational.from_integer(100))
@@ -15689,13 +16379,25 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
               >
                 <SpriteIcon icon={entry.icon} size={24} title={entry.name} />
                 <span>{entry.name}</span>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
                   <CommitInput
                     key={`${entry.key}-${level}`}
                     ariaLabel={`${entry.name} bonus percentage`}
                     value={recipeProductivityPercent(entry, level) ?? "0"}
                     inputMode="numeric"
-                    style={{ width: 44, minHeight: 27, height: 27, padding: 0, fontSize: 12.5 }}
+                    style={{
+                      width: 44,
+                      minHeight: 27,
+                      height: 27,
+                      padding: 0,
+                      fontSize: 12.5,
+                    }}
                     onCommit={(value) =>
                       runMutation(specification, () => {
                         specification.setRecipeProductivityLevel(
@@ -15718,14 +16420,24 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
         <div style={{ ...UI.row, marginTop: 7, gap: 6 }}>
           <button
             type="button"
-            style={{ ...UI.button, minHeight: 27, padding: "3px 8px", fontSize: 12 }}
+            style={{
+              ...UI.button,
+              minHeight: 27,
+              padding: "3px 8px",
+              fontSize: 12,
+            }}
             onClick={() => void copyExportCommand()}
           >
             Copy game command
           </button>
           <button
             type="button"
-            style={{ ...UI.button, minHeight: 27, padding: "3px 8px", fontSize: 12 }}
+            style={{
+              ...UI.button,
+              minHeight: 27,
+              padding: "3px 8px",
+              fontSize: 12,
+            }}
             onClick={() => void pasteProductivity()}
           >
             Paste productivity
@@ -15734,7 +16446,9 @@ function ProductivityResearchSettings({ snapshot }: { readonly snapshot: Calcula
             <span
               role="status"
               aria-live="polite"
-              style={{ color: transferStatus.error ? "var(--danger)" : "var(--muted)" }}
+              style={{
+                color: transferStatus.error ? "var(--danger)" : "var(--muted)",
+              }}
             >
               {transferStatus.message}
             </span>
@@ -15840,7 +16554,14 @@ function RecipeSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot })
         <h4 style={{ margin: "0 0 2px", color: "var(--bright)", fontSize: 13 }}>Production recipes</h4>
         {groups.map((group) => (
           <details key={group.name} open style={{ border: 0 }}>
-            <summary style={{ ...UI.detailsSummary, margin: "5px 0 2px", paddingLeft: 14, fontSize: 13 }}>
+            <summary
+              style={{
+                ...UI.detailsSummary,
+                margin: "5px 0 2px",
+                paddingLeft: 14,
+                fontSize: 13,
+              }}
+            >
               {group.name}
             </summary>
             <div style={{ ...UI.row, gap: 4, marginLeft: 2 }}>{group.recipes.map(renderRecipeTile)}</div>
@@ -15849,7 +16570,8 @@ function RecipeSettings({ snapshot }: { readonly snapshot: CalculatorSnapshot })
         {displayRecyclingRecipes.length === 0 ? null : (
           <details style={{ marginTop: 8 }}>
             <summary style={{ ...UI.detailsSummary, fontSize: 13 }}>
-              Recycling recipes{visibleRecyclingRecipes.length === 0 ? "" : ` (${visibleRecyclingRecipes.length})`}
+              Recycling recipes
+              {visibleRecyclingRecipes.length === 0 ? "" : ` (${visibleRecyclingRecipes.length})`}
             </summary>
             <div style={{ marginTop: 7 }}>
               <button
@@ -15897,14 +16619,24 @@ function ResourceYieldSettings({ snapshot }: { readonly snapshot: CalculatorSnap
               <div className="settings-columns" style={UI.twoColumns}>
                 {resources.map((recipe) => (
                   <Field key={recipe.key} label={recipe.name}>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
                       <CommitInput
                         key={`${recipe.key}-${specification.getResourceYield(recipe).toString()}`}
                         ariaLabel={`${recipe.name} yield percent`}
                         value={specification.getResourceYield(recipe).mul(Rational.from_integer(100)).toString()}
                         style={{ width: 82 }}
                         onCommit={(value) =>
-                          applyPlanningSetting(specification, { id: "resource_yield", value, resourceKey: recipe.key })
+                          applyPlanningSetting(specification, {
+                            id: "resource_yield",
+                            value,
+                            resourceKey: recipe.key,
+                          })
                         }
                       />
                       <span aria-hidden="true">%</span>
@@ -15932,7 +16664,11 @@ function ResourceYieldSettings({ snapshot }: { readonly snapshot: CalculatorSnap
                       }
                       placeholder="Unlimited"
                       onCommit={(value) =>
-                        applyPlanningSetting(specification, { id: "asteroid_cap", value, itemKey: item.key })
+                        applyPlanningSetting(specification, {
+                          id: "asteroid_cap",
+                          value,
+                          itemKey: item.key,
+                        })
                       }
                     />
                   </Field>
@@ -15962,7 +16698,16 @@ function HelpPanel() {
     <div id="help_tab" style={{ width: "min(65rem, 100%)", padding: "16px 0 48px" }}>
       <section>
         <header>
-          <h1 style={{ margin: 0, color: "var(--bright)", fontSize: 21, letterSpacing: "-0.01em" }}>Help</h1>
+          <h1
+            style={{
+              margin: 0,
+              color: "var(--bright)",
+              fontSize: 21,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            Help
+          </h1>
           <div style={{ marginBottom: 12, color: "var(--muted)", fontSize: 12.5 }}>
             <span>Factorio 2.1.14</span>
             <span aria-hidden="true"> · </span>
@@ -15976,7 +16721,15 @@ function HelpPanel() {
       </section>
 
       <HelpSection title="Using the calculator">
-        <ol style={{ margin: 0, paddingLeft: 22, color: "var(--foreground)", fontSize: 13.75, lineHeight: 1.48 }}>
+        <ol
+          style={{
+            margin: 0,
+            paddingLeft: 22,
+            color: "var(--foreground)",
+            fontSize: 13.75,
+            lineHeight: 1.48,
+          }}
+        >
           <li>Add a production target.</li>
           <li>Choose the output quality, target rate, and production planet.</li>
           <li>
@@ -16178,7 +16931,12 @@ function HelpTable({
   return (
     <table
       className="help-table"
-      style={{ width: "100%", borderCollapse: "collapse", color: "var(--foreground)", fontSize: 13.75 }}
+      style={{
+        width: "100%",
+        borderCollapse: "collapse",
+        color: "var(--foreground)",
+        fontSize: 13.75,
+      }}
     >
       <thead>
         <tr>
@@ -16333,7 +17091,10 @@ const dataRequests = new Map<string, Promise<unknown>>()
 function fetchData(filename: string): Promise<unknown> {
   const existing = dataRequests.get(filename)
   if (existing !== undefined) return existing
-  const request = fetch(filename, { cache: "force-cache", credentials: "same-origin" }).then((response) => {
+  const request = fetch(filename, {
+    cache: "force-cache",
+    credentials: "same-origin",
+  }).then((response) => {
     if (!response.ok) throw new Error(`Failed to load ${filename}: ${response.status} ${response.statusText}`)
     return response.json() as Promise<unknown>
   })
@@ -16407,7 +17168,10 @@ export function init(): void {
   configureFactoryPersistence(() => syncUrlHash(formatSettings()))
   configureDatasetChangeHandler(changeMod)
   window.spec = spec
-  configureModelRuntime({ getSpecification: () => spec, useLegacyCalculation: usesLegacyCalculation })
+  configureModelRuntime({
+    getSpecification: () => spec,
+    useLegacyCalculation: usesLegacyCalculation,
+  })
   initializeUrlState()
   const settings = loadSettings(window.location.hash)
   selectDatasetFromSettings(settings)

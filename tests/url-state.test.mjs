@@ -243,7 +243,6 @@ test("production target URL settings preserve machine, rate, and belt intent", (
       value: "24",
       recipeKey: "iron-plate",
       qualityLevel: 0,
-      qualityStrategy: "direct",
     },
     {
       itemKey: "advanced-circuit",
@@ -251,7 +250,6 @@ test("production target URL settings preserve machine, rate, and belt intent", (
       value: "198",
       recipeKey: null,
       qualityLevel: 2,
-      qualityStrategy: "auto",
     },
     {
       itemKey: "processing-unit",
@@ -259,41 +257,34 @@ test("production target URL settings preserve machine, rate, and belt intent", (
       value: "0.5",
       recipeKey: null,
       qualityLevel: 0,
-      qualityStrategy: "direct",
     },
   ]
 
   const settings = targets.map(formatTargetSetting)
-  assert.deepEqual(settings, [
-    "iron-plate:f:24:iron-plate",
-    "advanced-circuit:r:198:q2:qs-auto",
-    "processing-unit:b:0.5",
-  ])
+  assert.deepEqual(settings, ["iron-plate:f:24:iron-plate", "advanced-circuit:r:198:q2", "processing-unit:b:0.5"])
   assert.deepEqual(settings.map(parseTargetSetting), targets)
 })
 
-test("production target URL settings round-trip automatic planet quality planning", () => {
+test("production target URL settings round-trip automatic quality planning", () => {
   const target = {
     itemKey: "iron-plate",
     mode: "r",
     value: "100",
     recipeKey: null,
     qualityLevel: 4,
-    qualityStrategy: "auto",
   }
   const setting = formatTargetSetting(target)
-  assert.equal(setting, "iron-plate:r:100:q4:qs-auto")
+  assert.equal(setting, "iron-plate:r:100:q4")
   assert.deepEqual(parseTargetSetting(setting), target)
 })
 
-test("production target URL settings reject removed planning modes without weakening direct links", () => {
+test("production target URL settings accept and discard legacy quality strategies", () => {
   assert.deepEqual(parseTargetSetting("advanced-circuit:f:24:q1"), {
     itemKey: "advanced-circuit",
     mode: "f",
     value: "24",
     recipeKey: null,
     qualityLevel: 1,
-    qualityStrategy: "direct",
   })
   assert.deepEqual(parseTargetSetting("advanced-circuit:r:198"), {
     itemKey: "advanced-circuit",
@@ -301,7 +292,20 @@ test("production target URL settings reject removed planning modes without weake
     value: "198",
     recipeKey: null,
     qualityLevel: 0,
-    qualityStrategy: "direct",
+  })
+  assert.deepEqual(parseTargetSetting("advanced-circuit:r:198:q1:qs-direct"), {
+    itemKey: "advanced-circuit",
+    mode: "r",
+    value: "198",
+    recipeKey: null,
+    qualityLevel: 1,
+  })
+  assert.deepEqual(parseTargetSetting("advanced-circuit:r:198:q1:qs-auto"), {
+    itemKey: "advanced-circuit",
+    mode: "r",
+    value: "198",
+    recipeKey: null,
+    qualityLevel: 1,
   })
   for (const malformed of [
     "",

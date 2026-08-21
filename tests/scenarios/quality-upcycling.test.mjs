@@ -40,86 +40,27 @@ test("25% self-recycling resources expose the exact Legendary throughput shortcu
   )
 })
 
-test("self-recycling mining searches dedicated beacon-count, beacon-quality, and module-quality limits", async () => {
+test("self-recycling mining jointly optimizes miner and recycler for the selected bottleneck", async () => {
   const runtime = await setupSpaceAgeFactory()
   const { specification, math, items, recipes, planets, calculatorModules, vulcanusPlanner } = runtime
   const vulcanus = requireValue(planets, "vulcanus")
   const calcite = requireValue(items, "calcite")
   const calciteRecipe = requireValue(recipes, "calcite")
-  const speedModule = requireValue(calculatorModules, "speed-module-2")
-  const ordinaryFactorySpeedModule = requireValue(calculatorModules, "speed-module-3")
-  const normal = requireValue(specification.qualities, "normal")
+  const speedModule = requireValue(calculatorModules, "speed-module-3")
   const legendary = requireValue(specification.qualities, "legendary")
 
   specification.selectOnePlanet(vulcanus)
   specification.setMaxQualityLevel(4)
-  specification.setDefaultBeacon(ordinaryFactorySpeedModule, 0)
-  specification.setDefaultBeacon(ordinaryFactorySpeedModule, 1)
-  specification.setDefaultBeaconCount(math.Rational.from_integer(20))
+  specification.setDefaultMachineQuality(legendary)
+  specification.setAutomaticBuildingPreferences(
+    ["big-mining-drill", "recycler"].map((key) => requireValue(specification.buildingKeys, key)),
+  )
   specification.qualityPlannerMiningModule = speedModule
-  specification.qualityPlannerMiningModuleQuality = normal
+  specification.qualityPlannerMiningModuleQuality = legendary
   specification.qualityPlannerMiningBeaconQuality = legendary
   specification.qualityPlannerMiningBeaconCount = math.Rational.from_integer(8)
 
-  const plan = vulcanusPlanner.planVulcanusQualityTarget({
-    specification,
-    item: calcite,
-    recipe: calciteRecipe,
-    requested: math.one,
-    qualityLevel: 4,
-  })
-  const mining = plan.operations.find((operation) => operation.kind === "source" && operation.recipe.key === "calcite")
-  assert.ok(mining)
-  assert.equal(mining.configuration.beaconCount.toString(), "8")
-  assert.equal(mining.configuration.beaconQuality.key, "legendary")
-  assert.deepEqual(
-    mining.configuration.beaconModules.map((module) => module?.key ?? null),
-    ["speed-module-2", "speed-module-2"],
-  )
-  assert.deepEqual(
-    mining.configuration.beaconModuleQualities.map((quality) => quality.key),
-    ["normal", "normal"],
-  )
-  assert.equal(mining.selfRecyclingLegendary?.recyclerQualityChance.toString(), "1/5")
-  assert.ok(math.zero.less(mining.selfRecyclingLegendary?.score ?? math.zero))
-
-  const recycler = plan.operations.find(
-    (operation) => operation.kind === "recycle" && operation.recipe.key === "calcite-recycling",
-  )
-  assert.ok(recycler)
-  assert.equal(recycler.configuration.beaconCount.toString(), "0")
-  assert.equal(recycler.configuration.qualityChance.toString(), "1/5")
-
-  specification.qualityPlannerMiningBeaconCount = math.Rational.from_integer(3)
-  const cappedPlan = vulcanusPlanner.planVulcanusQualityTarget({
-    specification,
-    item: calcite,
-    recipe: calciteRecipe,
-    requested: math.one,
-    qualityLevel: 4,
-  })
-  const cappedMining = cappedPlan.operations.find(
-    (operation) => operation.kind === "source" && operation.recipe.key === "calcite",
-  )
-  assert.ok(cappedMining)
-  assert.equal(cappedMining.configuration.beaconCount.toString(), "3")
-
-  specification.qualityPlannerMiningBeaconCount = math.zero
-  const disabledPlan = vulcanusPlanner.planVulcanusQualityTarget({
-    specification,
-    item: calcite,
-    recipe: calciteRecipe,
-    requested: math.one,
-    qualityLevel: 4,
-  })
-  const disabledMining = disabledPlan.operations.find(
-    (operation) => operation.kind === "source" && operation.recipe.key === "calcite",
-  )
-  assert.ok(disabledMining)
-  assert.equal(disabledMining.configuration.beaconCount.toString(), "0")
-
   specification.qualityPlannerObjective = "materials"
-  specification.qualityPlannerMiningBeaconCount = math.Rational.from_integer(8)
   const materialsPlan = vulcanusPlanner.planVulcanusQualityTarget({
     specification,
     item: calcite,
@@ -130,8 +71,71 @@ test("self-recycling mining searches dedicated beacon-count, beacon-quality, and
   const materialsMining = materialsPlan.operations.find(
     (operation) => operation.kind === "source" && operation.recipe.key === "calcite",
   )
+  const materialsRecycler = materialsPlan.operations.find(
+    (operation) => operation.kind === "recycle" && operation.recipe.key === "calcite-recycling",
+  )
   assert.ok(materialsMining)
+  assert.ok(materialsRecycler)
+  assert.equal(materialsMining.configuration.modules.filter((module) => module?.category === "quality").length, 3)
+  assert.equal(materialsMining.configuration.modules.filter((module) => module?.category === "productivity").length, 1)
+  assert.equal(materialsRecycler.configuration.modules.filter((module) => module?.category === "quality").length, 4)
   assert.equal(materialsMining.configuration.beaconCount.toString(), "0")
+  assert.equal(materialsRecycler.configuration.beaconCount.toString(), "0")
+
+  specification.qualityPlannerObjective = "quality-modules"
+  const modulePlan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: calcite,
+    recipe: calciteRecipe,
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  const moduleMining = modulePlan.operations.find(
+    (operation) => operation.kind === "source" && operation.recipe.key === "calcite",
+  )
+  const moduleRecycler = modulePlan.operations.find(
+    (operation) => operation.kind === "recycle" && operation.recipe.key === "calcite-recycling",
+  )
+  assert.ok(moduleMining)
+  assert.ok(moduleRecycler)
+  assert.equal(moduleMining.configuration.modules.filter((module) => module?.category === "quality").length, 0)
+  assert.equal(moduleMining.configuration.modules.filter((module) => module?.category === "productivity").length, 4)
+  assert.equal(moduleMining.configuration.beaconCount.toString(), "0")
+  assert.equal(moduleRecycler.configuration.modules.filter((module) => module?.category === "quality").length, 4)
+  assert.equal(moduleRecycler.configuration.beaconCount.toString(), "1")
+  assert.deepEqual(
+    moduleRecycler.configuration.beaconModules.map((module) => module?.key ?? null),
+    ["speed-module-3", null],
+  )
+  assert.ok(modulePlan.totalQualityModules.less(materialsPlan.totalQualityModules))
+  assert.ok(materialsMining.rate.less(moduleMining.rate))
+
+  specification.qualityPlannerObjective = "machines"
+  const machinePlan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: calcite,
+    recipe: calciteRecipe,
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  assert.ok(machinePlan.totalMachineCount.less(materialsPlan.totalMachineCount))
+
+  const recycler = requireValue(specification.buildingKeys, "recycler")
+  recycler.power = math.Rational.from_integer(1_000_000_000)
+  specification.qualityPlannerObjective = "power"
+  const directPlan = vulcanusPlanner.planVulcanusQualityTarget({
+    specification,
+    item: calcite,
+    recipe: calciteRecipe,
+    requested: math.one,
+    qualityLevel: 4,
+  })
+  assert.equal(
+    directPlan.operations.some(
+      (operation) => operation.kind === "recycle" && operation.recipe.key === "calcite-recycling",
+    ),
+    false,
+  )
 })
 
 test("Nauvis Legendary advanced circuits recursively quality-plan every solid intermediate", async () => {
@@ -160,7 +164,6 @@ test("Nauvis Legendary advanced circuits recursively quality-plan every solid in
     recipe: advancedCircuitRecipe,
     changedBuilding: false,
     qualityLevel: 4,
-    qualityStrategy: "auto",
     getRate: () => math.one,
   })
 
@@ -246,7 +249,6 @@ test("Fulgora Legendary Mech armor starts at quality scrap mining instead of imp
     recipe: requireValue(recipes, "mech-armor"),
     changedBuilding: false,
     qualityLevel: 4,
-    qualityStrategy: "auto",
     getRate: () => math.Rational.from_floats(1, 6000),
   })
 
@@ -304,7 +306,6 @@ test("automatic quality planning requires a planet instead of falling back to a 
     recipe: requireValue(recipes, "advanced-circuit"),
     changedBuilding: false,
     qualityLevel: 4,
-    qualityStrategy: "auto",
     getRate: () => math.one,
   })
 
@@ -331,7 +332,7 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
   assert.equal(specification.qualityPlannerProductivityModule, productivityModule)
   assert.equal(specification.qualityPlannerProductivityModuleQuality, legendary)
   specification.selectOnePlanet(vulcanus)
-  specification.qualityPlannerObjective = "practical"
+  specification.qualityPlannerObjective = "quality-modules"
   specification.qualityPlannerMiningModuleQuality = normal
   specification.qualityPlannerMiningBeaconQuality = normal
 
@@ -358,9 +359,7 @@ test("Vulcanus Legendary iron plates can use the calcite, concrete, and iron ore
   )
   const unbeaconedCalciteMining = plan.operations.find(
     (operation) =>
-      operation.kind === "source" &&
-      operation.recipe.key === "calcite" &&
-      operation.configuration.beaconCount.isZero(),
+      operation.kind === "source" && operation.recipe.key === "calcite" && operation.configuration.beaconCount.isZero(),
   )
   assert.ok(unbeaconedCalciteMining)
   const beaconedCalciteMining = plan.operations.find(

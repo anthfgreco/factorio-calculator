@@ -57,7 +57,7 @@ for (const requiredText of [
   "less valuable",
   "more valuable",
   "Planning diagnostics",
-  "Automatic quality factory",
+  "Optimize quality for",
   "Show unavailable recipes",
   "Disable recycling",
   "Relaxed",

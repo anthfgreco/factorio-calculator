@@ -61,7 +61,6 @@ try {
       recipe,
       changedBuilding: false,
       qualityLevel: 4,
-      qualityStrategy: "auto",
       getRate: () => math.one,
     })
     return {
