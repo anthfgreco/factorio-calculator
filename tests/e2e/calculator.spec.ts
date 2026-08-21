@@ -66,6 +66,24 @@ test("loads, edits targets, and restores the URL-backed plan", async ({ page }) 
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
+test("display rate units update the production target rate", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await openReadyCalculator(page)
+  const targetRate = page.getByLabel("Rate for Advanced circuit")
+  await targetRate.fill("60")
+  await targetRate.press("Enter")
+  await expect(targetRate).toHaveValue("60")
+
+  await page.getByRole("button", { name: "Settings" }).click()
+  await page.getByRole("radio", { name: "items/second" }).check()
+  await expect(targetRate).toHaveValue("1")
+  await expect(page.getByText("Rate/second", { exact: true })).toHaveCount(2)
+  await page.getByRole("radio", { name: "items/hour" }).check()
+  await expect(targetRate).toHaveValue("3,600")
+  await expect(page.getByText("Rate/hour", { exact: true })).toHaveCount(2)
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
 test("settings are native React controls and persist without DOM adapters", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page)
   await openReadyCalculator(page)
@@ -363,4 +381,3 @@ test("popout target link opens the item calculation in a new tab", async ({ page
   await expect(newPage.getByRole("region", { name: "Factory summary" })).toBeVisible()
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
-

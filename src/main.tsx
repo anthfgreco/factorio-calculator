@@ -15933,7 +15933,7 @@ function GeneralSettings({ snapshot, commands }: CalculatorViewProps) {
                     runMutation(
                       specification,
                       () => {
-                        specification.format.rateName = value
+                        specification.format.setDisplayRate(value)
                       },
                       false,
                     )
