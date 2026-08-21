@@ -14023,6 +14023,9 @@ function ItemTable({
                           onToggle={() => toggleEquipmentPicker(`machine:${recipe.key}`)}
                           onClose={() => closeEquipmentPicker(`machine:${recipe.key}`)}
                         />
+                        <CopyFriendlyText>
+                          {` Machine: ${qualifiedEquipmentName(building, machineQuality)}. `}
+                        </CopyFriendlyText>
                         <span>× {specification.format.count(count)}</span>
                       </div>
                     )}
@@ -14037,6 +14040,9 @@ function ItemTable({
                   <td className="factory-modules" style={UI.td}>
                     {recipe === null || building === null || moduleSpec === null ? null : (
                       <div style={{ ...UI.row, gap: 2 }}>
+                        <CopyFriendlyText>
+                          {`Modules: ${moduleSelectionText(moduleSpec.modules, moduleSpec.moduleQualities, specification.getNormalQuality())}. `}
+                        </CopyFriendlyText>
                         {moduleSpec.modules.map((module, index) => (
                           <InlineModulePicker
                             key={index}
@@ -14060,6 +14066,9 @@ function ItemTable({
                   <td className="factory-beacons" style={UI.td}>
                     {recipe === null || building === null || moduleSpec === null || !building.canBeacon() ? null : (
                       <div style={{ ...UI.row, gap: 2 }}>
+                        <CopyFriendlyText>
+                          {`Beacons: ${moduleSpec.beaconCount.toString()} ${qualifiedEquipmentName({ name: "beacon" }, moduleSpec.beaconQuality)}; modules: ${moduleSelectionText(moduleSpec.beaconModules, moduleSpec.beaconModuleQualities, specification.getNormalQuality())}. `}
+                        </CopyFriendlyText>
                         {moduleSpec.beaconModules.map((module, index) => (
                           <InlineModulePicker
                             key={index}
@@ -14210,6 +14219,31 @@ function qualifiedModuleName(selection: ModulePipetteSelection, normalQuality: Q
   return selection.quality === normalQuality
     ? selection.module.name
     : `${selection.quality.name} ${selection.module.name}`
+}
+
+function qualifiedEquipmentName(item: { readonly name: string }, quality: Quality): string {
+  return `${quality.name} ${item.name}`
+}
+
+function moduleSelectionText(
+  modules: readonly (Module | null | undefined)[],
+  qualities: readonly Quality[],
+  normalQuality: Quality,
+): string {
+  const names = modules.map((module, index) =>
+    module === null || module === undefined
+      ? "Empty"
+      : qualifiedEquipmentName(module, qualities[index] ?? normalQuality),
+  )
+  return names.length === 0 ? "None" : names.join(", ")
+}
+
+function CopyFriendlyText({ children }: { readonly children: ReactNode }) {
+  return (
+    <span aria-hidden="true" data-copy-text="true" style={UI.visuallyHidden}>
+      {children}
+    </span>
+  )
 }
 
 type InlineEquipmentPopoverAlignment = "left" | "machine" | "right"
@@ -15035,6 +15069,9 @@ function QualityPlanView({
                     <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, row.power)}</td>
                     <td style={UI.td}>
                       <div style={UI.row}>
+                        <CopyFriendlyText>
+                          {`Machine: ${operation.configuration.building === null ? "None" : qualifiedEquipmentName(operation.configuration.building, operation.configuration.machineQuality)}. Modules: ${moduleSelectionText(operation.configuration.modules, operation.configuration.moduleQualities, specification.getNormalQuality())}. Beacons: ${operation.configuration.beaconCount.toString()} ${qualifiedEquipmentName({ name: "beacon" }, operation.configuration.beaconQuality)}; modules: ${moduleSelectionText(operation.configuration.beaconModules, operation.configuration.beaconModuleQualities, specification.getNormalQuality())}. `}
+                        </CopyFriendlyText>
                         {operation.configuration.building === null ? null : (
                           <SpriteIcon
                             icon={operation.configuration.building.icon}

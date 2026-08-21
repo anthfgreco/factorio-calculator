@@ -268,6 +268,12 @@ test("factory equipment, quality, beacons, and location are edited inline", asyn
   await expect(beaconQuality).toBeFocused()
   await expect(beaconQuality).toHaveAccessibleName("Rare beacon quality for Advanced circuit")
 
+  await page.keyboard.press("Control+A")
+  const factoryCopy = await page.evaluate(() => window.getSelection()?.toString() ?? "")
+  expect(factoryCopy).toContain("Machine: Rare Assembling machine 3.")
+  expect(factoryCopy).toContain("Modules: Rare Speed module, Rare Speed module")
+  expect(factoryCopy).toContain("Rare beacon; modules: Epic Speed module, Epic Speed module")
+
   const pipetteHash = new URL(page.url()).hash
   await page.reload()
   await expect.poll(() => new URL(page.url()).hash).toBe(pipetteHash)
@@ -288,6 +294,21 @@ test("factory equipment, quality, beacons, and location are edited inline", asyn
 
   await page.getByRole("button", { name: "Help" }).click()
   await expect(page.getByText(/Hover a module or module choice and press Q/)).toBeVisible()
+  expect(browserErrors, "uncaught browser errors").toEqual([])
+})
+
+test("quality factory equipment survives a page-wide text selection", async ({ page }) => {
+  const browserErrors = collectBrowserErrors(page)
+  await openReadyCalculator(page)
+
+  await page.getByLabel("Apply preset").selectOption("full-legendary")
+  await expect(page.getByText("Q-module equivalents", { exact: true })).toBeVisible({ timeout: 120_000 })
+
+  await page.keyboard.press("Control+A")
+  const factoryCopy = await page.evaluate(() => window.getSelection()?.toString() ?? "")
+  expect(factoryCopy).toMatch(/Machine: (?:Uncommon |Rare |Epic |Legendary )?[^.]+\. Modules: /)
+  expect(factoryCopy).toMatch(/Modules: [^.]*Quality module/)
+  expect(factoryCopy).toMatch(/Beacons: \d+(?:\.\d+)? (?:Uncommon |Rare |Epic |Legendary )?beacon; modules: /)
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
