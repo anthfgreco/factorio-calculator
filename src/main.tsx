@@ -14990,6 +14990,16 @@ export interface QualityOperationDisplayRow {
   readonly power: Rational
 }
 
+export type QualityPlanDisplayEntry =
+  | { readonly kind: "operation"; readonly row: QualityOperationDisplayRow }
+  | {
+      readonly kind: "source-group"
+      readonly recipe: Recipe
+      readonly rows: readonly QualityOperationDisplayRow[]
+      readonly machineCount: Rational
+      readonly power: Rational
+    }
+
 export function aggregateRecyclerDisplayRows(
   operations: readonly QualityOperationRate[],
   locationKey: string,
@@ -15041,7 +15051,46 @@ export function aggregateRecyclerDisplayRows(
   return rows
 }
 
-function QualityPlanView({
+export function qualityPlanDisplayRows(
+  operations: readonly QualityOperationRate[],
+  locationKey: string,
+): QualityPlanDisplayEntry[] {
+  const rows = aggregateRecyclerDisplayRows(operations, locationKey)
+  const sourceRowsByRecipe = new Map<string, QualityOperationDisplayRow[]>()
+  for (const row of rows) {
+    if (row.operation.kind !== "source") continue
+    const recipeRows = sourceRowsByRecipe.get(row.operation.recipe.key)
+    if (recipeRows === undefined) sourceRowsByRecipe.set(row.operation.recipe.key, [row])
+    else recipeRows.push(row)
+  }
+
+  const groupedSources = new Set<string>()
+  const entries: QualityPlanDisplayEntry[] = []
+  for (const row of rows) {
+    const operation = row.operation
+    if (operation.kind !== "source") {
+      entries.push({ kind: "operation", row })
+      continue
+    }
+    const recipeRows = sourceRowsByRecipe.get(operation.recipe.key) ?? [row]
+    if (recipeRows.length < 2) {
+      entries.push({ kind: "operation", row })
+      continue
+    }
+    if (groupedSources.has(operation.recipe.key)) continue
+    groupedSources.add(operation.recipe.key)
+    entries.push({
+      kind: "source-group",
+      recipe: operation.recipe,
+      rows: recipeRows,
+      machineCount: recipeRows.reduce((total, sourceRow) => total.add(sourceRow.machineCount), zero),
+      power: recipeRows.reduce((total, sourceRow) => total.add(sourceRow.power), zero),
+    })
+  }
+  return entries
+}
+
+export function QualityPlanView({
   specification,
   plan,
 }: {
@@ -15049,12 +15098,13 @@ function QualityPlanView({
   readonly plan: QualityTargetPlan
 }) {
   const beaconItem = specification.items.get("beacon")
-  const displayRows = aggregateRecyclerDisplayRows(plan.operations, plan.planetKey)
+  const displayRows = qualityPlanDisplayRows(plan.operations, plan.planetKey)
   const operationName = (operation: QualityOperationRate): string =>
     operation.kind === "source"
       ? `${operation.recipe.name} mining · ${operation.sourcePurpose ?? "utility"}`
       : `${operation.kind}: ${operation.recipe.name}`
   const operationQuality = (operation: QualityOperationRate, qualityLevels: readonly number[]): string => {
+    if (operation.kind === "source" && operation.sourcePurpose === "quality") return "Mixed"
     const levels = [...new Set(qualityLevels)].sort((left, right) => left - right)
     if (levels.length > 1) {
       const consecutive = levels.every((level, index) => index === 0 || level === levels[index - 1]! + 1)
@@ -15066,6 +15116,115 @@ function QualityPlanView({
     const hasSolidOutput = operation.recipe.products.some(({ item }) => isQualifiedSolid(item))
     const hasFluidOutput = operation.recipe.products.some(({ item }) => !isQualifiedSolid(item))
     return operation.qualityLevel > 0 && hasSolidOutput && hasFluidOutput ? `${quality} solid outputs` : quality
+  }
+  const operationRow = (row: QualityOperationDisplayRow, key: string, sourceChild = false) => {
+    const operation = row.operation
+    const name = sourceChild
+      ? operation.sourcePurpose === "quality"
+        ? "Quality feed"
+        : "Utility"
+      : operationName(operation)
+    return (
+      <tr key={key}>
+        <td style={{ ...UI.td, ...(sourceChild ? { paddingLeft: 34 } : {}) }}>
+          {sourceChild ? <span style={UI.muted}>↳ </span> : null}
+          <IconLabel icon={operation.recipe.icon} name={name} size={sourceChild ? 20 : 24} />
+          {operation.selfRecyclingLegendary === undefined ? null : (
+            <div
+              style={{
+                ...UI.muted,
+                marginTop: 3,
+                fontSize: 11.5,
+                lineHeight: 1.35,
+              }}
+            >
+              <div>
+                {formatCanadianNumber(operation.selfRecyclingLegendary.legendaryPerMinutePerMachine.toDecimal(3))}
+                {" Legendary/min per miner · score "}
+                {formatCanadianNumber(
+                  operation.selfRecyclingLegendary.score.mul(Rational.from_integer(100)).toDecimal(1),
+                )}
+              </div>
+              <div>
+                {formatCanadianNumber(operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3))}
+                {"/s × ("}
+                {formatPercent(operation.selfRecyclingLegendary.sourceQualityChance, 3)}
+                {" + "}
+                {formatPercent(operation.selfRecyclingLegendary.recyclerQualityChance, 3)}
+                {" / 3)"}
+              </div>
+            </div>
+          )}
+        </td>
+        <td style={UI.td}>
+          <CopyFriendlyText>{"Quality:\u00a0"}</CopyFriendlyText>
+          {operationQuality(operation, row.qualityLevels)}
+        </td>
+        <td style={{ ...UI.td, textAlign: "right" }}>
+          <CopyFriendlyText>{`Rate / ${specification.format.rateName}:\u00a0`}</CopyFriendlyText>
+          {specification.format.rate(row.rate)}
+        </td>
+        <td style={{ ...UI.td, textAlign: "right" }}>
+          <CopyFriendlyText>{"Machines:\u00a0"}</CopyFriendlyText>
+          {specification.format.count(row.machineCount)}
+        </td>
+        <td style={{ ...UI.td, textAlign: "right" }}>
+          <CopyFriendlyText>{"Power:\u00a0"}</CopyFriendlyText>
+          {formatPower(specification, row.power)}
+        </td>
+        <td style={UI.td}>
+          <div style={{ ...UI.row, gap: 3, flexWrap: "nowrap" }}>
+            <CopyFriendlyText>
+              {`Machine: ${operation.configuration.building === null ? "None" : qualifiedEquipmentName(operation.configuration.building, operation.configuration.machineQuality)}. Modules: ${moduleSelectionText(operation.configuration.modules, operation.configuration.moduleQualities, specification.getNormalQuality())}. Beacons: ${operation.configuration.beaconCount.toString()} ${qualifiedEquipmentName({ name: "beacon" }, operation.configuration.beaconQuality)}; modules: ${moduleSelectionText(operation.configuration.beaconModules, operation.configuration.beaconModuleQualities, specification.getNormalQuality())}. `}
+            </CopyFriendlyText>
+            {operation.configuration.building === null ? null : (
+              <SpriteIcon
+                icon={operation.configuration.building.icon}
+                quality={operation.configuration.machineQuality}
+                size={24}
+                title={operation.configuration.building.name}
+              />
+            )}
+            {operation.configuration.modules.map((module, moduleIndex) =>
+              module === null ? null : (
+                <SpriteIcon
+                  key={`${module.key}-${moduleIndex}`}
+                  icon={module.icon}
+                  quality={operation.configuration.moduleQualities[moduleIndex] ?? null}
+                  size={21}
+                  title={module.name}
+                />
+              ),
+            )}
+            {!operation.configuration.beaconCount.isZero() &&
+            operation.configuration.beaconModules.some((module) => module !== null) ? (
+              <>
+                <span style={UI.muted}>+</span>
+                {beaconItem === undefined ? null : (
+                  <SpriteIcon
+                    icon={beaconItem.icon}
+                    quality={operation.configuration.beaconQuality}
+                    size={21}
+                    title={`${operation.configuration.beaconQuality.name} Beacon`}
+                  />
+                )}
+                {operation.configuration.beaconModules.map((module, moduleIndex) =>
+                  module === null ? null : (
+                    <SpriteIcon
+                      key={`beacon-${module.key}-${moduleIndex}`}
+                      icon={module.icon}
+                      quality={operation.configuration.beaconModuleQualities[moduleIndex] ?? null}
+                      size={19}
+                      title={`${module.name} in beacon`}
+                    />
+                  ),
+                )}
+              </>
+            ) : null}
+          </div>
+        </td>
+      </tr>
+    )
   }
   return (
     <details open style={UI.details}>
@@ -15108,111 +15267,40 @@ function QualityPlanView({
               </tr>
             </thead>
             <tbody>
-              {displayRows.map((row, index) => {
-                const operation = row.operation
+              {displayRows.map((entry, index) => {
+                if (entry.kind === "operation") {
+                  const operation = entry.row.operation
+                  return operationRow(
+                    entry.row,
+                    `${operation.recipe.key}-${operation.qualityLevel}-${operation.kind}-${index}`,
+                  )
+                }
                 return (
-                  <tr key={`${operation.recipe.key}-${operation.qualityLevel}-${operation.kind}-${index}`}>
-                    <td style={UI.td}>
-                      <IconLabel icon={operation.recipe.icon} name={operationName(operation)} size={24} />
-                      {operation.selfRecyclingLegendary === undefined ? null : (
-                        <div
-                          style={{
-                            ...UI.muted,
-                            marginTop: 3,
-                            fontSize: 11.5,
-                            lineHeight: 1.35,
-                          }}
-                        >
-                          <div>
-                            {formatCanadianNumber(
-                              operation.selfRecyclingLegendary.legendaryPerMinutePerMachine.toDecimal(3),
-                            )}
-                            {" Legendary/min per miner · score "}
-                            {formatCanadianNumber(
-                              operation.selfRecyclingLegendary.score.mul(Rational.from_integer(100)).toDecimal(1),
-                            )}
-                          </div>
-                          <div>
-                            {formatCanadianNumber(
-                              operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3),
-                            )}
-                            {"/s × ("}
-                            {formatPercent(operation.selfRecyclingLegendary.sourceQualityChance, 3)}
-                            {" + "}
-                            {formatPercent(operation.selfRecyclingLegendary.recyclerQualityChance, 3)}
-                            {" / 3)"}
-                          </div>
-                        </div>
-                      )}
-                    </td>
-                    <td style={UI.td}>
-                      <CopyFriendlyText>{"Quality:\u00a0"}</CopyFriendlyText>
-                      {operationQuality(operation, row.qualityLevels)}
-                    </td>
-                    <td style={{ ...UI.td, textAlign: "right" }}>
-                      <CopyFriendlyText>{`Rate / ${specification.format.rateName}:\u00a0`}</CopyFriendlyText>
-                      {specification.format.rate(row.rate)}
-                    </td>
-                    <td style={{ ...UI.td, textAlign: "right" }}>
-                      <CopyFriendlyText>{"Machines:\u00a0"}</CopyFriendlyText>
-                      {specification.format.count(row.machineCount)}
-                    </td>
-                    <td style={{ ...UI.td, textAlign: "right" }}>
-                      <CopyFriendlyText>{"Power:\u00a0"}</CopyFriendlyText>
-                      {formatPower(specification, row.power)}
-                    </td>
-                    <td style={UI.td}>
-                      <div style={{ ...UI.row, gap: 3, flexWrap: "nowrap" }}>
-                        <CopyFriendlyText>
-                          {`Machine: ${operation.configuration.building === null ? "None" : qualifiedEquipmentName(operation.configuration.building, operation.configuration.machineQuality)}. Modules: ${moduleSelectionText(operation.configuration.modules, operation.configuration.moduleQualities, specification.getNormalQuality())}. Beacons: ${operation.configuration.beaconCount.toString()} ${qualifiedEquipmentName({ name: "beacon" }, operation.configuration.beaconQuality)}; modules: ${moduleSelectionText(operation.configuration.beaconModules, operation.configuration.beaconModuleQualities, specification.getNormalQuality())}. `}
-                        </CopyFriendlyText>
-                        {operation.configuration.building === null ? null : (
-                          <SpriteIcon
-                            icon={operation.configuration.building.icon}
-                            quality={operation.configuration.machineQuality}
-                            size={24}
-                            title={operation.configuration.building.name}
-                          />
-                        )}
-                        {operation.configuration.modules.map((module, moduleIndex) =>
-                          module === null ? null : (
-                            <SpriteIcon
-                              key={`${module.key}-${moduleIndex}`}
-                              icon={module.icon}
-                              quality={operation.configuration.moduleQualities[moduleIndex] ?? null}
-                              size={21}
-                              title={module.name}
-                            />
-                          ),
-                        )}
-                        {!operation.configuration.beaconCount.isZero() &&
-                        operation.configuration.beaconModules.some((module) => module !== null) ? (
-                          <>
-                            <span style={UI.muted}>+</span>
-                            {beaconItem === undefined ? null : (
-                              <SpriteIcon
-                                icon={beaconItem.icon}
-                                quality={operation.configuration.beaconQuality}
-                                size={21}
-                                title={`${operation.configuration.beaconQuality.name} Beacon`}
-                              />
-                            )}
-                            {operation.configuration.beaconModules.map((module, moduleIndex) =>
-                              module === null ? null : (
-                                <SpriteIcon
-                                  key={`beacon-${module.key}-${moduleIndex}`}
-                                  icon={module.icon}
-                                  quality={operation.configuration.beaconModuleQualities[moduleIndex] ?? null}
-                                  size={19}
-                                  title={`${module.name} in beacon`}
-                                />
-                              ),
-                            )}
-                          </>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
+                  <Fragment key={`source-group-${entry.recipe.key}`}>
+                    <tr>
+                      <td style={UI.td}>
+                        <IconLabel icon={entry.recipe.icon} name={`${entry.recipe.name} mining`} size={24} />
+                      </td>
+                      <td style={UI.td}>—</td>
+                      <td style={{ ...UI.td, textAlign: "right" }}>—</td>
+                      <td style={{ ...UI.td, textAlign: "right" }}>
+                        <CopyFriendlyText>{"Machines:\u00a0"}</CopyFriendlyText>
+                        {specification.format.count(entry.machineCount)}
+                      </td>
+                      <td style={{ ...UI.td, textAlign: "right" }}>
+                        <CopyFriendlyText>{"Power:\u00a0"}</CopyFriendlyText>
+                        {formatPower(specification, entry.power)}
+                      </td>
+                      <td style={UI.td}>—</td>
+                    </tr>
+                    {entry.rows.map((row, childIndex) =>
+                      operationRow(
+                        row,
+                        `${entry.recipe.key}-${row.operation.sourcePurpose ?? "utility"}-${row.operation.qualityLevel}-${childIndex}`,
+                        true,
+                      ),
+                    )}
+                  </Fragment>
                 )
               })}
             </tbody>

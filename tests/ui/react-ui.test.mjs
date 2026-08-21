@@ -8,7 +8,9 @@ import { setupSpaceAgeFactory } from "../fixtures/factorio-runtime.mjs"
 
 const build = process.env.FACTORIO_TEST_BUILD
 if (!build) throw new Error("FACTORIO_TEST_BUILD is required; run pnpm test:ui")
-const { CalculatorView, aggregateRecyclerDisplayRows } = await import(pathToFileURL(resolve(build, "main.js")).href)
+const { CalculatorView, QualityPlanView, aggregateRecyclerDisplayRows, qualityPlanDisplayRows } = await import(
+  pathToFileURL(resolve(build, "main.js")).href
+)
 
 const commands = new Proxy(
   {},
@@ -252,6 +254,94 @@ test("recycler display rows represent physically shareable Stone recycler pools"
     { ...stoneDisposals[1], kind: "craft", qualityLevel: 1 },
   ]
   assert.equal(aggregateRecyclerDisplayRows([...stoneDisposals, ...crafts], "vulcanus").length, 3)
+})
+
+test("quality plan groups one source recipe into physical child pools", () => {
+  const plan = qualityRuntime.specification.qualityPlans[0]
+  assert.ok(plan)
+  const source = plan.operations.find((operation) => operation.kind === "source")
+  assert.ok(source)
+  const lava = qualityRuntime.recipes.get("lava")
+  assert.ok(lava)
+  const amount = (value) => qualityRuntime.math.Rational.from_integer(value)
+  const utility = {
+    ...source,
+    sourcePurpose: "utility",
+    qualityLevel: 0,
+    rate: amount(10),
+    machineCount: amount(2),
+    power: amount(4_000),
+    selfRecyclingLegendary: undefined,
+    configuration: {
+      ...source.configuration,
+      modules: source.configuration.modules.map(() => null),
+      beaconModules: source.configuration.beaconModules.map(() => null),
+      beaconCount: amount(0),
+    },
+  }
+  const quality = {
+    ...source,
+    sourcePurpose: "quality",
+    qualityLevel: 0,
+    rate: amount(20),
+    machineCount: amount(3),
+    power: amount(5_000),
+    configuration: {
+      ...source.configuration,
+      modules: source.configuration.modules.map(() => qualityRuntime.specification.qualityPlannerModule),
+      moduleQualities: source.configuration.moduleQualities.map(
+        () => qualityRuntime.specification.qualityPlannerModuleQuality,
+      ),
+    },
+  }
+  const lavaUtility = {
+    ...utility,
+    recipe: lava,
+    rate: amount(30),
+    machineCount: amount(1),
+    power: amount(1_000),
+  }
+
+  const entries = qualityPlanDisplayRows([utility, quality, lavaUtility], "vulcanus")
+  assert.equal(entries.length, 2)
+  const calciteGroup = entries.find((entry) => entry.kind === "source-group")
+  assert.ok(calciteGroup)
+  assert.equal(calciteGroup.recipe.key, source.recipe.key)
+  assert.equal(calciteGroup.rows.length, 2)
+  assert.deepEqual(
+    calciteGroup.rows.map((row) => row.operation.sourcePurpose),
+    ["utility", "quality"],
+  )
+  assert.equal(calciteGroup.machineCount.toString(), "5")
+  assert.equal(calciteGroup.power.toString(), "9000")
+  assert.notDeepEqual(calciteGroup.rows[0].operation.configuration, calciteGroup.rows[1].operation.configuration)
+  const lavaEntry = entries.find((entry) => entry.kind === "operation")
+  assert.ok(lavaEntry)
+  assert.equal(lavaEntry.row.operation.recipe.key, "lava")
+
+  const groupedHtml = renderToStaticMarkup(
+    createElement(QualityPlanView, {
+      specification: qualityRuntime.specification,
+      plan: { ...plan, operations: [utility, quality, lavaUtility] },
+    }),
+  )
+  const tableRows = [...groupedHtml.matchAll(/<tr[^>]*>.*?<\/tr>/g)].map(([row]) => row)
+  const calciteParentRows = tableRows.filter(
+    (row) => row.includes("Calcite mining") && !row.includes("Utility") && !row.includes("Quality feed"),
+  )
+  assert.equal(calciteParentRows.length, 1)
+  assert.match(calciteParentRows[0], /Machines:.*5/)
+  assert.match(calciteParentRows[0], /Power:.*9 kW/)
+  const utilityRow = tableRows.find((row) => row.includes("Utility"))
+  const qualityRow = tableRows.find((row) => row.includes("Quality feed"))
+  assert.ok(utilityRow)
+  assert.ok(qualityRow)
+  assert.match(utilityRow, /Normal/)
+  assert.match(qualityRow, /Mixed/)
+  assert.match(utilityRow, /Machine: .*Modules: Empty/)
+  assert.match(qualityRow, /Machine: .*Modules: .*Quality module/)
+  assert.equal(tableRows.filter((row) => row.includes("Lava mining · utility")).length, 1)
+  assert.equal(tableRows.filter((row) => row.includes(">Lava mining<")).length, 0)
 })
 
 test("visualizer is declarative SVG rendered by React", () => {
