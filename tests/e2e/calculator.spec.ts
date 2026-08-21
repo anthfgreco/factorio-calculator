@@ -303,6 +303,7 @@ test("quality factory equipment stays automatic and sprite-only", async ({ page 
 
   await page.getByLabel("Apply preset").selectOption("full-legendary")
   await expect(page.getByText("Quality modules", { exact: true })).toBeVisible({ timeout: 120_000 })
+  await expect(page.getByRole("columnheader", { name: "Rate / m", exact: true }).last()).toBeVisible()
   await expect(page.getByText("Planning diagnostics", { exact: true })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Reset to automatic" })).toHaveCount(0)
   await expect(page.getByLabel(/Machine quality for .* at/)).toHaveCount(0)
@@ -310,6 +311,16 @@ test("quality factory equipment stays automatic and sprite-only", async ({ page 
   await expect(page.locator('[role="img"][aria-label="Quality module 2"]').first()).toBeVisible()
   await expect(page.locator('[role="img"][aria-label$="Beacon"]').first()).toBeVisible()
   await expect(page.getByText(/\d+× (?:[NUREL]-)?(?:Q|Prod|Speed)\d/)).toHaveCount(0)
+
+  await page.keyboard.press("Control+A")
+  const factoryCopy = await page.evaluate(() => window.getSelection()?.toString() ?? "")
+  expect(factoryCopy).toMatch(/Machine: (?:Normal|Uncommon|Rare|Epic|Legendary) [^.]+\. Modules:/)
+  expect(factoryCopy).toMatch(/Modules: [^.]*Quality module/)
+  expect(factoryCopy).toMatch(/Beacons: \d+(?:\.\d+)? (?:Normal|Uncommon|Rare|Epic|Legendary) beacon; modules:/)
+  expect(factoryCopy).toMatch(/Quality:\s+Legendary/)
+  expect(factoryCopy).toMatch(/Rate \/ m:\s+[\d,.]+/)
+  expect(factoryCopy).toMatch(/Machines:\s+[\d,.]+/)
+  expect(factoryCopy).toMatch(/Power:\s+[\d,.]+ (?:W|kW|MW|GW)/)
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 

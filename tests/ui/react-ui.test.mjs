@@ -191,6 +191,8 @@ test("quality results combine shared sushi recyclers and render their automatic 
   assert.match(beaconRow, /title="Quality module 2"/)
   assert.match(beaconRow, /title="Normal Beacon"/)
   assert.match(beaconRow, /title="Speed module 2 in beacon"/)
+  assert.match(beaconRow, /data-copy-text="true"/)
+  assert.match(beaconRow, /Machine: Normal Recycler\. Modules: .*Quality module 2/)
   assert.doesNotMatch(beaconRow, /\d+× (?:L-)?(?:Q2|Speed2)/)
   assert.doesNotMatch(qualityHtml, /Reset to automatic|Machine quality for .* at|<details style="margin-top:4px"/)
   assert.doesNotMatch(qualityHtml, /Planning diagnostics/)

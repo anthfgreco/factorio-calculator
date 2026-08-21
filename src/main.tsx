@@ -15101,7 +15101,7 @@ function QualityPlanView({
               <tr>
                 <th style={UI.th}>Operation</th>
                 <th style={UI.th}>Quality</th>
-                <th style={{ ...UI.th, textAlign: "right" }}>Rate</th>
+                <th style={{ ...UI.th, textAlign: "right" }}>Rate / {specification.format.rateName}</th>
                 <th style={{ ...UI.th, textAlign: "right" }}>Machines</th>
                 <th style={{ ...UI.th, textAlign: "right" }}>Power</th>
                 <th style={UI.th}>Equipment</th>
@@ -15145,12 +15145,27 @@ function QualityPlanView({
                         </div>
                       )}
                     </td>
-                    <td style={UI.td}>{operationQuality(operation, row.qualityLevels)}</td>
-                    <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.rate(row.rate)}</td>
-                    <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.count(row.machineCount)}</td>
-                    <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, row.power)}</td>
+                    <td style={UI.td}>
+                      <CopyFriendlyText>{"Quality:\u00a0"}</CopyFriendlyText>
+                      {operationQuality(operation, row.qualityLevels)}
+                    </td>
+                    <td style={{ ...UI.td, textAlign: "right" }}>
+                      <CopyFriendlyText>{`Rate / ${specification.format.rateName}:\u00a0`}</CopyFriendlyText>
+                      {specification.format.rate(row.rate)}
+                    </td>
+                    <td style={{ ...UI.td, textAlign: "right" }}>
+                      <CopyFriendlyText>{"Machines:\u00a0"}</CopyFriendlyText>
+                      {specification.format.count(row.machineCount)}
+                    </td>
+                    <td style={{ ...UI.td, textAlign: "right" }}>
+                      <CopyFriendlyText>{"Power:\u00a0"}</CopyFriendlyText>
+                      {formatPower(specification, row.power)}
+                    </td>
                     <td style={UI.td}>
                       <div style={{ ...UI.row, gap: 3, flexWrap: "nowrap" }}>
+                        <CopyFriendlyText>
+                          {`Machine: ${operation.configuration.building === null ? "None" : qualifiedEquipmentName(operation.configuration.building, operation.configuration.machineQuality)}. Modules: ${moduleSelectionText(operation.configuration.modules, operation.configuration.moduleQualities, specification.getNormalQuality())}. Beacons: ${operation.configuration.beaconCount.toString()} ${qualifiedEquipmentName({ name: "beacon" }, operation.configuration.beaconQuality)}; modules: ${moduleSelectionText(operation.configuration.beaconModules, operation.configuration.beaconModuleQualities, specification.getNormalQuality())}. `}
+                        </CopyFriendlyText>
                         {operation.configuration.building === null ? null : (
                           <SpriteIcon
                             icon={operation.configuration.building.icon}
