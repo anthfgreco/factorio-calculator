@@ -14673,20 +14673,6 @@ function InlineModulePicker({
     )
     .filter((row) => row.length > 0)
   const compatibleModules = new Set(compatibleRows.flatMap((row) => row.filter((candidate) => candidate !== null)))
-  const handleQ = (event: {
-    readonly key: string
-    readonly repeat: boolean
-    readonly altKey: boolean
-    readonly ctrlKey: boolean
-    readonly metaKey: boolean
-    preventDefault(): void
-    stopPropagation(): void
-  }) => {
-    if (event.key.toLowerCase() !== "q" || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
-    event.preventDefault()
-    event.stopPropagation()
-    pipette.sample(currentSelection)
-  }
   const chooseModule = (nextModule: Module | null) => {
     const modules = beacon ? moduleSpec.beaconModules : moduleSpec.modules
     const oldModule = modules[index]
@@ -14753,6 +14739,7 @@ function InlineModulePicker({
         <button
           id={equipmentPickerTriggerId(pickerKey)}
           type="button"
+          data-module-pipette-source="true"
           data-module-pipette-target="true"
           aria-label={`${label}. ${currentSelection === null ? "Empty" : qualifiedModuleName(currentSelection, normalQuality)}`}
           aria-keyshortcuts="Q"
@@ -14778,9 +14765,6 @@ function InlineModulePicker({
           }}
           onPointerEnter={() => pipette.setHovered(currentSelection)}
           onPointerLeave={() => pipette.setHovered(undefined)}
-          onFocus={() => pipette.setHovered(currentSelection)}
-          onBlur={() => pipette.setHovered(undefined)}
-          onKeyDown={handleQ}
           onClick={() => {
             if (pipette.selection === null) onToggle()
             else applyPipette(pipette.selection)
@@ -14814,6 +14798,7 @@ function InlineModulePicker({
                 <button
                   key={candidate?.key ?? "empty"}
                   type="button"
+                  data-module-pipette-source="true"
                   aria-label={`${name} for ${label}`}
                   aria-pressed={chosen}
                   title={name}
@@ -14830,8 +14815,6 @@ function InlineModulePicker({
                   }}
                   onPointerEnter={() => pipette.setHovered(selection)}
                   onPointerLeave={() => pipette.setHovered(undefined)}
-                  onFocus={() => pipette.setHovered(selection)}
-                  onBlur={() => pipette.setHovered(undefined)}
                   onClick={() => chooseModule(candidate)}
                 >
                   {candidate === null ? (
@@ -15465,7 +15448,7 @@ function FactoryPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
         return
       }
       event.preventDefault()
-      samplePipette(hoveredPipetteSource ?? null)
+      samplePipette(pipetteSelection === null ? (hoveredPipetteSource ?? null) : null)
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
@@ -15487,24 +15470,25 @@ function FactoryPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
     <div
       id="totals_tab"
       style={UI.stack}
-      onPointerMove={
-        pipetteSelection === null
-          ? undefined
-          : (event) => {
-              const gap = 12
-              const ghostSize = 40
-              setPointerPosition({
-                x:
-                  event.clientX + gap + ghostSize <= window.innerWidth
-                    ? event.clientX + gap
-                    : Math.max(4, event.clientX - ghostSize),
-                y:
-                  event.clientY + gap + ghostSize <= window.innerHeight
-                    ? event.clientY + gap
-                    : Math.max(4, event.clientY - ghostSize),
-              })
-            }
-      }
+      onPointerMove={(event) => {
+        const target = event.target
+        if (!(target instanceof Element) || target.closest("[data-module-pipette-source]") === null) {
+          if (hoveredPipetteSource !== undefined) setHoveredPipetteSource(undefined)
+        }
+        if (pipetteSelection === null) return
+        const gap = 12
+        const ghostSize = 40
+        setPointerPosition({
+          x:
+            event.clientX + gap + ghostSize <= window.innerWidth
+              ? event.clientX + gap
+              : Math.max(4, event.clientX - ghostSize),
+          y:
+            event.clientY + gap + ghostSize <= window.innerHeight
+              ? event.clientY + gap
+              : Math.max(4, event.clientY - ghostSize),
+        })
+      }}
     >
       <div id="module_pipette_status" role="status" aria-live="polite" style={UI.visuallyHidden}>
         {pipetteMessage}
@@ -17236,7 +17220,10 @@ function HelpPanel() {
             ["Treat an ingredient as externally supplied", "Click its icon in the Factory table"],
             ["Restore an imported ingredient to the production chain", "Click the icon again"],
             ["Change a recipe for one item", "Use the recipe selector in its Factory row"],
-            ["Copy a module and its quality between slots", "Hover a module or module choice and press Q"],
+            [
+              "Copy a module and its quality between slots",
+              "Hover a module or module choice and press Q; press Q again or Esc to put it away",
+            ],
             ["Change belt stacking for one item", "Use the stacking selector beside its belt count"],
             ["Plan a quality factory", "Set the output quality and production planet"],
             ["Choose available quality gear", "Settings → Quality factory"],

@@ -243,7 +243,8 @@ test("factory equipment, quality, beacons, and location are edited inline", asyn
   await secondModule.click()
   await expect(secondModule).toHaveAccessibleName(/Rare Speed module/)
   await expect(ghost).toBeVisible()
-  await page.keyboard.press("Escape")
+  await page.locator('tr[data-item-key="advanced-circuit"] td').nth(2).hover()
+  await page.keyboard.press("q")
   await expect(ghost).toHaveCount(0)
 
   const firstBeaconModule = page.getByRole("button", { name: /^Advanced circuit beacon module 1/ })
