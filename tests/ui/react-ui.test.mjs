@@ -65,7 +65,7 @@ qualityRuntime.specification.selectOnePlanet(qualityRuntime.planets.get("vulcanu
 qualityRuntime.specification.setMaxQualityLevel(4)
 qualityRuntime.specification.qualityPlannerMiningModuleQuality = qualityRuntime.specification.qualities.get("normal")
 qualityRuntime.specification.qualityPlannerMiningBeaconQuality = qualityRuntime.specification.qualities.get("normal")
-const qualityTarget = qualityRuntime.specification.addTarget("iron-plate")
+const qualityTarget = qualityRuntime.specification.addTarget("calcite")
 qualityTarget.setQuality(4)
 qualityTarget.setRate("10")
 qualityRuntime.specification.updateSolution()
@@ -179,15 +179,15 @@ test("settings are native React controls grouped by user intent", () => {
   assert.doesNotMatch(settingsHtml, /tippy|dropdownWrapper|display-row/)
 })
 
-test("quality results render beacon equipment on the optimized operation row", () => {
-  const beaconIndex = qualityHtml.indexOf('title="Normal Beacon"')
-  assert.notEqual(beaconIndex, -1)
-  const rowStart = qualityHtml.lastIndexOf("<tr", beaconIndex)
-  const rowEnd = qualityHtml.indexOf("</tr>", beaconIndex)
-  assert.notEqual(rowStart, -1)
-  assert.notEqual(rowEnd, -1)
-  const beaconRow = qualityHtml.slice(rowStart, rowEnd)
+test("quality results combine shared sushi recyclers and render their beacon equipment", () => {
+  const recyclerRows = [...qualityHtml.matchAll(/<tr[^>]*>.*?<\/tr>/g)]
+    .map(([row]) => row)
+    .filter((row) => row.includes("recycle: Calcite recycling"))
+  assert.equal(recyclerRows.length, 1)
+  const beaconRow = recyclerRows[0]
+  assert.ok(beaconRow)
   assert.match(beaconRow, /recycle: Calcite recycling/)
+  assert.match(beaconRow, /Normal–Epic/)
   assert.match(beaconRow, /title="Normal Beacon"/)
   assert.match(beaconRow, /title="Speed module 2 in beacon"/)
   assert.match(beaconRow, />×1<\/span>/)

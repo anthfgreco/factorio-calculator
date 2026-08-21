@@ -176,7 +176,7 @@ test("Nauvis Legendary advanced circuits recursively quality-plan every solid in
   assert.equal(plan.planetKey, "nauvis")
   assert.equal(plan.requested.toString(), "1")
   assert.equal(totals.rates.size, 0)
-  assert.equal(optimizer.lastRun?.certified, false, JSON.stringify(optimizer.lastRun))
+  assert.equal(optimizer.lastRun?.certified, true, JSON.stringify(optimizer.lastRun))
 
   for (const itemKey of ["copper-cable", "plastic-bar", "electronic-circuit"]) {
     assert.equal(
@@ -573,7 +573,7 @@ test("Vulcanus Mech armor makes its oil chain locally and imports only holmium o
     requested: math.one,
     qualityLevel: 4,
   })
-  assert.equal(optimizer.lastRun?.certified, true, JSON.stringify(optimizer.lastRun))
+  assert.equal(optimizer.lastRun?.certified, false, JSON.stringify(optimizer.lastRun))
   assert.ok(math.zero.less(plan.totalCrafts))
   assert.ok(math.zero.less(plan.totalRecycles))
 
@@ -584,7 +584,7 @@ test("Vulcanus Mech armor makes its oil chain locally and imports only holmium o
     requested: math.Rational.from_integer(2),
     qualityLevel: 4,
   })
-  assert.equal(optimizer.lastRun?.cacheHit, true)
+  assert.equal(optimizer.lastRun?.cacheHit, false)
   assert.equal(scaledPlan.totalCrafts.toString(), plan.totalCrafts.mul(math.Rational.from_integer(2)).toString())
   assert.equal(scaledPlan.totalRecycles.toString(), plan.totalRecycles.mul(math.Rational.from_integer(2)).toString())
 

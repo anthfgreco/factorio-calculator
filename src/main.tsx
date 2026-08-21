@@ -6311,6 +6311,19 @@ function configurationWithBeaconSetup(
   return configurationFromModuleSpec(specification, recipe, configuration.qualityLevel, moduleSpec)
 }
 
+function configurationAcrossQualityLevels(
+  specification: FactorySpecification,
+  recipe: Recipe,
+  configuration: QualityTierConfiguration,
+): readonly QualityTierConfiguration[] {
+  const moduleSpec = moduleSpecFromConfiguration(specification, recipe, configuration)
+  return Array.from({ length: specification.maxQualityLevel + 1 }, (_, qualityLevel) =>
+    moduleSpec === null
+      ? { ...configuration, qualityLevel }
+      : configurationFromModuleSpec(specification, recipe, qualityLevel, moduleSpec),
+  )
+}
+
 function qualityModuleCount(configuration: QualityTierConfiguration): number {
   return configuration.modules.filter((module) => module?.category === "quality").length
 }
@@ -6373,6 +6386,31 @@ function quarterSelfRecyclerForItem(specification: FactorySpecification, item: I
   if (ingredient === undefined || product === undefined || ingredient.item !== item || product.item !== item)
     return null
   return product.amount.mul(Rational.from_integer(4)).equal(ingredient.amount) ? recycler : null
+}
+
+function quarterSelfRecyclerOperationsByInitialQuality(
+  recyclerQualityChance: Rational,
+  maxLevel: number,
+): readonly (readonly Rational[])[] {
+  const transientLevels = maxLevel
+  const returnedFraction = one.div(Rational.from_integer(4))
+  const transitions = Array.from({ length: transientLevels }, (_, inputQuality) => {
+    const distribution = qualityTransitionDistribution(recyclerQualityChance, inputQuality, maxLevel)
+    return Array.from({ length: transientLevels }, (_, outputQuality) =>
+      outputQuality < inputQuality ? zero : returnedFraction.mul(distribution[outputQuality] ?? zero),
+    )
+  })
+  return Array.from({ length: transientLevels }, (_, initialQuality) => {
+    const visits = Array.from({ length: transientLevels }, () => zero)
+    for (let inputQuality = initialQuality; inputQuality < transientLevels; inputQuality++) {
+      let arrivals = inputQuality === initialQuality ? one : zero
+      for (let priorQuality = initialQuality; priorQuality < inputQuality; priorQuality++) {
+        arrivals = arrivals.add((visits[priorQuality] ?? zero).mul(transitions[priorQuality]?.[inputQuality] ?? zero))
+      }
+      visits[inputQuality] = arrivals.div(one.sub(transitions[inputQuality]?.[inputQuality] ?? zero))
+    }
+    return visits
+  })
 }
 
 function selfRecyclingLegendaryMetrics(
@@ -7363,17 +7401,15 @@ class PracticalQualityGraphBuilder {
     productivityModule: Module | null,
   ): readonly (readonly QualityTierConfiguration[])[] {
     const normal = this.specification.getNormalQuality()
-    const base = Array.from({ length: this.specification.maxQualityLevel + 1 }, (_, qualityLevel) =>
-      moduleTierConfiguration({
-        specification: this.specification,
-        recipe,
-        qualityLevel,
-        building,
-        module: null,
-        moduleQuality: normal,
-        preserveBeacons: false,
-      }),
-    )
+    const base = moduleTierConfiguration({
+      specification: this.specification,
+      recipe,
+      qualityLevel: 0,
+      building,
+      module: null,
+      moduleQuality: normal,
+      preserveBeacons: false,
+    })
     const qualityModuleCounts =
       qualityModule === null ? [0] : Array.from({ length: building.moduleSlots + 1 }, (_, i) => i)
     const speedModule = this.specification.qualityPlannerMiningModule
@@ -7398,11 +7434,11 @@ class PracticalQualityGraphBuilder {
         productivityModuleCount <= maximumProductivityModules;
         productivityModuleCount++
       ) {
-        const direct = base.map((configuration) =>
+        const direct = [
           configurationWithModuleLoadout(
             this.specification,
             recipe,
-            configuration,
+            base,
             qualityModule,
             this.plannerQuality,
             qualityModuleCount,
@@ -7410,27 +7446,32 @@ class PracticalQualityGraphBuilder {
             this.productivityQuality,
             productivityModuleCount,
           ),
-        )
+        ]
         result.push(direct)
-        if (this.objective === "materials" || !canSpeedBeacon || maximumBeacons === 0 || speedModule === null) continue
+        if (
+          this.objective === "materials" ||
+          (this.objective === "quality-modules" && qualityModuleCount === 0) ||
+          !canSpeedBeacon ||
+          maximumBeacons === 0 ||
+          speedModule === null
+        )
+          continue
 
         for (let beaconCount = 1; beaconCount <= maximumBeacons; beaconCount++) {
           for (const beaconQuality of beaconQualities) {
             for (let beaconModuleSlots = 1; beaconModuleSlots <= direct[0]!.beaconModules.length; beaconModuleSlots++) {
-              result.push(
-                direct.map((configuration) =>
-                  configurationWithBeaconSetup(
-                    this.specification,
-                    recipe,
-                    configuration,
-                    speedModule,
-                    this.miningModuleQuality,
-                    beaconModuleSlots,
-                    beaconQuality,
-                    Rational.from_integer(beaconCount),
-                  ),
+              result.push([
+                configurationWithBeaconSetup(
+                  this.specification,
+                  recipe,
+                  direct[0]!,
+                  speedModule,
+                  this.miningModuleQuality,
+                  beaconModuleSlots,
+                  beaconQuality,
+                  Rational.from_integer(beaconCount),
                 ),
-              )
+              ])
             }
           }
         }
@@ -7491,7 +7532,55 @@ class PracticalQualityGraphBuilder {
       recyclerQualityModule,
       recyclerProductivityModule,
     )
-    const sourceMetrics = sourceCandidates.flatMap((configurations) => {
+    const sourceSearchCandidates = (() => {
+      if (this.objective === "power") return sourceCandidates
+      const byKey = new Map<string, (typeof sourceCandidates)[number]>()
+      for (const configurations of sourceCandidates) {
+        const configuration = configurations[0]
+        if (configuration === undefined) continue
+        const moduleCount = qualityModuleCount(configuration)
+        const key = JSON.stringify([
+          configuration.qualityChance.toString(),
+          configuration.productivity.toString(),
+          this.objective === "quality-modules" ? moduleCount : null,
+        ])
+        const existing = byKey.get(key)
+        const existingConfiguration = existing?.[0]
+        const needsSpeed = this.objective === "machines" || (this.objective === "quality-modules" && moduleCount > 0)
+        if (
+          existingConfiguration === undefined ||
+          (needsSpeed && existingConfiguration.speedEffect.less(configuration.speedEffect))
+        ) {
+          byKey.set(key, configurations)
+        }
+      }
+      return [...byKey.values()]
+    })()
+    const recyclerSearchCandidates = (() => {
+      if (this.objective === "power") return recyclerCandidates
+      const byKey = new Map<string, (typeof recyclerCandidates)[number]>()
+      for (const configurations of recyclerCandidates) {
+        const configuration = configurations[0]
+        if (configuration === undefined) continue
+        const moduleCount = qualityModuleCount(configuration)
+        const key = JSON.stringify([
+          configuration.qualityChance.toString(),
+          configuration.productivity.toString(),
+          this.objective === "quality-modules" ? moduleCount : null,
+        ])
+        const existing = byKey.get(key)
+        const existingConfiguration = existing?.[0]
+        const needsSpeed = this.objective === "machines" || (this.objective === "quality-modules" && moduleCount > 0)
+        if (
+          existingConfiguration === undefined ||
+          (needsSpeed && existingConfiguration.speedEffect.less(configuration.speedEffect))
+        ) {
+          byKey.set(key, configurations)
+        }
+      }
+      return [...byKey.values()]
+    })()
+    const rawSourceMetrics = sourceSearchCandidates.flatMap((configurations) => {
       const configuration = configurations[0]
       if (configuration === undefined) return []
       const capacity = operationCapacity(this.specification, recipe, one, configuration)
@@ -7511,42 +7600,240 @@ class PracticalQualityGraphBuilder {
         },
       ]
     })
-    const graph = new QualityGraph()
-    const recyclerMetrics = recyclerCandidates.flatMap((configurations) => {
+    const sourceMetricsByKey = new Map<string, (typeof rawSourceMetrics)[number]>()
+    for (const candidate of rawSourceMetrics) {
+      const moduleCount = qualityModuleCount(candidate.configuration)
+      const key = JSON.stringify([
+        candidate.configuration.qualityChance.toString(),
+        candidate.configuration.productivity.toString(),
+        moduleCount,
+        candidate.materialCost.toString(),
+      ])
+      const existing = sourceMetricsByKey.get(key)
+      const better =
+        existing !== undefined &&
+        (this.objective === "machines"
+          ? candidate.capacity.machineCount.less(existing.capacity.machineCount)
+          : this.objective === "power"
+            ? candidate.capacity.power.less(existing.capacity.power)
+            : this.objective === "quality-modules" && moduleCount > 0
+              ? candidate.capacity.machineCount.less(existing.capacity.machineCount)
+              : false)
+      if (existing === undefined || better) sourceMetricsByKey.set(key, candidate)
+    }
+    const sourceMetricCost = (candidate: (typeof rawSourceMetrics)[number]): Rational =>
+      this.objective === "quality-modules"
+        ? candidate.qualityModules
+        : this.objective === "materials"
+          ? candidate.materialCost
+          : this.objective === "power"
+            ? candidate.capacity.power
+            : candidate.capacity.machineCount
+    const sourceDominates = (
+      left: (typeof rawSourceMetrics)[number],
+      right: (typeof rawSourceMetrics)[number],
+    ): boolean =>
+      !left.configuration.qualityChance.less(right.configuration.qualityChance) &&
+      !left.outputPerCraft.less(right.outputPerCraft) &&
+      !sourceMetricCost(right).less(sourceMetricCost(left)) &&
+      !right.materialCost.less(left.materialCost)
+    const sourceMetrics: (typeof rawSourceMetrics)[number][] = []
+    for (const candidate of sourceMetricsByKey.values()) {
+      if (sourceMetrics.some((existing) => sourceDominates(existing, candidate))) continue
+      for (let index = sourceMetrics.length - 1; index >= 0; index--) {
+        const existing = sourceMetrics[index]
+        if (existing !== undefined && sourceDominates(candidate, existing)) sourceMetrics.splice(index, 1)
+      }
+      sourceMetrics.push(candidate)
+    }
+    const recyclerQualityMetrics = new Map<
+      string,
+      {
+        readonly probabilityFactor: Rational
+        readonly operationsByInitialQuality: readonly (readonly Rational[])[]
+        readonly operationsPerInitialQuality: readonly Rational[]
+      }
+    >()
+    const rawRecyclerMetrics = recyclerSearchCandidates.flatMap((configurations) => {
       const configuration = configurations[0]
       if (configuration === undefined) return []
       const capacityPerOperation = operationCapacity(this.specification, recyclerRecipe, one, configuration)
       if (capacityPerOperation.machineCount.isZero()) return []
-      const closures = recyclerClosure(
-        graph,
-        product.item,
-        recyclerRecipe,
-        4,
-        this.specification.maxQualityLevel,
-        configurations,
-      )
       const recyclerChance = configuration.qualityChance
-      const three = Rational.from_integer(3)
-      const probabilityFactor = recyclerChance
-        .mul(Rational.from_integer(10))
-        .add(three)
-        .pow(3)
-        .div(Rational.from_integer(1000).mul(recyclerChance.add(three).pow(4)))
+      const qualityKey = JSON.stringify([configuration.qualityChance.toString(), configuration.productivity.toString()])
+      let qualityMetrics = recyclerQualityMetrics.get(qualityKey)
+      if (qualityMetrics === undefined) {
+        const operationsByInitialQuality = quarterSelfRecyclerOperationsByInitialQuality(
+          recyclerChance,
+          this.specification.maxQualityLevel,
+        )
+        const three = Rational.from_integer(3)
+        qualityMetrics = {
+          probabilityFactor: recyclerChance
+            .mul(Rational.from_integer(10))
+            .add(three)
+            .pow(3)
+            .div(Rational.from_integer(1000).mul(recyclerChance.add(three).pow(4))),
+          operationsByInitialQuality,
+          operationsPerInitialQuality: operationsByInitialQuality.map((operations) =>
+            operations.reduce((total, rate) => total.add(rate), zero),
+          ),
+        }
+        recyclerQualityMetrics.set(qualityKey, qualityMetrics)
+      }
+      const building = configuration.building
+      let activePowerPerMachine = zero
+      let placedPowerPerMachine = zero
+      if (building !== null) {
+        activePowerPerMachine = building.powerForQuality(configuration.machineQuality).mul(configuration.powerEffect)
+        if (building.fuel === null) {
+          placedPowerPerMachine = building.drainForQuality(configuration.machineQuality)
+        }
+        if (
+          !configuration.beaconCount.isZero() &&
+          configuration.beaconModules.some((module) => module !== null) &&
+          !this.specification.beaconPower.isZero()
+        ) {
+          placedPowerPerMachine = placedPowerPerMachine.add(
+            this.specification.beaconPower
+              .mul(configuration.beaconQuality.beaconPowerUsageMultiplier)
+              .mul(configuration.beaconCount),
+          )
+        }
+      }
       return [
         {
-          configurations,
           configuration,
           capacityPerOperation,
-          closures,
           recyclerChance,
-          probabilityFactor,
-          operationsPerInitialQuality: closures.map((closure) =>
-            closure.operationsByInputQuality.reduce((total, rate) => total.add(rate), zero),
-          ),
+          probabilityFactor: qualityMetrics.probabilityFactor,
+          operationsByInitialQuality: qualityMetrics.operationsByInitialQuality,
+          operationsPerInitialQuality: qualityMetrics.operationsPerInitialQuality,
           qualityModulesPerMachine: Rational.from_integer(qualityModuleCount(configuration)),
+          activePowerPerMachine,
+          activePowerPerOperation: activePowerPerMachine.mul(capacityPerOperation.machineCount),
+          placedPowerPerMachine,
         },
       ]
     })
+    const deduplicatedRecyclerMetrics = (() => {
+      if (this.objective === "power") {
+        const frontiers = new Map<string, (typeof rawRecyclerMetrics)[number][]>()
+        const noMore = (left: Rational, right: Rational): boolean => !right.less(left)
+        const dominates = (
+          left: (typeof rawRecyclerMetrics)[number],
+          right: (typeof rawRecyclerMetrics)[number],
+        ): boolean =>
+          noMore(left.capacityPerOperation.machineCount, right.capacityPerOperation.machineCount) &&
+          noMore(left.activePowerPerOperation, right.activePowerPerOperation) &&
+          noMore(left.placedPowerPerMachine, right.placedPowerPerMachine)
+        for (const candidate of rawRecyclerMetrics) {
+          const key = JSON.stringify([
+            candidate.configuration.qualityChance.toString(),
+            candidate.configuration.productivity.toString(),
+          ])
+          const frontier = frontiers.get(key) ?? []
+          if (frontier.some((existing) => dominates(existing, candidate))) continue
+          frontiers.set(key, frontier.filter((existing) => !dominates(candidate, existing)).concat(candidate))
+        }
+        return [...frontiers.values()].flat()
+      }
+      const byKey = new Map<string, (typeof rawRecyclerMetrics)[number]>()
+      for (const candidate of rawRecyclerMetrics) {
+        const moduleCount = qualityModuleCount(candidate.configuration)
+        const key = JSON.stringify([
+          candidate.configuration.qualityChance.toString(),
+          candidate.configuration.productivity.toString(),
+          moduleCount,
+        ])
+        const existing = byKey.get(key)
+        const better =
+          existing !== undefined &&
+          (this.objective === "machines" || (this.objective === "quality-modules" && moduleCount > 0)) &&
+          candidate.capacityPerOperation.machineCount.less(existing.capacityPerOperation.machineCount)
+        if (existing === undefined || better) byKey.set(key, candidate)
+      }
+      return [...byKey.values()]
+    })()
+    const recyclerMetricCost = (candidate: (typeof rawRecyclerMetrics)[number]): Rational =>
+      this.objective === "quality-modules"
+        ? candidate.capacityPerOperation.machineCount.mul(candidate.qualityModulesPerMachine)
+        : this.objective === "machines"
+          ? candidate.capacityPerOperation.machineCount
+          : zero
+    const recyclerDominates = (
+      left: (typeof rawRecyclerMetrics)[number],
+      right: (typeof rawRecyclerMetrics)[number],
+    ): boolean => {
+      if (left.recyclerChance.less(right.recyclerChance)) return false
+      if (this.objective === "power") {
+        return (
+          !right.capacityPerOperation.machineCount.less(left.capacityPerOperation.machineCount) &&
+          !right.activePowerPerOperation.less(left.activePowerPerOperation) &&
+          !right.placedPowerPerMachine.less(left.placedPowerPerMachine)
+        )
+      }
+      return !recyclerMetricCost(right).less(recyclerMetricCost(left))
+    }
+    const recyclerMetrics: (typeof rawRecyclerMetrics)[number][] = []
+    for (const candidate of deduplicatedRecyclerMetrics) {
+      if (recyclerMetrics.some((existing) => recyclerDominates(existing, candidate))) continue
+      for (let index = recyclerMetrics.length - 1; index >= 0; index--) {
+        const existing = recyclerMetrics[index]
+        if (existing !== undefined && recyclerDominates(candidate, existing)) recyclerMetrics.splice(index, 1)
+      }
+      recyclerMetrics.push(candidate)
+    }
+    const recyclerPowerForSource = (
+      source: (typeof sourceMetrics)[number],
+      recycler: (typeof recyclerMetrics)[number],
+    ): Rational => {
+      const recycleRates = Array.from({ length: 4 }, () => zero)
+      for (let initialQuality = 0; initialQuality < 4; initialQuality++) {
+        const operations = recycler.operationsByInitialQuality[initialQuality]
+        if (operations === undefined) continue
+        const sourceAmount = source.outputPerCraft.mul(source.distribution[initialQuality] ?? zero)
+        for (let recyclerQuality = 0; recyclerQuality < 4; recyclerQuality++) {
+          recycleRates[recyclerQuality] = recycleRates[recyclerQuality]!.add(
+            sourceAmount.mul(operations[recyclerQuality] ?? zero),
+          )
+        }
+      }
+      return recycleRates.reduce((power, recycleRate) => {
+        if (recycleRate.isZero()) return power
+        const machineCount = recycler.capacityPerOperation.machineCount.mul(recycleRate)
+        return power.add(
+          recycler.activePowerPerMachine.mul(machineCount).add(recycler.placedPowerPerMachine.mul(machineCount.ceil())),
+        )
+      }, zero)
+    }
+    const selectedRecyclerPower = new Map<
+      (typeof sourceMetrics)[number],
+      Map<(typeof recyclerMetrics)[number], Rational>
+    >()
+    if (this.objective === "power") {
+      for (const source of sourceMetrics) {
+        const bestByQuality = new Map<
+          string,
+          { readonly recycler: (typeof recyclerMetrics)[number]; readonly power: Rational }
+        >()
+        for (const recycler of recyclerMetrics) {
+          const key = JSON.stringify([
+            recycler.configuration.qualityChance.toString(),
+            recycler.configuration.productivity.toString(),
+          ])
+          const power = recyclerPowerForSource(source, recycler)
+          const existing = bestByQuality.get(key)
+          if (existing === undefined || power.less(existing.power)) {
+            bestByQuality.set(key, { recycler, power })
+          }
+        }
+        selectedRecyclerPower.set(
+          source,
+          new Map([...bestByQuality.values()].map(({ recycler, power }) => [recycler, power])),
+        )
+      }
+    }
     // ponytail: plans use continuous machine/module equivalents; exact installed module counts require integer optimization.
     let bestSource = configured
     let bestRecycler: readonly QualityTierConfiguration[] | null = null
@@ -7580,6 +7867,8 @@ class PracticalQualityGraphBuilder {
 
     for (const recycler of recyclerMetrics) {
       for (const source of sourceMetrics) {
+        const precomputedRecyclerPower = selectedRecyclerPower.get(source)?.get(recycler)
+        if (this.objective === "power" && precomputedRecyclerPower === undefined) continue
         const probability = source.configuration.qualityChance
           .mul(Rational.from_integer(3))
           .add(recycler.recyclerChance)
@@ -7598,29 +7887,7 @@ class PracticalQualityGraphBuilder {
         const recyclerOperations = source.outputPerCraft.mul(recyclerOperationsPerOutput)
         const recyclerMachines = recycler.capacityPerOperation.machineCount.mul(recyclerOperations)
         const recyclerQualityModules = recyclerMachines.mul(recycler.qualityModulesPerMachine)
-        let recyclerPower = recycler.capacityPerOperation.power.mul(recyclerOperations)
-        if (this.objective === "power") {
-          const recycleRates = Array.from({ length: 4 }, () => zero)
-          for (let initialQuality = 0; initialQuality < 4; initialQuality++) {
-            const closure = recycler.closures[initialQuality]
-            if (closure === undefined) continue
-            const sourceAmount = source.outputPerCraft.mul(source.distribution[initialQuality] ?? zero)
-            for (let recyclerQuality = 0; recyclerQuality < 4; recyclerQuality++) {
-              recycleRates[recyclerQuality] = recycleRates[recyclerQuality]!.add(
-                sourceAmount.mul(closure.operationsByInputQuality[recyclerQuality] ?? zero),
-              )
-            }
-          }
-          recyclerPower = zero
-          for (let recyclerQuality = 0; recyclerQuality < 4; recyclerQuality++) {
-            const recycleRate = recycleRates[recyclerQuality] ?? zero
-            const configuration = recycler.configurations[recyclerQuality]
-            if (recycleRate.isZero() || configuration === undefined) continue
-            recyclerPower = recyclerPower.add(
-              operationCapacity(this.specification, recyclerRecipe, recycleRate, configuration).power,
-            )
-          }
-        }
+        const recyclerPower = precomputedRecyclerPower ?? recycler.capacityPerOperation.power.mul(recyclerOperations)
 
         const machineCost = source.capacity.machineCount.add(recyclerMachines)
         const qualityModuleCost = source.qualityModules.add(recyclerQualityModules)
@@ -7643,7 +7910,7 @@ class PracticalQualityGraphBuilder {
         bestCost = cost
         bestMaterialCost = normalizedMaterialCost
         bestSource = source.configuration
-        bestRecycler = recycler.configurations
+        bestRecycler = configurationAcrossQualityLevels(this.specification, recyclerRecipe, recycler.configuration)
       }
     }
 
@@ -14612,11 +14879,73 @@ function QualityPlanView({
   readonly plan: QualityTargetPlan
 }) {
   const beaconItem = specification.items.get("beacon")
+  interface QualityOperationDisplayRow {
+    readonly operation: QualityOperationRate
+    readonly qualityLevels: readonly number[]
+    readonly rate: Rational
+    readonly machineCount: Rational
+    readonly power: Rational
+  }
+  const equipmentKey = (operation: QualityOperationRate): string => {
+    const configuration = operation.configuration
+    return JSON.stringify([
+      operation.recipe.key,
+      operation.kind,
+      configuration.building?.key ?? null,
+      configuration.machineQuality.key,
+      configuration.modules.map((module) => module?.key ?? null),
+      configuration.moduleQualities.map((quality) => quality.key),
+      configuration.beaconModules.map((module) => module?.key ?? null),
+      configuration.beaconModuleQualities.map((quality) => quality.key),
+      configuration.beaconQuality.key,
+      configuration.beaconCount.toString(),
+    ])
+  }
+  const displayRows = (() => {
+    const rows: QualityOperationDisplayRow[] = []
+    const recyclers = new Map<string, number>()
+    for (const operation of plan.operations) {
+      const row = {
+        operation,
+        qualityLevels: [operation.qualityLevel],
+        rate: operation.rate,
+        machineCount: operation.machineCount,
+        power: operation.power,
+      }
+      if (operation.kind !== "recycle") {
+        rows.push(row)
+        continue
+      }
+      const key = equipmentKey(operation)
+      const existingIndex = recyclers.get(key)
+      if (existingIndex === undefined) {
+        recyclers.set(key, rows.length)
+        rows.push(row)
+        continue
+      }
+      const existing = rows[existingIndex]!
+      rows[existingIndex] = {
+        ...existing,
+        qualityLevels: [...existing.qualityLevels, operation.qualityLevel],
+        rate: existing.rate.add(operation.rate),
+        machineCount: existing.machineCount.add(operation.machineCount),
+        power: existing.power.add(operation.power),
+      }
+    }
+    return rows
+  })()
   const operationName = (operation: QualityOperationRate): string =>
     operation.kind === "source"
       ? `${operation.recipe.name} mining · ${operation.sourcePurpose ?? "utility"}`
       : `${operation.kind}: ${operation.recipe.name}`
-  const operationQuality = (operation: QualityOperationRate): string => {
+  const operationQuality = (operation: QualityOperationRate, qualityLevels: readonly number[]): string => {
+    const levels = [...new Set(qualityLevels)].sort((left, right) => left - right)
+    if (levels.length > 1) {
+      const consecutive = levels.every((level, index) => index === 0 || level === levels[index - 1]! + 1)
+      return consecutive
+        ? `${qualityName(levels[0]!)}–${qualityName(levels.at(-1)!)}`
+        : levels.map(qualityName).join(", ")
+    }
     const quality = qualityName(operation.qualityLevel)
     const hasSolidOutput = operation.recipe.products.some(({ item }) => isQualifiedSolid(item))
     const hasFluidOutput = operation.recipe.products.some(({ item }) => !isQualifiedSolid(item))
@@ -14663,100 +14992,103 @@ function QualityPlanView({
               </tr>
             </thead>
             <tbody>
-              {plan.operations.map((operation, index) => (
-                <tr key={`${operation.recipe.key}-${operation.qualityLevel}-${operation.kind}-${index}`}>
-                  <td style={UI.td}>
-                    <IconLabel icon={operation.recipe.icon} name={operationName(operation)} size={24} />
-                    {operation.selfRecyclingLegendary === undefined ? null : (
-                      <div
-                        style={{
-                          ...UI.muted,
-                          marginTop: 3,
-                          fontSize: 11.5,
-                          lineHeight: 1.35,
-                        }}
-                      >
-                        <div>
-                          {formatCanadianNumber(
-                            operation.selfRecyclingLegendary.legendaryPerMinutePerMachine.toDecimal(3),
-                          )}
-                          {" Legendary/min per miner · score "}
-                          {formatCanadianNumber(
-                            operation.selfRecyclingLegendary.score.mul(Rational.from_integer(100)).toDecimal(1),
-                          )}
+              {displayRows.map((row, index) => {
+                const operation = row.operation
+                return (
+                  <tr key={`${operation.recipe.key}-${operation.qualityLevel}-${operation.kind}-${index}`}>
+                    <td style={UI.td}>
+                      <IconLabel icon={operation.recipe.icon} name={operationName(operation)} size={24} />
+                      {operation.selfRecyclingLegendary === undefined ? null : (
+                        <div
+                          style={{
+                            ...UI.muted,
+                            marginTop: 3,
+                            fontSize: 11.5,
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          <div>
+                            {formatCanadianNumber(
+                              operation.selfRecyclingLegendary.legendaryPerMinutePerMachine.toDecimal(3),
+                            )}
+                            {" Legendary/min per miner · score "}
+                            {formatCanadianNumber(
+                              operation.selfRecyclingLegendary.score.mul(Rational.from_integer(100)).toDecimal(1),
+                            )}
+                          </div>
+                          <div>
+                            {formatCanadianNumber(
+                              operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3),
+                            )}
+                            {"/s × ("}
+                            {formatPercent(operation.selfRecyclingLegendary.sourceQualityChance, 3)}
+                            {" + "}
+                            {formatPercent(operation.selfRecyclingLegendary.recyclerQualityChance, 3)}
+                            {" / 3)"}
+                          </div>
                         </div>
-                        <div>
-                          {formatCanadianNumber(
-                            operation.selfRecyclingLegendary.outputPerSecondPerMachine.toDecimal(3),
-                          )}
-                          {"/s × ("}
-                          {formatPercent(operation.selfRecyclingLegendary.sourceQualityChance, 3)}
-                          {" + "}
-                          {formatPercent(operation.selfRecyclingLegendary.recyclerQualityChance, 3)}
-                          {" / 3)"}
-                        </div>
-                      </div>
-                    )}
-                  </td>
-                  <td style={UI.td}>{operationQuality(operation)}</td>
-                  <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.rate(operation.rate)}</td>
-                  <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.count(operation.machineCount)}</td>
-                  <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, operation.power)}</td>
-                  <td style={UI.td}>
-                    <div style={UI.row}>
-                      {operation.configuration.building === null ? null : (
-                        <SpriteIcon
-                          icon={operation.configuration.building.icon}
-                          quality={operation.configuration.machineQuality}
-                          size={24}
-                          title={operation.configuration.building.name}
-                        />
                       )}
-                      {operation.configuration.modules.map((module, moduleIndex) =>
-                        module === null ? null : (
+                    </td>
+                    <td style={UI.td}>{operationQuality(operation, row.qualityLevels)}</td>
+                    <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.rate(row.rate)}</td>
+                    <td style={{ ...UI.td, textAlign: "right" }}>{specification.format.count(row.machineCount)}</td>
+                    <td style={{ ...UI.td, textAlign: "right" }}>{formatPower(specification, row.power)}</td>
+                    <td style={UI.td}>
+                      <div style={UI.row}>
+                        {operation.configuration.building === null ? null : (
                           <SpriteIcon
-                            key={`${module.key}-${moduleIndex}`}
-                            icon={module.icon}
-                            quality={operation.configuration.moduleQualities[moduleIndex] ?? null}
-                            size={22}
-                            title={module.name}
+                            icon={operation.configuration.building.icon}
+                            quality={operation.configuration.machineQuality}
+                            size={24}
+                            title={operation.configuration.building.name}
                           />
-                        ),
-                      )}
-                      {!operation.configuration.beaconCount.isZero() &&
-                      operation.configuration.beaconModules.some((module) => module !== null) ? (
-                        <>
-                          <span style={{ ...UI.muted, margin: "0 1px" }}>+</span>
-                          {beaconItem === undefined ? (
-                            <span style={UI.muted}>{operation.configuration.beaconQuality.name} beacon</span>
-                          ) : (
+                        )}
+                        {operation.configuration.modules.map((module, moduleIndex) =>
+                          module === null ? null : (
                             <SpriteIcon
-                              icon={beaconItem.icon}
-                              quality={operation.configuration.beaconQuality}
+                              key={`${module.key}-${moduleIndex}`}
+                              icon={module.icon}
+                              quality={operation.configuration.moduleQualities[moduleIndex] ?? null}
                               size={22}
-                              title={`${operation.configuration.beaconQuality.name} Beacon`}
+                              title={module.name}
                             />
-                          )}
-                          {operation.configuration.beaconModules.map((module, moduleIndex) =>
-                            module === null ? null : (
+                          ),
+                        )}
+                        {!operation.configuration.beaconCount.isZero() &&
+                        operation.configuration.beaconModules.some((module) => module !== null) ? (
+                          <>
+                            <span style={{ ...UI.muted, margin: "0 1px" }}>+</span>
+                            {beaconItem === undefined ? (
+                              <span style={UI.muted}>{operation.configuration.beaconQuality.name} beacon</span>
+                            ) : (
                               <SpriteIcon
-                                key={`beacon-${module.key}-${moduleIndex}`}
-                                icon={module.icon}
-                                quality={operation.configuration.beaconModuleQualities[moduleIndex] ?? null}
-                                size={20}
-                                title={`${module.name} in beacon`}
+                                icon={beaconItem.icon}
+                                quality={operation.configuration.beaconQuality}
+                                size={22}
+                                title={`${operation.configuration.beaconQuality.name} Beacon`}
                               />
-                            ),
-                          )}
-                          <span style={{ ...UI.muted, fontFamily: "monospace" }}>
-                            ×{operation.configuration.beaconCount.toDecimal()}
-                          </span>
-                        </>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                            )}
+                            {operation.configuration.beaconModules.map((module, moduleIndex) =>
+                              module === null ? null : (
+                                <SpriteIcon
+                                  key={`beacon-${module.key}-${moduleIndex}`}
+                                  icon={module.icon}
+                                  quality={operation.configuration.beaconModuleQualities[moduleIndex] ?? null}
+                                  size={20}
+                                  title={`${module.name} in beacon`}
+                                />
+                              ),
+                            )}
+                            <span style={{ ...UI.muted, fontFamily: "monospace" }}>
+                              ×{operation.configuration.beaconCount.toDecimal()}
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
