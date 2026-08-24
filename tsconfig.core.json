@@ -8,5 +8,5 @@
     "noImplicitThis": true,
     "types": ["vite/client"]
   },
-  "include": ["src/main.tsx"]
+  "include": ["src/main.tsx", "src/visualization.ts", "src/vendor-sankey.js"]
 }

@@ -95,10 +95,10 @@ test("settings are native React controls and persist without DOM adapters", asyn
   await expect(page.getByText("Quality factory", { exact: true })).toBeVisible()
   await expect(page.getByLabel("Search recipes")).toBeVisible()
   await expect(page.getByText("Show unavailable recipes", { exact: true })).toBeVisible()
-  await page.getByLabel("Quality factory mining speed module").selectOption({ label: "Speed module 3" })
-  await page.getByLabel("Quality factory maximum mining module quality").selectOption("rare")
-  await page.getByLabel("Quality factory maximum mining beacon quality").selectOption("epic")
-  const maximumMiningBeacons = page.getByLabel("Quality factory maximum mining beacon count")
+  await page.getByLabel("Quality factory speed beacon module").selectOption({ label: "Speed module 3" })
+  await page.getByLabel("Quality factory speed module quality").selectOption("rare")
+  await page.getByLabel("Quality factory maximum beacon quality").selectOption("epic")
+  const maximumMiningBeacons = page.getByLabel("Quality factory maximum beacon count")
   await maximumMiningBeacons.fill("6")
   await maximumMiningBeacons.press("Enter")
   await page.getByText("Recycling recipes", { exact: true }).click()
@@ -119,10 +119,10 @@ test("settings are native React controls and persist without DOM adapters", asyn
   await page.getByRole("button", { name: "Settings" }).click()
   await expect(page.getByRole("radio", { name: "items/hour" })).toBeChecked()
   await expect(page.locator('[data-density="comfortable"]')).toBeVisible()
-  await expect(page.getByLabel("Quality factory mining speed module")).toHaveValue("speed-module-3")
-  await expect(page.getByLabel("Quality factory maximum mining module quality")).toHaveValue("rare")
-  await expect(page.getByLabel("Quality factory maximum mining beacon quality")).toHaveValue("epic")
-  await expect(page.getByLabel("Quality factory maximum mining beacon count")).toHaveValue("6")
+  await expect(page.getByLabel("Quality factory speed beacon module")).toHaveValue("speed-module-3")
+  await expect(page.getByLabel("Quality factory speed module quality")).toHaveValue("rare")
+  await expect(page.getByLabel("Quality factory maximum beacon quality")).toHaveValue("epic")
+  await expect(page.getByLabel("Quality factory maximum beacon count")).toHaveValue("6")
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 
@@ -166,18 +166,20 @@ test("Factorio productivity is copied and pasted without replacing the plan", as
   await expect(page.getByLabel("Steel plate productivity bonus percentage")).toHaveValue("90")
 })
 
-test("Visualize renders and updates a declarative React SVG", async ({ page }) => {
+test("Visualize renders the original Dagre/D3 flow and recipe graphs", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page)
   await openReadyCalculator(page)
 
   await page.getByRole("button", { name: "Visualize" }).click()
   const graph = page.getByRole("img", { name: "Factory recipe flow graph" })
   await expect(graph).toBeVisible()
-  await expect(graph.locator("path").first()).toBeAttached()
-  await expect(graph.locator("g").first()).toBeAttached()
+  await expect(graph.locator("g.link").first()).toBeAttached()
+  await expect(graph.locator("g.link text").first()).toContainText(/\/m$/)
   await expect(graph.locator("image").first()).toHaveAttribute("href", /sprite-sheet-.+\.webp/)
 
   await page.getByRole("radio", { name: "Recipe graph" }).check()
+  await expect(graph.locator("g.edge").first()).toBeAttached()
+  await expect(graph.locator("g.edgeLabel text").first()).toContainText(/\/m$/)
   await page.getByRole("radio", { name: "Fit" }).check()
   await page.getByRole("radio", { name: "Top to bottom" }).check()
   await expect(page.getByRole("radio", { name: "Recipe graph" })).toBeChecked()
@@ -190,6 +192,9 @@ test("Visualize renders and updates a declarative React SVG", async ({ page }) =
   await expect(page.getByRole("radio", { name: "Recipe graph" })).toBeChecked()
   await expect(page.getByRole("radio", { name: "Fit" })).toBeChecked()
   await expect(page.getByRole("radio", { name: "Top to bottom" })).toBeChecked()
+  await expect(
+    page.getByRole("img", { name: "Factory recipe flow graph" }).locator("g.edgeLabel text").first(),
+  ).toContainText(/\/m$/)
   expect(browserErrors, "uncaught browser errors").toEqual([])
 })
 

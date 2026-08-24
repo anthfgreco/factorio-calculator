@@ -377,15 +377,12 @@ test("quality plan groups self-recycling resources into their physical machine p
   assert.equal(ironEntries[0].recyclerRows.length, 1)
 })
 
-test("visualizer is declarative SVG rendered by React", () => {
+test("React renders graph controls and an empty SVG mount for the deferred visualizer", () => {
   assert.match(graphHtml, /<svg id="graph" role="img" aria-label="Factory recipe flow graph"/)
-  assert.match(graphHtml, /<path /)
-  assert.match(graphHtml, /<g transform="translate\(/)
-  assert.match(graphHtml, /<image href="images\/sprite-sheet-[^"]+\.webp"/)
   assert.match(graphHtml, /processes · \d+ flows/)
   assert.match(graphHtml, />Flow</)
   assert.match(graphHtml, /Recipe graph/)
-  assert.doesNotMatch(graphHtml, /xlink:href|class="node"|class="link"/)
+  assert.doesNotMatch(graphHtml, /<path |<g |<image |xlink:href|class="node"|class="link"/)
 })
 
 test("resources, help, and errors are owned by the same React tree", () => {

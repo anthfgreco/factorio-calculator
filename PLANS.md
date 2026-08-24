@@ -14,14 +14,14 @@
 
 - One authored runtime source file: `src/main.tsx`.
 - One repository instruction file: `AGENTS.md`.
-- React owns every application DOM and SVG node.
+- React owns the application DOM; D3 owns only the children of the deferred `#graph` SVG mount.
 - Production targets and result summaries are plain, DOM-free models.
 - `FactorySpecification` is authoritative; every `BuildTarget` is bound to its owner.
 - `CalculatorSnapshot` exposes the actual specification and totals rather than duplicate view models.
 - Component layout uses inline React styles; themes use React-applied CSS variables.
 - `BASE_CSS` contains only resets, pseudo states, density variables, and responsive media queries.
-- D3, Tippy, Dagre, Graphlib, and the vendored Sankey implementation are removed.
-- HiGHS is the only deferred engine.
+- D3/Dagre and the cycle-aware vendored Sankey are restored only for visualization parity; Tippy remains removed.
+- HiGHS and the Dagre/D3 visualization are deferred from startup.
 - Architecture checks reject new runtime modules, source stylesheets, imperative rendering, and nested agent instructions.
 
 ## Current product priorities

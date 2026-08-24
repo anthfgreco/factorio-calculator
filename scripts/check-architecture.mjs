@@ -4,7 +4,7 @@ import { extname, relative, resolve } from "node:path"
 const root = resolve(import.meta.dirname, "..")
 const sourceRoot = resolve(root, "src")
 const violations = []
-const expectedSourceFiles = ["main.tsx"]
+const expectedSourceFiles = ["main.tsx", "vendor-sankey.js", "visualization.ts"]
 
 const sourceFiles = (await walk(sourceRoot))
   .filter((file) => [".js", ".jsx", ".ts", ".tsx"].includes(extname(file)))
@@ -23,6 +23,7 @@ const sourceStyles = (await walk(sourceRoot))
 if (sourceStyles.length > 0) violations.push(`src must not contain stylesheets: ${sourceStyles.join(", ")}`)
 
 const main = await readFile(resolve(sourceRoot, "main.tsx"), "utf8")
+const visualization = await readFile(resolve(sourceRoot, "visualization.ts"), "utf8")
 const html = await readFile(resolve(root, "calc.html"), "utf8")
 const packageJson = JSON.parse(await readFile(resolve(root, "package.json"), "utf8"))
 
@@ -35,9 +36,11 @@ if (staticRelativeImports.length > 0) {
 
 const allDynamicImports = [...main.matchAll(/import\(["']([^"']+)["']\)/g)].map((match) => match[1])
 const dynamicDependencies = [...new Set(allDynamicImports)].sort()
-const expectedDynamicDependencies = ["highs", "highs/runtime?url"]
+const expectedDynamicDependencies = ["./visualization", "highs", "highs/runtime?url"]
 if (JSON.stringify(dynamicDependencies) !== JSON.stringify(expectedDynamicDependencies)) {
-  violations.push(`only HiGHS may be dynamically imported; found ${dynamicDependencies.join(", ") || "none"}`)
+  violations.push(
+    `only the visualization and HiGHS may be dynamically imported; found ${dynamicDependencies.join(", ") || "none"}`,
+  )
 }
 if (/^import\s+(?!type\s)[^\n]*?["']highs(?:\/runtime\?url)?["']/m.test(main)) {
   violations.push("HiGHS must not be statically imported")
@@ -54,7 +57,6 @@ for (const requiredText of [
   "const THEME_VARIABLES = {",
   "<style>{BASE_CSS}</style>",
   "style={mergeStyles(UI.app, THEME_VARIABLES)}",
-  "export function buildDeclarativeGraph(",
   'id="graph"',
   "export function CalculatorApp()",
   "readonly specification: FactorySpecification",
@@ -80,6 +82,17 @@ for (const [name, pattern] of forbiddenPatterns) {
   if (pattern.test(main)) violations.push(`main.tsx still contains ${name}`)
 }
 
+for (const requiredText of [
+  'from "@dagrejs/dagre"',
+  'from "d3"',
+  'from "./vendor-sankey.js"',
+  "export function renderVisualization(",
+]) {
+  if (!visualization.includes(requiredText)) {
+    violations.push(`visualization.ts is missing renderer marker ${JSON.stringify(requiredText)}`)
+  }
+}
+
 const documentMembers = [...main.matchAll(/document\.([A-Za-z_$][\w$]*)/g)].map((match) => match[1])
 const forbiddenDocumentMembers = [...new Set(documentMembers)].filter(
   (member) => !["getElementById", "title"].includes(member),
@@ -95,7 +108,7 @@ if (!html.includes('src="./src/main.tsx"')) violations.push("calc.html must load
 if (!html.includes('<div id="root"></div>')) violations.push("calc.html must expose one React root")
 
 const runtimeDependencies = Object.keys(packageJson.dependencies ?? {}).sort()
-const expectedRuntimeDependencies = ["highs", "pako", "react", "react-dom"]
+const expectedRuntimeDependencies = ["@dagrejs/dagre", "d3", "highs", "pako", "react", "react-dom"]
 if (JSON.stringify(runtimeDependencies) !== JSON.stringify(expectedRuntimeDependencies)) {
   violations.push(
     `runtime dependencies must be ${expectedRuntimeDependencies.join(", ")}; found ${runtimeDependencies.join(", ") || "none"}`,
@@ -120,7 +133,7 @@ if (violations.length > 0) {
 }
 
 console.log(
-  `Monolithic React architecture check passed: one runtime file, ${regions.length} regions, inline React styling, declarative SVG, one AGENTS.md.`,
+  `React architecture check passed: React shell + deferred Dagre/D3 visualization, ${regions.length} main regions, one AGENTS.md.`,
 )
 
 async function walk(directory) {

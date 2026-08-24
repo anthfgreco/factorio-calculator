@@ -4,12 +4,13 @@ This repository is intentionally monolithic. Keep it simple, explicit, and easy 
 
 ## Source of truth
 
-- `src/main.tsx` is the one runtime source file and the only authored runtime source.
-- It contains validated data contracts, exact math, solvers, Factorio models, planning, state, URL persistence, React UI, SVG visualization, startup, and mount.
+- `src/main.tsx` remains the authoritative calculator and React application runtime.
+- `src/visualization.ts` is the one deferred visualization island. It owns Dagre/D3 graph layout and the children of the graph SVG only.
+- `src/vendor-sankey.js` is the retained cycle-aware Sankey implementation from the pre-cutover calculator.
 - Tests live under `tests/`; deterministic scripts under `scripts/`; generated datasets and static assets under `public/`.
 - This root file is the only `AGENTS.md`. Do not add nested agent guides, skills, or instruction directories.
 
-Do not create another runtime module, component file, hook file, utility file, type file, barrel, facade, or source stylesheet. Put code in the owning `// region …` in `src/main.tsx`. Add a well-named region only when no current region is the right owner.
+Do not create another runtime module, component file, hook file, utility file, type file, barrel, facade, or source stylesheet. The only source-file exceptions are `visualization.ts` and its vendored `vendor-sankey.js`; all non-visualization runtime code still belongs in the owning `// region …` in `src/main.tsx`.
 
 ## Working method
 
@@ -76,20 +77,21 @@ Move a whole region when dependency order requires it. Do not duplicate a defini
 
 ## React and styling invariants
 
-- React owns every application DOM and SVG node below `#root`.
-- Do not add manual renderers, `document.createElement`, selectors that read UI state, `innerHTML`, D3 chains, Tippy, Dagre, or another visualization ownership model.
+- React owns application DOM below `#root` except the children of the empty `#graph` SVG mount.
+- `src/visualization.ts` exclusively owns `#graph` children with D3 and Dagre. React owns the graph controls and mount and must not render SVG children there.
+- Do not add manual renderers, selector-owned state, `innerHTML`, D3, or Dagre anywhere else.
 - Component layout and control styling belong in the `UI` inline-style map or a nearby one-off style object.
 - Theme values are CSS variables applied by the React root.
 - `BASE_CSS` is limited to reset rules, pseudo states, density variables, and responsive media queries that inline styles cannot express cleanly.
 - Do not create `.css`, `.scss`, CSS-module, CSS-in-JS framework, or styling helper files.
 - Use semantic elements, native controls, accessible labels, keyboard behavior, and stable React keys.
 - Prefer plain JSX loops and named conditions over generic renderer abstractions or chained mutations.
-- Keep the SVG graph declarative: derive plain nodes/links, then render `<svg>`, `<path>`, `<g>`, and `<image>` in JSX.
+- Keep the visualization boundary explicit: React renders only `<svg id="graph" />`; `visualization.ts` derives and mutates all graph nodes, links, labels, and viewport state.
 
 ## Optional work and performance
 
-- HiGHS and `highs/runtime?url` stay behind dynamic imports. They are the only deferred runtime engine.
-- Do not add a layout library for the graph without measured need.
+- HiGHS, D3, and Dagre stay behind dynamic imports and must not enter the initial calculator bundle.
+- Dagre is the recipe-graph layout engine; the retained cycle-aware Sankey implementation is the flow-graph layout. Do not add another graph layout system without measured need.
 - Keep planning and graph construction framework-free and deterministic.
 - Avoid whole-dataset scans or large graph reconstruction on interactive paths when an existing index or cache covers the need.
 - Do not add memoization, workers, virtualization, or caching without profiling evidence.
@@ -108,11 +110,11 @@ Flag changes that introduce:
 
 - another authored runtime source file, stylesheet, `AGENTS.md`, or skill;
 - duplicate state, mutable globals, DOM-owned state, or silent loss of serialized values;
-- imperative DOM/SVG rendering or a second UI ownership model;
+- imperative DOM/SVG rendering outside `src/visualization.ts` or a second visualization ownership model;
 - floating-point conversion before presentation;
 - incorrect productivity, catalyst, probability, quality, or recycling behavior;
 - URL changes without round-trip and legacy-link coverage;
-- eager HiGHS loading or a new startup dependency;
+- eager HiGHS, D3, or Dagre loading, or another startup dependency;
 - `any`, TypeScript suppression, unsafe double assertions, or unvalidated external input;
 - a calculation change without the smallest focused regression test.
 

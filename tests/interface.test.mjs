@@ -18,14 +18,14 @@ async function findFiles(directory) {
   return nested.flat()
 }
 
-test("runtime source is one React-owned TypeScript file", async () => {
+test("runtime source is the React monolith plus one deferred visualization island", async () => {
   const [main, html] = await Promise.all([read("src/main.tsx"), read("calc.html")])
   const codeFiles = (await findFiles(resolve(root, "src")))
     .filter((file) => [".ts", ".tsx", ".js", ".jsx", ".css"].includes(extname(file)))
     .map((file) => relative(resolve(root, "src"), file).replaceAll("\\", "/"))
     .sort()
 
-  assert.deepEqual(codeFiles, ["main.tsx"])
+  assert.deepEqual(codeFiles, ["main.tsx", "vendor-sankey.js", "visualization.ts"])
   assert.match(html, /<div id="root"><\/div>/)
   assert.match(html, /src="\.\/src\/main\.tsx"/)
   assert.doesNotMatch(html, /<link[^>]+stylesheet|src\/styles\//)
@@ -34,6 +34,7 @@ test("runtime source is one React-owned TypeScript file", async () => {
     ["pako", "react", "react-dom/client"],
   )
   assert.doesNotMatch(main, /^import .* from "\.\//m)
+  assert.match(main, /import\("\.\/visualization"\)/)
   assert.match(main, /const BASE_CSS = String\.raw`/)
   assert.match(main, /<style>\{BASE_CSS\}<\/style>/)
   assert.match(main, /const UI = \{/)
@@ -43,8 +44,8 @@ test("runtime source is one React-owned TypeScript file", async () => {
   assert.doesNotMatch(main, /CALCULATOR_CSS|GLOBAL_CSS/)
 })
 
-test("React owns every application DOM and SVG node", async () => {
-  const main = await read("src/main.tsx")
+test("React owns the application shell and D3 owns only the graph SVG children", async () => {
+  const [main, visualization] = await Promise.all([read("src/main.tsx"), read("src/visualization.ts")])
 
   for (const legacy of [
     /from "d3"/,
@@ -61,13 +62,13 @@ test("React owns every application DOM and SVG node", async () => {
     assert.doesNotMatch(main, legacy)
   }
 
-  assert.match(main, /function SvgSprite\(/)
-  assert.match(main, /<image href=\{`images\/sprite-sheet-\$\{sheetHash\}\.webp`\}/)
-  assert.match(main, /export function buildDeclarativeGraph\(/)
-  assert.match(main, /<svg[\s\S]+aria-label="Factory recipe flow graph"/)
-  assert.match(main, /graph\.links\.map\(\(link\) =>/)
-  assert.match(main, /graph\.nodes\.map\(\(node\) =>/)
-  assert.match(main, /onMouseEnter=\{\(\) => setHovered\(node\.recipe\)\}/)
+  assert.match(main, /void import\("\.\/visualization"\)/)
+  assert.match(main, /<svg ref=\{svgRef\} id="graph" role="img" aria-label="Factory recipe flow graph" \/>/)
+  assert.match(visualization, /from "@dagrejs\/dagre"/)
+  assert.match(visualization, /from "d3"/)
+  assert.match(visualization, /from "\.\/vendor-sankey\.js"/)
+  assert.match(visualization, /export function renderVisualization\(/)
+  assert.doesNotMatch(visualization, /querySelector|innerHTML/)
 })
 
 test("state ownership is explicit across the model, store, and React boundary", async () => {
@@ -99,8 +100,8 @@ test("one repository-wide agent guide replaces nested guides and skills", async 
 
   assert.deepEqual(instructionFiles, ["AGENTS.md"])
   assert.match(agents, /src\/main\.tsx/)
-  assert.match(agents, /React owns/i)
-  assert.match(agents, /one runtime source file/i)
+  assert.match(agents, /React owns application DOM/i)
+  assert.match(agents, /one deferred visualization island/i)
 })
 
 test("strict TypeScript and deferred HiGHS remain enforced", async () => {
@@ -115,11 +116,21 @@ test("strict TypeScript and deferred HiGHS remain enforced", async () => {
   const config = JSON.parse(tsconfig)
   const requiredDeferred = JSON.parse(budgets).requiredDeferredModuleFragments
 
-  assert.deepEqual(Object.keys(packageData.dependencies).sort(), ["highs", "pako", "react", "react-dom"])
+  assert.deepEqual(Object.keys(packageData.dependencies).sort(), [
+    "@dagrejs/dagre",
+    "d3",
+    "highs",
+    "pako",
+    "react",
+    "react-dom",
+  ])
   assert.match(lockfile, /react:\n\s+specifier: 19\.2\.8\n\s+version: 19\.2\.8/)
-  assert.doesNotMatch(lockfile, /(?:^|\n)\s+(?:d3|tippy\.js|'@dagrejs\/dagre'|'@types\/d3'):/)
+  assert.match(lockfile, /(?:^|\n)\s+d3:/)
+  assert.match(lockfile, /(?:^|\n)\s+'@dagrejs\/dagre':/)
+  assert.match(lockfile, /(?:^|\n)\s+'@types\/d3':/)
+  assert.doesNotMatch(lockfile, /(?:^|\n)\s+tippy\.js:/)
   assert.equal(config.compilerOptions.jsx, "react-jsx")
-  assert.deepEqual(config.include, ["src/main.tsx"])
+  assert.deepEqual(config.include, ["src/main.tsx", "src/visualization.ts", "src/vendor-sankey.js"])
   for (const option of [
     "strict",
     "noImplicitAny",
@@ -134,8 +145,13 @@ test("strict TypeScript and deferred HiGHS remain enforced", async () => {
 
   assert.match(main, /import\("highs"\)/)
   assert.match(main, /import\("highs\/runtime\?url"\)/)
+  assert.match(main, /import\("\.\/visualization"\)/)
   assert.doesNotMatch(main, /^import .* from "highs/m)
-  assert.deepEqual(requiredDeferred, ["node_modules/.pnpm/highs@"])
+  assert.deepEqual(requiredDeferred, [
+    "node_modules/.pnpm/@dagrejs+dagre@",
+    "node_modules/.pnpm/d3@",
+    "node_modules/.pnpm/highs@",
+  ])
 })
 
 test("core calculation and URL behavior remain in the monolith", async () => {

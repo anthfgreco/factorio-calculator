@@ -47,6 +47,17 @@ summary { list-style-position: outside; }
 .icon-picker > button:hover, .icon-picker[data-open="true"] > button { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
 .help-table th, .help-table td { border-bottom: 1px solid var(--rule); }
 .help-table tbody tr:last-child td { border-bottom: 0; }
+.graph-measurement { position: absolute; visibility: hidden; pointer-events: none; }
+#graph { display: block; background: var(--main); }
+#graph text { fill: var(--foreground); stroke: none; }
+#graph g.node rect { stroke-width: 1px; }
+#graph g.overlay { cursor: pointer; }
+#graph g.node .colon { fill: var(--foreground); stroke: none; }
+#graph rect.nodeHighlight { stroke: var(--accent) !important; stroke-width: 2px; }
+#graph g.edgePathHighlight .highlighter { stroke: var(--accent) !important; }
+#graph.sankey g.edgePathHighlight .highlighter { stroke-opacity: 0.7 !important; }
+#graph g.edgePathHighlight rect.highlighter { fill-opacity: 1; }
+#graph g.fuel > path { stroke-dasharray: 10 5; }
 .settings-columns { align-items: start; }
 .recipe-tile[aria-pressed="false"] { filter: grayscale(1); opacity: 0.28; }
 @media (max-width: 900px) {
@@ -12383,7 +12394,7 @@ const UI = {
     overflow: "auto",
     border: "1px solid var(--rule)",
     borderRadius: 3,
-    background: "var(--dark)",
+    background: "var(--main)",
   },
   help: { maxWidth: 900, lineHeight: 1.55 },
   footer: {
@@ -15517,151 +15528,54 @@ function FactoryPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
   )
 }
 
-interface GraphNode {
-  readonly recipe: FactoryRecipe
-  readonly rate: Rational
-  readonly column: number
-  readonly row: number
-}
-
-interface GraphLink {
-  readonly key: string
-  readonly from: GraphNode
-  readonly to: GraphNode
-  readonly item: Item
-  readonly rate: Rational
-  readonly fuel: boolean
-}
-
-export function buildDeclarativeGraph(totals: Totals): {
-  readonly nodes: GraphNode[]
-  readonly links: GraphLink[]
-} {
-  const rates = [...totals.rates].filter((entry): entry is [FactoryRecipe, Rational] => isFactoryRecipe(entry[0]))
-  const recipeSet = new Set(rates.map(([recipe]) => recipe))
-  const dependencies = new Map<FactoryRecipe, FactoryRecipe[]>()
-  for (const link of totals.proportionate) {
-    const from = link.from as FactoryRecipe
-    const to = link.to as FactoryRecipe
-    if (!recipeSet.has(from) || !recipeSet.has(to)) continue
-    const values = dependencies.get(from) ?? []
-    if (!values.includes(to)) values.push(to)
-    dependencies.set(from, values)
-  }
-  const depths = new Map<FactoryRecipe, number>()
-  const dependencyDepth = (recipe: FactoryRecipe, visiting: ReadonlySet<FactoryRecipe>): number => {
-    const cached = depths.get(recipe)
-    if (cached !== undefined) return cached
-    if (visiting.has(recipe)) return 0
-    const nextVisiting = new Set(visiting).add(recipe)
-    let depth = 0
-    for (const dependency of dependencies.get(recipe) ?? []) {
-      depth = Math.max(depth, dependencyDepth(dependency, nextVisiting) + 1)
-    }
-    depths.set(recipe, depth)
-    return depth
-  }
-  for (const [recipe] of rates) dependencyDepth(recipe, new Set())
-  const maximumDepth = Math.max(0, ...depths.values())
-  const rowsByColumn = new Map<number, number>()
-  const nodes = rates
-    .sort(
-      ([a], [b]) =>
-        maximumDepth - (depths.get(a) ?? 0) - (maximumDepth - (depths.get(b) ?? 0)) || a.name.localeCompare(b.name),
-    )
-    .map(([recipe, rate]) => {
-      const column = maximumDepth - (depths.get(recipe) ?? 0)
-      const row = rowsByColumn.get(column) ?? 0
-      rowsByColumn.set(column, row + 1)
-      return { recipe, rate, column, row }
-    })
-  const nodeMap = new Map(nodes.map((node) => [node.recipe, node]))
-  const links = totals.proportionate.flatMap((link, index): GraphLink[] => {
-    if (!(link.item instanceof Item)) return []
-    const from = nodeMap.get(link.from as FactoryRecipe)
-    const to = nodeMap.get(link.to as FactoryRecipe)
-    if (from === undefined || to === undefined) return []
-    return [
-      {
-        key: `${from.recipe.key}-${to.recipe.key}-${link.item.key}-${index}`,
-        from,
-        to,
-        item: link.item,
-        rate: link.rate,
-        fuel: link.fuel,
-      },
-    ]
-  })
-  return { nodes, links }
-}
-
-function SvgSprite({
-  icon,
-  x,
-  y,
-  size,
-}: {
-  readonly icon: Icon
-  readonly x: number
-  readonly y: number
-  readonly size: number
-}) {
-  return (
-    <svg
-      x={x}
-      y={y}
-      width={size}
-      height={size}
-      viewBox={`${icon.obj.icon_col * PX_WIDTH} ${icon.obj.icon_row * PX_HEIGHT} ${PX_WIDTH} ${PX_HEIGHT}`}
-      aria-hidden="true"
-    >
-      <image href={`images/sprite-sheet-${sheetHash}.webp`} width={sheetWidth} height={sheetHeight} />
-    </svg>
-  )
-}
-
-function graphColour(key: string, lightness: number): string {
-  let hash = 0
-  for (const character of key) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
-  return `hsl(${hash % 360} 52% ${lightness}%)`
-}
-
 function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
   const { specification, totals, visualizerType, visualizerRender, visualizerDirection } = snapshot
-  const [hovered, setHovered] = useState<FactoryRecipe | null>(null)
-  if (totals === null) return <div style={UI.panel}>No graph is available until the calculation succeeds.</div>
-  const graph = buildDeclarativeGraph(totals)
-  const horizontal = visualizerDirection === "right"
-  const nodeWidth = visualizerType === "sankey" ? 92 : 180
-  const nodeHeight = visualizerType === "sankey" ? 60 : 58
-  const rowGap = 18
-  const width = 1390
-  const height = 780
-  const columns = Math.max(1, ...graph.nodes.map((node) => node.column + 1))
-  const nodesPerColumn = new Map<number, number>()
-  for (const node of graph.nodes) nodesPerColumn.set(node.column, (nodesPerColumn.get(node.column) ?? 0) + 1)
-  const columnStep = columns <= 1 ? 0 : (width - nodeWidth - 40) / (columns - 1)
-  const position = (node: GraphNode) => {
-    const count = nodesPerColumn.get(node.column) ?? 1
-    const centeredRow = node.row - (count - 1) / 2
-    return horizontal
-      ? {
-          x: 20 + node.column * columnStep,
-          y: height * 0.34 - nodeHeight / 2 + centeredRow * (nodeHeight + rowGap),
-        }
-      : {
-          x: width / 2 - nodeWidth / 2 + centeredRow * (nodeWidth + rowGap),
-          y: 20 + node.column * ((height - nodeHeight - 40) / Math.max(1, columns - 1)),
-        }
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [renderError, setRenderError] = useState<string | null>(null)
+  const processCount = totals === null ? 0 : [...totals.rates.keys()].filter((recipe) => recipe.isReal()).length
+  const flowCount = totals?.proportionate.length ?? 0
+
+  useEffect(() => {
+    const svg = svgRef.current
+    if (svg === null || totals === null) return
+
+    let active = true
+    setRenderError(null)
+    void import("./visualization")
+      .then(({ renderVisualization }) => {
+        if (!active) return
+        renderVisualization({
+          svg,
+          specification,
+          totals,
+          ignore: specification.ignore,
+          visualizerType,
+          visualizerRender,
+          visualizerDirection,
+          zero,
+          isItem: (value): value is Item => value instanceof Item,
+          isRecipe: (value): value is Recipe => value instanceof Recipe,
+          spriteSheet: {
+            hash: sheetHash,
+            width: sheetWidth,
+            height: sheetHeight,
+            cellWidth: PX_WIDTH,
+            cellHeight: PX_HEIGHT,
+          },
+        })
+      })
+      .catch((error: unknown) => {
+        if (active) setRenderError(error instanceof Error ? error.message : String(error))
+      })
+
+    return () => {
+      active = false
+    }
+  }, [specification, totals, visualizerType, visualizerRender, visualizerDirection])
+
+  if (totals === null) {
+    return <div style={UI.panel}>No graph is available until the calculation succeeds.</div>
   }
-  const connected = (recipe: FactoryRecipe) =>
-    hovered === null ||
-    recipe === hovered ||
-    graph.links.some(
-      (link) =>
-        (link.from.recipe === hovered && link.to.recipe === recipe) ||
-        (link.to.recipe === hovered && link.from.recipe === recipe),
-    )
 
   return (
     <div id="graph_tab" style={UI.stack}>
@@ -15769,102 +15683,16 @@ function GraphPanel({ snapshot }: { readonly snapshot: CalculatorSnapshot }) {
           ))}
         </fieldset>
         <span style={{ ...UI.muted, marginLeft: "auto" }}>
-          {graph.nodes.length} processes · {graph.links.length} flows · Width = rate; fluids use a 10:1 scale. Dashed =
-          fuel. Hover = isolate.
+          {processCount} processes · {flowCount} flows · Hover or click a process to trace its flows.
         </span>
       </div>
-      <div style={{ ...UI.graphWrap, minHeight: height }}>
-        <svg
-          id="graph"
-          role="img"
-          aria-label="Factory recipe flow graph"
-          viewBox={`0 0 ${width} ${height}`}
-          width={visualizerRender === "zoom" ? width : "100%"}
-          height={height}
-          style={{
-            display: "block",
-            minWidth: visualizerRender === "zoom" ? width : undefined,
-          }}
-        >
-          <title>Factory recipe flow graph</title>
-          {graph.links.map((link) => {
-            const from = position(link.from)
-            const to = position(link.to)
-            const active = hovered === null || link.from.recipe === hovered || link.to.recipe === hovered
-            const startX = horizontal ? from.x + nodeWidth : from.x + nodeWidth / 2
-            const startY = horizontal ? from.y + nodeHeight / 2 : from.y + nodeHeight
-            const endX = horizontal ? to.x : to.x + nodeWidth / 2
-            const endY = horizontal ? to.y + nodeHeight / 2 : to.y
-            const path = horizontal
-              ? `M ${startX} ${startY} C ${(startX + endX) / 2} ${startY}, ${(startX + endX) / 2} ${endY}, ${endX} ${endY}`
-              : `M ${startX} ${startY} C ${startX} ${(startY + endY) / 2}, ${endX} ${(startY + endY) / 2}, ${endX} ${endY}`
-            const scaledRate =
-              link.rate.mul(specification.format.rateFactor).toFloat() / (link.item.phase === "fluid" ? 10 : 1)
-            const widthValue = visualizerType === "sankey" ? Math.max(2, Math.min(48, Math.sqrt(scaledRate) * 5)) : 2
-            return (
-              <path
-                key={link.key}
-                d={path}
-                fill="none"
-                stroke={active ? graphColour(link.item.key, 43) : "var(--light)"}
-                strokeOpacity={active ? 0.5 : 0.1}
-                strokeWidth={widthValue}
-                strokeDasharray={link.fuel ? "8 5" : undefined}
-              >
-                <title>{`${link.item.name}: ${specification.format.rate(link.rate)}/${specification.format.longRate}`}</title>
-              </path>
-            )
-          })}
-          {graph.nodes.map((node) => {
-            const point = position(node)
-            const active = connected(node.recipe)
-            const building = node.recipe instanceof Recipe ? specification.getBuilding(node.recipe) : null
-            const machineQuality =
-              node.recipe instanceof Recipe
-                ? specification.getMachineQuality(node.recipe)
-                : specification.getNormalQuality()
-            const product = node.recipe.products.find((candidate) => candidate.item instanceof Item)?.item
-            const fill = product instanceof Item ? graphColour(product.key, 27) : "var(--medium)"
-            return (
-              <g
-                key={node.recipe.key}
-                transform={`translate(${point.x} ${point.y})`}
-                opacity={active ? 1 : 0.22}
-                onMouseEnter={() => setHovered(node.recipe)}
-                onMouseLeave={() => setHovered(null)}
-                style={{ cursor: "default" }}
-              >
-                <rect
-                  width={nodeWidth}
-                  height={nodeHeight}
-                  rx={visualizerType === "sankey" ? 0 : 3}
-                  fill={fill}
-                  stroke={hovered === node.recipe ? "var(--accent)" : "var(--rule)"}
-                  strokeWidth={hovered === node.recipe ? 2 : 1}
-                />
-                <SvgSprite icon={node.recipe.icon} x={6} y={14} size={30} />
-                {building === null ? null : <SvgSprite icon={building.icon} x={38} y={14} size={30} />}
-                {visualizerType === "boxline" ? (
-                  <text x={74} y={24} fill="var(--bright)" fontSize={12}>
-                    {node.recipe.name.length > 17 ? `${node.recipe.name.slice(0, 16)}…` : node.recipe.name}
-                  </text>
-                ) : null}
-                <text
-                  x={visualizerType === "sankey" ? 70 : 74}
-                  y={visualizerType === "sankey" ? 34 : 43}
-                  fill="var(--bright)"
-                  fontSize={visualizerType === "sankey" ? 9 : 11}
-                  fontFamily="monospace"
-                >
-                  {building === null || !(node.recipe instanceof Recipe)
-                    ? specification.format.rate(node.rate)
-                    : `× ${specification.format.count(specification.getCount(node.recipe, node.rate))}`}
-                </text>
-                {machineQuality.level > 0 ? <circle cx={66} cy={43} r={4} fill={machineQuality.color} /> : null}
-              </g>
-            )
-          })}
-        </svg>
+      {renderError === null ? null : (
+        <div style={UI.error} role="alert">
+          Unable to render visualization: {renderError}
+        </div>
+      )}
+      <div style={UI.graphWrap}>
+        <svg ref={svgRef} id="graph" role="img" aria-label="Factory recipe flow graph" />
       </div>
     </div>
   )
