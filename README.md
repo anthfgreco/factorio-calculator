@@ -1,34 +1,31 @@
 # Factorio Calculator
 
-A browser calculator for Factorio.
-
-This fork supports **Factorio Space Age 2.1.14**.
-
-## Player-facing behavior
-
-- Exact rational production-chain solving with multiple simultaneous outputs and alternate recipes.
-- Factorio 2.1 recipe categories, combined result probabilities, recycling, surface conditions, machines, modules, beacons, and per-product productivity eligibility.
-- Gleba growth-time and agricultural-tower sizing, seed flows, spoilage/freshness reporting, effective agricultural-science throughput, and exact harvest-plus-tower spores.
-- Planet-aware quality planning with recursive local intermediates, a Fulgora scrap-mining/recycling source chain, and a curated Vulcanus workflow from lava and calcite through molten-metal casting, tiered crafting, real recycler loops, imports, machinery, power, and unavoidable outputs.
-- Recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or Space platforms, with row-level locations and compact cross-location flow accounting.
-- Configurable pumpjack/resource yield and asteroid-chunk collection capacities.
-- Surface-aware pollution, configured beacon-equivalent electricity, and Aquilo production heat.
-- Space Age rocket-silo throughput with 50-part rockets, buffered launch overlap, launches per selected interval, and visible launch-animation bottlenecks.
-- Item-aware belt stacking with automatic big-drill detection, stack throughput, buffers, and cargo-wagon loads.
-- Progression presets that set the quality ceiling and belt-stacking research.
-- Directly labeled Factory rows, in-row recipe/building/location selection, searchable settings, persistent URL state, and a one-click plan link.
-
-## Current model boundaries
-
-The ordinary factory solver still balances scalar item rates. A newly selected non-Normal target automatically uses the active planet and the shared Quality factory gear profile. Nauvis and other ordinary planet plans recursively expand local recipes and quality-qualified intermediates down to resources and qualityless fluids; eligible crafts below the requested tier use the configured quality modules, while requested-tier crafts use the configured productivity modules. Vulcanus uses the same exact graph with curated lava, calcite, molten-metal casting, downstream crafting, and generated recycler routes. Non-local materials remain explicit imports. Legacy one-pass quality links retain their direct probability calculation. Quality targets are currently solved independently, so separate targets do not share higher-quality intermediate pools. Location assignments and transport remain explicit accounting rather than route-capacity constraints inside the LP.
-
-Agricultural tower electricity remains a conservative active-load value because planting/harvesting duty timing is absent from the export. Spore totals are exact for the planned harvest rate and placed tower count. Rocket launch timing uses the selected silo quality from Normal through Legendary. Asteroid caps identify infeasible collection demand without re-optimizing recipe choices. Aquilo heating covers production machines and configured beacon equivalents; layout-dependent logistics entities remain outside the graph.
-
-See [Advanced Space Age planning](docs/advanced-planning.md) for calculation details and limitations.
+A browser-based production planner for **Factorio: Space Age 2.1.14**. Build a factory plan, choose recipes and machines, compare item flows, and share the complete setup in a URL.
 
 ## Live site
 
 https://anthfgreco.github.io/factorio-calculator/
+
+## Features
+
+- Exact production rates across multiple outputs, byproducts, probabilities, catalysts, and recycling loops.
+- Machines, modules, beacons, productivity research, fuel, power, pollution, heat, belts, buffers, and cargo wagons.
+- Per-recipe assignment to Nauvis, Vulcanus, Fulgora, Gleba, Aquilo, or a space platform, with visible transport flows between locations.
+- Planet-aware quality planning, including Fulgora scrap recycling and Vulcanus lava-to-molten-metal production.
+- Gleba agriculture, seeds, spoilage, freshness, spores, and agricultural-tower sizing.
+- Rocket-silo throughput, asteroid collection limits, resource yield, and belt stacking.
+- Flow and recipe visualizations with labeled rates, cycle-aware Sankey layout, and Dagre-routed recipe graphs.
+- Searchable settings, progression presets, persistent browser state, and shareable plan links.
+
+## Model limits
+
+- Quality targets are optimized independently and do not share higher-quality intermediate pools.
+- Location assignments record transport demand but do not optimize route capacity.
+- Agricultural-tower power uses active load because the game export does not include planting and harvesting duty timing.
+- Asteroid limits report infeasible demand without selecting a different recipe automatically.
+- Aquilo heat covers production machines and configured beacon equivalents, not layout-dependent logistics entities.
+
+See [Advanced Space Age planning](docs/advanced-planning.md) for the detailed model and its assumptions.
 
 ## Development
 
@@ -48,10 +45,10 @@ pnpm dev
 ```bash
 pnpm dev                 # Start Vite
 pnpm run doctor          # Validate Node, pnpm, lockfile, datasets, and required tools
-pnpm check:quick         # ~5s architecture, type-debt, and global strict TypeScript lane
-pnpm test:core           # ~3s exact solver and named Factorio scenarios
+pnpm check:quick         # Architecture, type-debt, and strict TypeScript checks
+pnpm test:core           # Exact solver and named Factorio scenarios
 pnpm test:ui             # Store, URL, state, and interface behavior
-pnpm test:e2e            # ~20s Playwright Chromium workflows
+pnpm test:e2e            # Playwright Chromium workflows
 pnpm test:e2e:ui         # Interactive Playwright runner
 pnpm bench               # Report exact 500- and 1,000-step solver medians
 pnpm bench:check         # Enforce conservative solver performance budgets
@@ -67,11 +64,13 @@ pnpm zip                 # Package current working-tree files on Windows
 
 ## Architecture
 
-The calculator has one authored runtime file: `src/main.tsx`. Ordered `// region …` markers preserve clear ownership without a first-party module graph. React owns every application DOM and SVG node. Domain models remain framework-free and expose plain data plus explicit mutations.
+`src/main.tsx` is the calculator and React application runtime. Ordered `// region …` markers keep its data contracts, exact math, solver, models, state, URL persistence, and interface traceable from input to render.
 
-Component layout is inline in the `UI` style map. Theme values are React-applied CSS variables. `BASE_CSS` is intentionally limited to resets, pseudo states, density variables, and responsive media queries. HiGHS is the only deferred runtime engine and loads only for quality optimization.
+The visualization is the one runtime island: React owns its controls and empty SVG mount, while deferred `src/visualization.ts` owns the SVG children with D3 and Dagre. `src/vendor-sankey.js` contains the retained cycle-aware Sankey layout. HiGHS, D3, and Dagre load only when their features are opened.
 
-Tests, scripts, generated datasets, documentation, and binary assets remain separate. `AGENTS.md` is the only agent instruction file. The architecture check rejects new runtime modules, source stylesheets, imperative renderers, nested agent guides, and eager HiGHS imports. See [docs/architecture.md](docs/architecture.md) and [docs/change-guide.md](docs/change-guide.md).
+Component layout stays in the inline `UI` style map. Theme values are CSS variables, and `BASE_CSS` is limited to resets, pseudo states, density variables, and responsive rules. Domain models remain framework-free and expose plain data with explicit mutations.
+
+Tests, scripts, generated datasets, documentation, and assets remain separate. Architecture guards enforce the runtime file boundary and keep HiGHS, D3, and Dagre out of the initial bundle. See [Architecture](docs/architecture.md) and [Change guide](docs/change-guide.md).
 
 ## GitHub Pages
 
